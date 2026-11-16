@@ -157,6 +157,28 @@ grep -q "^9101|TIMEOUT|" "$W/uiruns/ui_1_to/sacct.txt" && ok "ui updates sacct.t
 grep -q "^9102|CANCELLED" "$W/uiruns/ui_2_can/sacct.txt" && ok "ui writes CANCELLED state to sacct.txt" || bad "ui did not write ui_2_can/sacct.txt"
 "$P/bin/aimip-ui" ls >/dev/null 2>&1
 [ "$(wc -l < "$FAKE_LOG.sacct" | tr -d ' ')" = "1" ] && ok "ls skips sacct once all runs are finished or terminal" || bad "ls queried sacct for terminal runs"
+# Wrapper option-before-positional (`logs -f`), `approve` rw data mode, `--config` mount, and SIF/Docker image integrity
+echo 9104 > "$W/uiruns/ui_4_follow/slurm.jobid" 2>/dev/null || { mkdir -p "$W/uiruns/ui_4_follow"; echo 9104 > "$W/uiruns/ui_4_follow/slurm.jobid"; }
+cat > "$W/fakebin/sacct" <<'S'
+#!/bin/bash
+printf '9104|RUNNING|00:00:30|0:0\n'
+S
+chmod +x "$W/fakebin/sacct"
+AIMIP_WRAPPER_SACCT_INTERVAL=0 "$P/bin/aimip-ui" logs -f ui_4_follow >/dev/null 2>&1
+[ -f "$W/uiruns/ui_4_follow/sacct.txt" ] && ok "logs -f <name> refreshes sacct.txt when option precedes target" || bad "logs -f <name> missed sacct.txt"
+mkdir -p "$P/data"
+"$P/bin/aimip" approve deadbeef >/dev/null 2>&1
+grep -q "^AIMIP_DATA_MODE=rw$" "$FAKE_LOG.argv" && ok "approve mounts writable data directory as rw" || bad "approve did not set AIMIP_DATA_MODE=rw"
+mkdir -p "$W/cfgdir"; echo "model: ace2-era5" > "$W/cfgdir/exp.yaml"
+( cd "$W/cfgdir" && "$P/bin/aimip" plan --config exp.yaml >/dev/null 2>&1 )
+grep -q "^$W/cfgdir/exp.yaml:$W/cfgdir/exp.yaml:ro$" "$FAKE_LOG.argv" && ok "relative --config resolved and mounted :ro" || bad "relative --config not mounted :ro"
+printf 'SIF_BYTES_ONE' > "$P/img.sif"
+if command -v sha256sum >/dev/null 2>&1; then sha256sum "$P/img.sif" | awk '{print $1}' > "$P/image.sha256"; else shasum -a 256 "$P/img.sif" | awk '{print $1}' > "$P/image.sha256"; fi
+mkdir -p "$W/runs/r_sif_ok"
+"$P/bin/aimip" exec-fme "$W/runs/r_sif_ok" >/dev/null 2>&1 && ok "matching SIF sha256 accepted on exec-fme" || bad "matching SIF sha256 refused"
+printf 'SIF_BYTES_TWO' > "$P/img.sif"
+"$P/bin/aimip" exec-fme "$W/runs/r_sif_ok" >/dev/null 2>&1 && bad "replaced SIF accepted on exec-fme" || ok "replaced SIF refused on exec-fme"
+rm -f "$P/image.sha256"
 echo "WRAPPER_TESTS pass=$pass fail=$fail bash=$BASH_VERSION"
 case "$W" in */aimip-wtest.*) rm -rf "$W";; esac
 [ $fail = 0 ]

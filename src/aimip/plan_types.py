@@ -199,6 +199,8 @@ class ResolvedPlan:
     canonical_payload: dict[str, Any]
     digest: str
     ic_checked: bool = True
+    ic_provenance: str = ""
+    limitations: str = ""
 
     @property
     def short_digest(self) -> str:
@@ -242,6 +244,8 @@ class ResolvedPlan:
             "ic_source": self.ic_source,
             "ocean_ic_source": self.ocean_ic_source,
             "ic_checked": self.ic_checked,
+            "ic_provenance": self.ic_provenance,
+            "limitations": self.limitations,
             "lora_checkpoint": self.lora_checkpoint,
             "resources": dict(self.resources),
             "runtime_identity": dict(self.runtime_identity),

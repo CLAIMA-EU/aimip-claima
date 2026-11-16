@@ -7,6 +7,7 @@ arbitrary import paths, shell fragments, or external commands in registry JSON a
 from __future__ import annotations
 
 import fnmatch
+import json
 import os
 from typing import Any, Protocol
 
@@ -122,6 +123,44 @@ def _load_lock_entries(
     return {}
 
 
+def _load_derived_overrides(
+    *,
+    data_dir: str | None = None,
+    lock_path: str | None = None,
+) -> dict[str, str]:
+    """Load `<data_dir>/derived-overrides.json` (`rel_path -> actual_sha256`) when present."""
+    if not data_dir:
+        return {}
+    ovr_path = os.path.join(data_dir, "derived-overrides.json")
+    if not os.path.isfile(ovr_path) or os.path.islink(ovr_path):
+        return {}
+    try:
+        resolved_lock = resolve_lock_path(lock_path, dest_dir=data_dir, must_exist=False)
+        with open(ovr_path, encoding="utf-8") as fh:
+            doc = json.load(fh)
+        if not isinstance(doc, dict) or not isinstance(doc.get("overrides"), list):
+            return {}
+        rec_lock = doc.get("lock_path")
+        if (
+            isinstance(rec_lock, str)
+            and rec_lock
+            and resolved_lock
+            and os.path.normpath(rec_lock) != os.path.normpath(resolved_lock)
+        ):
+            return {}
+        out: dict[str, str] = {}
+        for item in doc["overrides"]:
+            if not isinstance(item, dict):
+                continue
+            rel = item.get("rel_path")
+            actual = item.get("actual_sha256")
+            if isinstance(rel, str) and rel and isinstance(actual, str) and len(actual.strip()) == 64:
+                out[rel] = actual.strip().lower()
+        return out
+    except Exception:
+        return {}
+
+
 def _asset_from_rel(
     rel_path: str,
     abs_path: str,
@@ -129,16 +168,35 @@ def _asset_from_rel(
     lock_files: dict[str, dict[str, Any]],
     *,
     fallback_sha: str | None = None,
+    derived_overrides: dict[str, str] | None = None,
+    verify_bytes: bool = False,
 ) -> AssetRef:
     entry = lock_files.get(rel_path) or {}
-    sha = entry.get("sha256") or fallback_sha
-    size_val = entry.get("size")
+    expected_sha = (derived_overrides or {}).get(rel_path) or entry.get("sha256") or fallback_sha
     cached = os.path.isfile(abs_path) and not os.path.islink(abs_path)
-    if size_val is None and cached:
+    if cached and verify_bytes:
+        actual_sha = sha256_file(abs_path)
         try:
-            size_val = os.path.getsize(abs_path)
+            size_val: int | None = os.path.getsize(abs_path)
         except OSError:
             size_val = None
+        if expected_sha and actual_sha.lower() != str(expected_sha).lower():
+            raise ValidationError(
+                f"Pinned asset SHA-256 mismatch for {rel_path} ({abs_path}): "
+                f"expected {expected_sha}, got {actual_sha}. "
+                "Re-run `aimip fetch` with `--force-rebuild`.",
+                field="forcing_set" if "forcing" in role else "model",
+            )
+        sha: str | None = actual_sha
+    else:
+        sha = str(expected_sha) if expected_sha else None
+        raw_size = entry.get("size")
+        size_val = int(raw_size) if isinstance(raw_size, int) else None
+        if size_val is None and cached:
+            try:
+                size_val = os.path.getsize(abs_path)
+            except OSError:
+                size_val = None
     return AssetRef(
         rel_path=rel_path,
         path=abs_path,
@@ -188,12 +246,11 @@ def _hash_custom_forcing_dir_assets(
     role: str,
     seen: set[str],
 ) -> list[AssetRef]:
-    """Bind custom forcing directories and their matching NetCDF files into `AssetRef`s."""
+    """Bind custom forcing directories and their matching NetCDF files by SHA-256 content digest."""
     if not fdir:
         return []
     out: list[AssetRef] = []
     pat = file_pattern or "*.nc"
-    max_inline_hash_bytes = 128 * 1024 * 1024
     if os.path.isdir(fdir) and not os.path.islink(fdir):
         matched_files: list[str] = []
         try:
@@ -211,11 +268,7 @@ def _hash_custom_forcing_dir_assets(
                 try:
                     st = os.stat(full)
                     fsize: int | None = int(st.st_size)
-                    fsha = (
-                        sha256_file(full)
-                        if st.st_size <= max_inline_hash_bytes
-                        else f"stat:{st.st_size}:{st.st_mtime_ns}"
-                    )
+                    fsha: str | None = sha256_file(full)
                 except OSError:
                     fsize = None
                     fsha = None
@@ -523,8 +576,17 @@ class FmeFamilyAdapter:
     ) -> list[AssetRef]:
         resolved_data = resolve_data_dir(data_dir) or ""
         lock_files = _load_lock_entries(data_dir=resolved_data or None, lock_path=lock_path)
+        derived_overrides = _load_derived_overrides(data_dir=resolved_data or None, lock_path=lock_path)
         assets: list[AssetRef] = []
         seen: set[str] = set()
+        selected_fs = validated.get("forcing_set")
+        fs_dir = (getattr(selected_fs, "dir", None) or "").rstrip("/")
+        fs_pat = getattr(selected_fs, "file_pattern", None) or "*.nc"
+        fs_ocean_dir = (getattr(selected_fs, "ocean_dir", None) or "").rstrip("/")
+        fs_ocean_pat = getattr(selected_fs, "ocean_file_pattern", None) or "*.nc"
+        active_ics = set(getattr(selected_fs, "ic_files", ()) or model.ic_files) | set(
+            getattr(selected_fs, "ocean_ic_files", ()) or model.ocean_ic_files
+        )
 
         if model.required_files and resolved_data:
             for rel in model.required_files:
@@ -535,7 +597,25 @@ class FmeFamilyAdapter:
                     else ("ic" if "/ic/" in rel or rel.endswith("/ic.nc") else "forcing")
                 )
                 fallback = model.checkpoint_sha256 if abs_p == model.checkpoint else None
-                assets.append(_asset_from_rel(rel, abs_p, role, lock_files, fallback_sha=fallback))
+                abs_parent = os.path.dirname(abs_p).rstrip("/")
+                abs_name = os.path.basename(abs_p)
+                is_selected = (
+                    (abs_p == model.checkpoint and not validated.get("lora_checkpoint"))
+                    or abs_p in active_ics
+                    or (bool(fs_dir) and abs_parent == fs_dir and fnmatch.fnmatch(abs_name, fs_pat))
+                    or (bool(fs_ocean_dir) and abs_parent == fs_ocean_dir and fnmatch.fnmatch(abs_name, fs_ocean_pat))
+                )
+                assets.append(
+                    _asset_from_rel(
+                        rel,
+                        abs_p,
+                        role,
+                        lock_files,
+                        fallback_sha=fallback,
+                        derived_overrides=derived_overrides,
+                        verify_bytes=is_selected,
+                    )
+                )
                 seen.add(abs_p)
         else:
             if model.checkpoint not in seen:
@@ -546,6 +626,8 @@ class FmeFamilyAdapter:
                         "checkpoint",
                         lock_files,
                         fallback_sha=model.checkpoint_sha256 or None,
+                        derived_overrides=derived_overrides,
+                        verify_bytes=not bool(validated.get("lora_checkpoint")),
                     )
                 )
                 seen.add(model.checkpoint)
@@ -558,10 +640,11 @@ class FmeFamilyAdapter:
                             "ic",
                             lock_files,
                             fallback_sha=sha256_file(ic_p) if os.path.isfile(ic_p) else None,
+                            derived_overrides=derived_overrides,
+                            verify_bytes=True,
                         )
                     )
                     seen.add(ic_p)
-            selected_fs = validated.get("forcing_set")
             if selected_fs is not None:
                 assets.extend(
                     _hash_custom_forcing_dir_assets(
@@ -808,13 +891,28 @@ class EmuFamilyAdapter:
     ) -> list[AssetRef]:
         resolved_data = resolve_data_dir(data_dir) or ""
         lock_files = _load_lock_entries(data_dir=resolved_data or None, lock_path=lock_path)
+        derived_overrides = _load_derived_overrides(data_dir=resolved_data or None, lock_path=lock_path)
         assets: list[AssetRef] = []
+        selected_fs = validated.get("forcing_set")
+        selected_scen = getattr(selected_fs, "name", None)
+        scen_tag = f"r1i1p1f1_{selected_scen}_interpolation.memmap/" if selected_scen else None
 
         for rel in model.required_files:
             abs_p = os.path.join(resolved_data, rel) if resolved_data else rel
             role = "forcing" if "memmap" in rel or rel.startswith("inputs/") else "package"
             fallback = model.checkpoint_sha256 if abs_p == model.checkpoint else None
-            assets.append(_asset_from_rel(rel, abs_p, role, lock_files, fallback_sha=fallback))
+            is_selected = role == "package" or (scen_tag is not None and scen_tag in rel)
+            assets.append(
+                _asset_from_rel(
+                    rel,
+                    abs_p,
+                    role,
+                    lock_files,
+                    fallback_sha=fallback,
+                    derived_overrides=derived_overrides,
+                    verify_bytes=is_selected,
+                )
+            )
 
         if model.family == "arches":
             override_code = (os.environ.get("AIMIP_ARCHES_CODE") or "").strip()

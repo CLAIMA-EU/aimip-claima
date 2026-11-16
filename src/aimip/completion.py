@@ -32,7 +32,7 @@ TOP_LEVEL_COMMANDS: tuple[str, ...] = (
     "completion",
 )
 
-COMMON_RUN_FLAGS: tuple[str, ...] = (
+PLAN_FLAGS: tuple[str, ...] = (
     "-m",
     "--model",
     "--start",
@@ -52,11 +52,10 @@ COMMON_RUN_FLAGS: tuple[str, ...] = (
     "--no-monthly",
     "--prediction",
     "--no-prediction",
-    "--no-fetch",
-    "--dry-run",
-    "--submit",
     "--local",
-    "--approve",
+    "--registry",
+    "--playground",
+    "--data",
     "--partition",
     "--account",
     "--gres",
@@ -68,12 +67,22 @@ COMMON_RUN_FLAGS: tuple[str, ...] = (
     "--json",
 )
 
+COMMON_RUN_FLAGS: tuple[str, ...] = (
+    *PLAN_FLAGS,
+    "--no-fetch",
+    "--dry-run",
+    "--submit",
+    "--approve",
+    "--print-sbatch-path",
+)
+
 
 def render_completion(shell: str) -> str:
     """Render a standalone `bash` or `zsh` completion script for `aimip`."""
     norm = (shell or "").strip().lower()
     cmds = " ".join(TOP_LEVEL_COMMANDS)
     models = " ".join(CANONICAL_MODELS)
+    plan_flags = " ".join(PLAN_FLAGS)
     run_flags = " ".join(COMMON_RUN_FLAGS)
 
     if norm == "bash":
@@ -115,7 +124,7 @@ _aimip_completions() {{
     esac
 
     case "${{cmd}}" in
-        show|cite)
+        show)
             if [[ ${{COMP_CWORD}} -eq 2 && "${{cur}}" != -* ]]; then
                 COMPREPLY=( $(compgen -W "{models}" -- "${{cur}}") )
                 return 0
@@ -123,16 +132,72 @@ _aimip_completions() {{
             COMPREPLY=( $(compgen -W "--examples --json --registry --playground --data" -- "${{cur}}") )
             return 0
             ;;
+        cite)
+            if [[ ${{COMP_CWORD}} -eq 2 && "${{cur}}" != -* ]]; then
+                COMPREPLY=( $(compgen -W "{models}" -- "${{cur}}") )
+                return 0
+            fi
+            COMPREPLY=( $(compgen -W "--json --registry --playground --data" -- "${{cur}}") )
+            return 0
+            ;;
         models)
             COMPREPLY=( $(compgen -W "--task --family --status --installed --format --json --registry --playground --data" -- "${{cur}}") )
             return 0
             ;;
-        plan|run)
+        plan)
+            if [[ ${{COMP_CWORD}} -eq 2 && "${{cur}}" != -* ]]; then
+                COMPREPLY=( $(compgen -W "{models}" -- "${{cur}}") )
+                return 0
+            fi
+            COMPREPLY=( $(compgen -W "{plan_flags}" -- "${{cur}}") )
+            return 0
+            ;;
+        run)
             if [[ ${{COMP_CWORD}} -eq 2 && "${{cur}}" != -* ]]; then
                 COMPREPLY=( $(compgen -W "{models}" -- "${{cur}}") )
                 return 0
             fi
             COMPREPLY=( $(compgen -W "{run_flags}" -- "${{cur}}") )
+            return 0
+            ;;
+        submit)
+            COMPREPLY=( $(compgen -W "--expect-digest --playground --site-config --json" -- "${{cur}}") )
+            return 0
+            ;;
+        status)
+            COMPREPLY=( $(compgen -W "--sacct-json --site-config --json" -- "${{cur}}") )
+            return 0
+            ;;
+        ls|cancel|summary)
+            COMPREPLY=( $(compgen -W "--site-config --json" -- "${{cur}}") )
+            return 0
+            ;;
+        doctor)
+            COMPREPLY=( $(compgen -W "--site-config --json --registry --playground --data" -- "${{cur}}") )
+            return 0
+            ;;
+        approve)
+            COMPREPLY=( $(compgen -W "--state-dir --json" -- "${{cur}}") )
+            return 0
+            ;;
+        collect)
+            COMPREPLY=( $(compgen -W "--out --ocean-out -m --model --to --site-config --json --registry --playground --data" -- "${{cur}}") )
+            return 0
+            ;;
+        setup)
+            COMPREPLY=( $(compgen -W "--models --dest --lock --playground --only-download --verify-only --write-lock --search-dir --force-rebuild --accept-derived --json" -- "${{cur}}") )
+            return 0
+            ;;
+        fetch)
+            COMPREPLY=( $(compgen -W "-m --model --dest --lock --playground --accept-derived --json" -- "${{cur}}") )
+            return 0
+            ;;
+        mcp)
+            COMPREPLY=( $(compgen -W "--state-dir --help" -- "${{cur}}") )
+            return 0
+            ;;
+        chat)
+            COMPREPLY=( $(compgen -W "--help" -- "${{cur}}") )
             return 0
             ;;
         ic)
@@ -154,15 +219,15 @@ _aimip_completions() {{
             fi
             ;;
         completion)
-            COMPREPLY=( $(compgen -W "bash zsh" -- "${{cur}}") )
+            COMPREPLY=( $(compgen -W "bash zsh --json" -- "${{cur}}") )
             return 0
             ;;
         logs)
-            COMPREPLY=( $(compgen -W "--follow --max-bytes --json --site-config" -- "${{cur}}") )
+            COMPREPLY=( $(compgen -W "-f --follow --max-bytes --interval --max-polls --json --site-config" -- "${{cur}}") )
             return 0
             ;;
         watch)
-            COMPREPLY=( $(compgen -W "--interval --timeout --json --site-config" -- "${{cur}}") )
+            COMPREPLY=( $(compgen -W "--interval --max-polls --timeout --json --site-config" -- "${{cur}}") )
             return 0
             ;;
         ui)
@@ -177,9 +242,10 @@ complete -F _aimip_completions aimip
     if norm == "zsh":
         return f"""#compdef aimip
 _aimip() {{
-    local -a commands models run_flags
+    local -a commands models plan_flags run_flags
     commands=({cmds})
     models=({models})
+    plan_flags=({plan_flags})
     run_flags=({run_flags})
 
     if (( CURRENT == 2 )); then
@@ -211,22 +277,66 @@ _aimip() {{
     esac
 
     case "${{words[2]}}" in
-        show|cite)
+        show)
             if (( CURRENT == 3 )) && [[ "${{words[CURRENT]}}" != -* ]]; then
                 _describe 'model' models
                 return
             fi
             compadd -- --examples --json --registry --playground --data
             ;;
+        cite)
+            if (( CURRENT == 3 )) && [[ "${{words[CURRENT]}}" != -* ]]; then
+                _describe 'model' models
+                return
+            fi
+            compadd -- --json --registry --playground --data
+            ;;
         models)
             compadd -- --task --family --status --installed --format --json --registry --playground --data
             ;;
-        plan|run)
+        plan)
+            if (( CURRENT == 3 )) && [[ "${{words[CURRENT]}}" != -* ]]; then
+                _describe 'model' models
+                return
+            fi
+            compadd -- ${{plan_flags[@]}}
+            ;;
+        run)
             if (( CURRENT == 3 )) && [[ "${{words[CURRENT]}}" != -* ]]; then
                 _describe 'model' models
                 return
             fi
             compadd -- ${{run_flags[@]}}
+            ;;
+        submit)
+            compadd -- --expect-digest --playground --site-config --json
+            ;;
+        status)
+            compadd -- --sacct-json --site-config --json
+            ;;
+        ls|cancel|summary)
+            compadd -- --site-config --json
+            ;;
+        doctor)
+            compadd -- --site-config --json --registry --playground --data
+            ;;
+        approve)
+            compadd -- --state-dir --json
+            ;;
+        collect)
+            compadd -- --out --ocean-out -m --model --to --site-config --json --registry --playground --data
+            ;;
+        setup)
+            compadd -- --models --dest --lock --playground --only-download --verify-only --write-lock --search-dir --force-rebuild --accept-derived --json
+            ;;
+        fetch)
+            compadd -- -m --model --dest --lock --playground --accept-derived --json
+            ;;
+        mcp)
+            compadd -- --state-dir --help
+            ;;
+        chat)
+            compadd -- --help
             ;;
         ic)
             (( CURRENT == 3 )) && compadd list spin
@@ -241,10 +351,10 @@ _aimip() {{
             (( CURRENT == 3 )) && compadd bash zsh
             ;;
         logs)
-            compadd -- --follow --max-bytes --json --site-config
+            compadd -- -f --follow --max-bytes --interval --max-polls --json --site-config
             ;;
         watch)
-            compadd -- --interval --timeout --json --site-config
+            compadd -- --interval --max-polls --timeout --json --site-config
             ;;
         ui)
             compadd -- --host --port --allow-remote --help

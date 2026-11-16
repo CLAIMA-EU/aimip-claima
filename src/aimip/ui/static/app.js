@@ -499,6 +499,7 @@
         ["Family / Runtime", (card.family || "") + (card.fme_version ? " (" + card.fme_version + ")" : "")],
         ["Grid", card.grid || "—"],
         ["Step / Calendar", cardStep + " / " + (card.calendar || "")],
+        ["Initial Conditions", card.ic_provenance || "—"],
         ["Weights / Code Licence", card.licence || "—"],
         ["Cached / Missing", (card.cached_files || 0) + " cached, " + missingCnt + " missing"],
         ["Cost Basis", card.cost_note || card.cost_estimate_note || "—"],
@@ -573,7 +574,7 @@
     if (modeSel.value === "local") {
       if (state.session.in_container) {
         hint.textContent =
-          "Warning: local mode executes inside this UI container process (CPU/login host) and terminates if the container exits. Use slurm for cluster GPU jobs.";
+          "Container install: local mode prepares and seals the run directory, then displays the exact `aimip submit --expect-digest=...` command to launch on the host.";
         show(hint, true);
       } else if (state.session.scheduler === "slurm") {
         hint.textContent =
@@ -860,6 +861,7 @@
           "Model Status Tier",
           (mc.status_tier || "—") + (mc.status_definition ? " — " + mc.status_definition : ""),
         ],
+        ["Initial Conditions", mc.ic_provenance || "—"],
         ["Weights / Code Licence", mc.licence || "—"],
         ["Operational Notes & Limits", mc.limitations || "—"],
       ].forEach(function (pair) {
@@ -896,7 +898,7 @@
     const contNote = el("plan-container-note");
     if (!isPrepareStage && prepOnlyContainer) {
       contNote.textContent =
-        "Container install: clicking Approve & Prepare Run writes and seals the run directory, then displays the exact `aimip submit --expect-digest=...` command to run on the cluster login node.";
+        "Container install: clicking Approve & Prepare Run writes and seals the run directory, then displays the exact `aimip submit --expect-digest=...` command to run on the host.";
       show(contNote, true);
     } else {
       show(contNote, false);

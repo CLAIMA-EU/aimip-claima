@@ -307,14 +307,22 @@ def render_plan_card(plan: ResolvedPlan, *, is_tty: bool = False) -> str:
         f"  model:       {plan.model} ({plan.family}, status={plan.status_tier}, task={plan.task})",
         f"  period:      {period_line}",
         f"  ic:          {ic_line}",
-        f"  ensemble:    {plan.members} member(s), seed={plan.seed}  ({plan.ensemble_note or plan.ensemble_strategy})",
-        f"  forcing:     {plan.forcing_set or '(none)'}",
-        f"  inputs:      {inputs_line}",
-        f"  outputs:     {outputs_line}",
-        f"  resources:   {res_line}",
-        f"  output:      {plan.output_dir}{out_note}",
-        digest_line,
     ]
+    if plan.ic_provenance:
+        lines.append(f"  ic_note:     {plan.ic_provenance}")
+    lines.extend(
+        [
+            f"  ensemble:    {plan.members} member(s), seed={plan.seed}  ({plan.ensemble_note or plan.ensemble_strategy})",
+            f"  forcing:     {plan.forcing_set or '(none)'}",
+            f"  inputs:      {inputs_line}",
+            f"  outputs:     {outputs_line}",
+            f"  resources:   {res_line}",
+            f"  output:      {plan.output_dir}{out_note}",
+        ]
+    )
+    if plan.limitations:
+        lines.append(f"  limits:      {plan.limitations}")
+    lines.append(digest_line)
     if plan.lora_checkpoint:
         lines.append(f"  lora:        {plan.lora_checkpoint}")
     if plan.cli_overrides:
@@ -336,6 +344,11 @@ def render_show_card(card: dict[str, Any], *, include_examples: bool = False) ->
         f"  step/cal:    {step_label}, calendar={card['calendar']}, stochastic={card['stochastic']}",
         f"  grid:        {card['grid']}",
         f"  forcing:     {fsets or '(none)'}",
+        *(
+            [f"  ic:          {card['ic_provenance']}"]
+            if card.get("ic_provenance")
+            else []
+        ),
         f"  outputs:     {', '.join(card.get('outputs', [])) or '(not recorded)'}",
         f"  installed:   {'yes' if card.get('installed') else 'no'} ({card.get('cached_files', 0)}/{card.get('total_files', 0)} files, ~{format_bytes(card.get('total_bytes', 0))})",
         f"  cost:        {card['cost_note']}",

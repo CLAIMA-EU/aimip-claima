@@ -101,7 +101,7 @@ mkdir -p "$RUN_ROOT" 2>/dev/null || true
 DATA_MODE=ro
 case "${1:-}" in
   setup|fetch) mkdir -p "$DATA" 2>/dev/null; [ -w "$DATA" ] || die "$DATA is not writable by you: ask the install owner to run this"; DATA_MODE=rw;;
-  run|ic|chat|mcp|ui) mkdir -p "$DATA" 2>/dev/null || true; [ -w "$DATA" ] && DATA_MODE=rw;;
+  run|ic|chat|mcp|ui|approve) mkdir -p "$DATA" 2>/dev/null || true; [ -w "$DATA" ] && DATA_MODE=rw;;
 esac
 
 if [ "${1:-}" = "chat" ] || [ "${1:-}" = "ui" ]; then

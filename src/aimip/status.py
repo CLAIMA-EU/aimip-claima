@@ -314,12 +314,6 @@ def _query_sacct_with_raw(job_id: str) -> tuple[dict[str, str] | None, str | Non
     return parsed, raw_out
 
 
-def _query_sacct(job_id: str) -> dict[str, str] | None:
-    """Query `sacct` without shell invocation if `sacct` is available on PATH."""
-    parsed, _ = _query_sacct_with_raw(job_id)
-    return parsed
-
-
 _SACCT_CACHE_LOCK = threading.Lock()
 _LAST_SACCT_QUERY: dict[tuple[str, str], tuple[float, dict[str, str] | None]] = {}
 
@@ -652,17 +646,18 @@ def get_run_status(
     elif sacct_info is not None and str(sacct_info.get("state") or "").strip():
         state = (sacct_info["state"].lower().split() or ["unknown"])[0]
     elif local_pid is not None:
+        from .submit import inspect_local_process
+
         in_container = os.environ.get("AIMIP_IMAGE_SHA", "native") not in ("", "native")
+        has_cancel_marker = os.path.isfile(os.path.join(validated_out, "cancel-requested.txt"))
         if not in_container:
-            try:
-                os.kill(local_pid, 0)
+            alive, _, _ = inspect_local_process(validated_out, local_pid)
+            if alive:
                 state = "running"
-            except ProcessLookupError:
-                state = "failed"
-            except PermissionError:
-                state = "running"
+            else:
+                state = "cancelled" if has_cancel_marker else "failed"
         else:
-            state = "running"
+            state = "cancel_requested" if has_cancel_marker else "running"
     else:
         state = "unknown"
 

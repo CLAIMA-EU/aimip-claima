@@ -45,7 +45,9 @@ install/install-container.sh --prefix DIR --site <preset> [--account A|none] [--
                              [--run-root R] [--runtime auto|apptainer|singularity|docker|podman] [--image REF | --build]
 ```
 
-By default the installer **fetches the published image** `ghcr.io/clidyn/aimip-claima:<version>` (the version of
+By default the installer **fetches the published image** `ghcr.io/clidyn/aimip-claima:<version>` (only release
+versions have an image, and only if it is published and readable to you; otherwise use `--build`, which builds the
+image from your checkout in 30–40 minutes) (the version of
 your checkout; x86_64 — on aarch64 hosts it builds the image instead): Apptainer/Singularity convert it to a SIF file in `DIR/images/` (no root, no compiler),
 Docker/Podman pull it. It then writes `site.json` and the wrapper `DIR/bin/aimip` and runs the wrapper's self-test;
 it ends with `WRAPPER_TESTS pass=… fail=0` and `Installed …`. The log is `DIR/build/build-<version>.log`.

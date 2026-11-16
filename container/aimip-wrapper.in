@@ -5,10 +5,11 @@
 set -u
 export LC_ALL=C   # stable `ls -ld` mode columns for the permission checks below
 umask g-w,o-w     # run directories created through the wrapper must pass trusted_dir even for users with umask 002
+HOST_PWD=$(pwd -P 2>/dev/null || pwd)
 PREFIX=@PREFIX@
 RUNTIME=@RUNTIME@            # apptainer | singularity | docker | podman
 RUNTIME_BIN=@RUNTIME_BIN@
-IMAGE=@IMAGE@                # SIF path or docker/podman tag
+IMAGE=@IMAGE@                # SIF path or immutable docker/podman image ID
 SCHEDULER=@SCHEDULER@        # slurm | none
 RUN_ROOT_TEMPLATE='@RUN_ROOT@'
 EXTRA_RO="@EXTRA_RO@"
@@ -18,9 +19,85 @@ RUN_ROOT=${RUN_ROOT_TEMPLATE//'${USER}'/$U}; RUN_ROOT=${RUN_ROOT//'${U1}'/$U1}; 
 STATE_DIR=${AIMIP_STATE:-$RUN_ROOT/.aimip-state}
 
 die() { echo "aimip: $*" >&2; exit 2; }
+json_escape() {
+  printf '%s' "$1" | tr '\n\r\t' '   ' | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'
+}
+emit_json_err() {  # emit_json_err <code> <exit_code> <field_or_empty> <message>
+  local c=$1 ec=$2 fld=$3 msg esc_msg fld_json="null"
+  esc_msg=$(json_escape "$4")
+  [ -n "$fld" ] && fld_json="\"$(json_escape "$fld")\""
+  printf '{"aimip":"1","ok":false,"error":{"code":"%s","exit_code":%s,"message":"%s","field":%s,"allowed":null,"next_command":null}}\n' "$c" "$ec" "$esc_msg" "$fld_json"
+}
+die_cmd() {  # die_cmd <want_json> <code> <exit_code> <field_or_empty> <message>
+  local wj=$1 c=$2 ec=$3 fld=$4 msg=$5
+  echo "aimip: $msg" >&2
+  [ "$wj" = 1 ] && emit_json_err "$c" "$ec" "$fld" "$msg"
+  exit "$ec"
+}
 safe_path() {
   case "$1" in /*) ;; *) die "path must be absolute: $1";; esac
   case "$1" in *..*|*[!A-Za-z0-9._/+-]*) die "refusing path: $1";; esac
+}
+sha256_host_file() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  else
+    shasum -a 256 "$1" | awk '{print $1}'
+  fi
+}
+read_expected_image_sha() {
+  [ -f "$PREFIX/image.sha256" ] || { printf 'unknown\n'; return 0; }
+  local raw
+  raw=$(awk 'NF{print $1; exit}' "$PREFIX/image.sha256" 2>/dev/null | tr -d '[:space:]')
+  raw=${raw#sha256:}
+  printf '%s\n' "${raw:-unknown}"
+}
+verify_container_image() {  # verify_container_image <strict|fast>
+  local mode=${1:-fast} exp_sha cur_stat got_sha live_id
+  case "$RUNTIME" in
+    apptainer|singularity)
+      [ -L "$IMAGE" ] && die "refusing symlinked container image: $IMAGE"
+      if [ -f "$PREFIX/image.sha256" ]; then
+        [ -f "$IMAGE" ] || die "container image missing: $IMAGE"
+        exp_sha=$(read_expected_image_sha)
+        [ -n "$exp_sha" ] && [ "$exp_sha" != "unknown" ] || die "invalid $PREFIX/image.sha256"
+        cur_stat=$(ls -ln "$IMAGE" 2>/dev/null | awk '{print $5"|"$6"|"$7"|"$8}')
+        if [ "$mode" = "strict" ] || [ ! -f "$PREFIX/image.stat" ] || [ "$cur_stat" != "$(cat "$PREFIX/image.stat" 2>/dev/null)" ]; then
+          got_sha=$(sha256_host_file "$IMAGE" 2>/dev/null || true)
+          [ "$got_sha" = "$exp_sha" ] || die "container image $IMAGE failed SHA-256 verification against $PREFIX/image.sha256"
+        fi
+      fi;;
+    docker|podman)
+      if [ -f "$PREFIX/image.sha256" ]; then
+        exp_sha=$(read_expected_image_sha)
+        [ -n "$exp_sha" ] && [ "$exp_sha" != "unknown" ] || die "invalid $PREFIX/image.sha256"
+        live_id=$("$RUNTIME_BIN" image inspect --format '{{.Id}}' "$IMAGE" 2>/dev/null | sed 's/^sha256://' | tr -d '[:space:]')
+        [ "$live_id" = "$exp_sha" ] || die "container image $IMAGE digest mismatch (expected $exp_sha, got ${live_id:-missing})"
+      fi;;
+  esac
+}
+pid_start_id() {
+  local p=$1 ps_out
+  if [ -r "/proc/$p/stat" ]; then
+    awk '{sub(/^.*\) /,""); if (NF>=20) print "proc:"$20}' "/proc/$p/stat" 2>/dev/null
+    return 0
+  fi
+  ps_out=$(ps -o lstart= -p "$p" 2>/dev/null || true)
+  if [ -n "$ps_out" ]; then
+    set -- $ps_out
+    printf 'ps:%s\n' "$*"
+  fi
+}
+is_pid_zombie_sh() {
+  local p=$1 st_ch
+  if [ -r "/proc/$p/stat" ]; then
+    st_ch=$(awk '{sub(/^.*\) /,""); print $1}' "/proc/$p/stat" 2>/dev/null || true)
+    [ "$st_ch" = "Z" ] && return 0
+    return 1
+  fi
+  st_ch=$(ps -o stat= -p "$p" 2>/dev/null | tr -d '[:space:]' || true)
+  case "$st_ch" in Z*) return 0;; esac
+  return 1
 }
 scrub_host_secrets() {
   unset GEMINI_API_KEY GOOGLE_API_KEY AIMIP_GEMINI_KEY_FILE AIMIP_GEMINI_VERTEX_TOKEN_FILE \
@@ -28,7 +105,7 @@ scrub_host_secrets() {
         GOOGLE_CLOUD_PROJECT GCLOUD_PROJECT CLOUDSDK_AUTH_ACCESS_TOKEN OPENAI_API_KEY ANTHROPIC_API_KEY \
         LANGCHAIN_API_KEY LANGCHAIN_TRACING_V2 LANGSMITH_API_KEY \
         APPTAINERENV_GEMINI_API_KEY APPTAINERENV_GOOGLE_API_KEY \
-        SINGULARITYENV_GEMINI_API_KEY SINGULARITYENV_GOOGLE_API_KEY
+        SINGULARITYENV_GEMINI_API_KEY SINGULARITYENV_GEMINI_API_KEY
 }
 trusted_dir() {  # a run directory read again at job time must be the caller's own, a real directory, not group/world-writable
   local d=$1 m
@@ -124,6 +201,29 @@ resolve_target() {  # bare run name (demo) -> $RUN_ROOT/demo; otherwise require 
   esac
 }
 
+extract_target_arg() {  # extract_target_arg <args...>: prints first positional arg, skipping known options
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -h|--help) return 1;;
+      -f|--follow|--json) shift;;
+      --sacct-json|--site-config|--interval|--max-polls|--timeout|--max-bytes|--out|--ocean-out|-m|--model|--to|--registry|--playground|--data)
+        [ $# -ge 2 ] && shift 2 || return 1;;
+      --*=*) shift;;
+      -*) shift;;
+      *) printf '%s\n' "$1"; return 0;;
+    esac
+  done
+  return 1
+}
+
+has_help_flag() {
+  local a
+  for a in "$@"; do
+    case "$a" in -h|--help) return 0;; esac
+  done
+  return 1
+}
+
 reconcile_squeue_by_nonce() {  # reconcile_squeue_by_nonce <job_name> <attempt_nonce>; prints jobid on exact unique match
   local jname=$1 nonce=$2 sq_out line f_id f_name f_st f_com matches=0 found_id=""
   case "$nonce" in aimip-attempt-[0-9a-f]*) ;; *) return 1;; esac
@@ -145,22 +245,25 @@ EOF
   return 1
 }
 
-verify_submit_in_container() {  # verify_submit_in_container <run_dir> <priv_dir> <priv_script> <expect_digest>
-  local d=$1 pd=$2 priv_s=$3 exp_dig=$4 img_sha m v e
+verify_submit_in_container() {  # verify_submit_in_container <run_dir> <priv_dir> <priv_script> <expect_digest> <site_cfg>
+  local d=$1 pd=$2 priv_s=$3 exp_dig=$4 scfg=${5:-} img_sha m v e
   local -a vmounts venvs vcmd vb ve vid
+  verify_container_image strict
   vmounts=("$PREFIX:$PREFIX:ro" "$pd:$pd:ro")
   [ -d "$DATA" ] && vmounts+=("$DATA:$DATA:ro")
   [ -d "$RUN_ROOT" ] && vmounts+=("$RUN_ROOT:$RUN_ROOT:ro")
   case "$d" in "$RUN_ROOT"/*) ;; *) vmounts+=("$d:$d:ro");; esac
   [ -d "$STATE_DIR" ] && case "$STATE_DIR" in "$RUN_ROOT"/*) ;; *) vmounts+=("$STATE_DIR:$STATE_DIR:ro");; esac
+  [ -n "$scfg" ] && [ -f "$scfg" ] && vmounts+=("$scfg:$scfg:ro")
   for e in $EXTRA_RO; do [ -d "$e" ] && vmounts+=("$e:$e:ro"); done
-  img_sha=$(cut -c1-64 "$PREFIX/image.sha256" 2>/dev/null || echo unknown)
+  img_sha=$(read_expected_image_sha)
   venvs=("AIMIP_HOME=$PREFIX" "AIMIP_PLAYGROUND=$PREFIX" "AIMIP_DATA=$DATA" "AIMIP_IMAGE_SHA=$img_sha"
          "AIMIP_DEFAULT_OUT_ROOT=$RUN_ROOT" "AIMIP_STATE=$STATE_DIR" "AIMIP_USER=$U"
-         "AIMIP_SCHEDULER=$SCHEDULER" "AIMIP_SITE_CONFIG=$PREFIX/site.json" "AIMIP_EXTRA_RO_BINDS=$EXTRA_RO"
+         "AIMIP_SCHEDULER=$SCHEDULER" "AIMIP_SITE_CONFIG=${scfg:-$PREFIX/site.json}" "AIMIP_EXTRA_RO_BINDS=$EXTRA_RO"
          "AIMIP_DATA_MODE=ro" "HOME=/tmp")
   vcmd=(verify-submit "$d" --script-path "$priv_s")
   [ -n "$exp_dig" ] && vcmd+=(--expect-digest "$exp_dig")
+  [ -n "$scfg" ] && vcmd+=(--site-config "$scfg")
   vb=(); ve=()
   case "$RUNTIME" in
     apptainer|singularity)
@@ -178,36 +281,51 @@ verify_submit_in_container() {  # verify_submit_in_container <run_dir> <priv_dir
 }
 
 # ---------------- host-side commands ----------------
-if [ "${1:-}" = "submit" ]; then
+if [ "${1:-}" = "submit" ] && ! has_help_flag "${@:2}"; then
   scrub_host_secrets
-  D=""; WANT_JSON=0; EXPECT_DIGEST=""
+  D=""; WANT_JSON=0; EXPECT_DIGEST=""; SITE_CFG_ARG=""
   shift
   while [ $# -gt 0 ]; do
     case "$1" in
       --json) WANT_JSON=1; shift;;
       --expect-digest=*) EXPECT_DIGEST=${1#--expect-digest=}; shift;;
-      --expect-digest) [ $# -ge 2 ] || die "--expect-digest requires a hex digest"; EXPECT_DIGEST=$2; shift 2;;
-      -*) die "unsupported option for host submit: $1";;
-      *) [ -z "$D" ] && D=$1 || die "usage: aimip submit [--expect-digest HEX] <run-dir-or-name> [--json]"; shift;;
+      --expect-digest) [ $# -ge 2 ] || die_cmd "$WANT_JSON" "VALIDATION_ERROR" 2 "expect_digest" "--expect-digest requires a hex digest"; EXPECT_DIGEST=$2; shift 2;;
+      --site-config=*) SITE_CFG_ARG=${1#--site-config=}; shift;;
+      --site-config) [ $# -ge 2 ] || die_cmd "$WANT_JSON" "VALIDATION_ERROR" 2 "site_config" "--site-config requires a path"; SITE_CFG_ARG=$2; shift 2;;
+      --playground=*) shift;;
+      --playground) [ $# -ge 2 ] || die_cmd "$WANT_JSON" "VALIDATION_ERROR" 2 "playground" "--playground requires a path"; shift 2;;
+      -*) die_cmd "$WANT_JSON" "VALIDATION_ERROR" 2 "" "unsupported option for host submit: $1";;
+      *) [ -z "$D" ] && D=$1 || die_cmd "$WANT_JSON" "VALIDATION_ERROR" 2 "out" "usage: aimip submit [--expect-digest HEX] <run-dir-or-name> [--json]"; shift;;
     esac
   done
-  [ -n "$D" ] || die "usage: aimip submit <run-dir-or-name>"
-  D=$(resolve_target "$D") || exit 2
-  trusted_dir "$D"
-  [ -f "$D/job.sbatch" ] || die "$D has no job.sbatch (prepare it with: aimip run ... --out $D)"
+  [ -n "$D" ] || die_cmd "$WANT_JSON" "CONFIG_ERROR" 2 "out" "usage: aimip submit <run-dir-or-name>"
+  if [ -n "$SITE_CFG_ARG" ]; then
+    case "$SITE_CFG_ARG" in /*) ;; *) SITE_CFG_ARG="$HOST_PWD/$SITE_CFG_ARG";; esac
+    safe_path "$SITE_CFG_ARG"
+    [ -f "$SITE_CFG_ARG" ] && [ ! -L "$SITE_CFG_ARG" ] || die_cmd "$WANT_JSON" "CONFIG_ERROR" 2 "site_config" "site config not found: $SITE_CFG_ARG"
+  fi
+  verify_container_image strict
+  D=$(resolve_target "$D") || die_cmd "$WANT_JSON" "VALIDATION_ERROR" 2 "out" "invalid run target"
+  if ! ( trusted_dir "$D" ) 2>"${TMPDIR:-/tmp}/.aimip_tdir.$$"; then
+    terr=$(cat "${TMPDIR:-/tmp}/.aimip_tdir.$$" 2>/dev/null || echo "untrusted run directory"); rm -f "${TMPDIR:-/tmp}/.aimip_tdir.$$"
+    die_cmd "$WANT_JSON" "VALIDATION_ERROR" 2 "out" "${terr#aimip: }"
+  fi
+  rm -f "${TMPDIR:-/tmp}/.aimip_tdir.$$"
+  [ -f "$D/job.sbatch" ] || die_cmd "$WANT_JSON" "CONFIG_ERROR" 2 "out" "$D has no job.sbatch (prepare it with: aimip run ... --out $D)"
+  RNAME=$(basename "$D")
 
   # Per-run serialization lock
   LOCK_DIR=""; USE_FLOCK=0
-  [ -L "$D/.submit.lock" ] && die "refusing symlinked $D/.submit.lock"
+  [ -L "$D/.submit.lock" ] && die_cmd "$WANT_JSON" "VALIDATION_ERROR" 2 "out" "refusing symlinked $D/.submit.lock"
   if command -v flock >/dev/null 2>&1; then
-    exec 9>"$D/.submit.lock" || die "cannot open $D/.submit.lock"
+    exec 9>"$D/.submit.lock" || die_cmd "$WANT_JSON" "CONFIG_ERROR" 2 "out" "cannot open $D/.submit.lock"
     chmod 600 "$D/.submit.lock" 2>/dev/null || true
-    flock -x 9 || die "cannot lock $D/.submit.lock"
+    flock -x 9 || die_cmd "$WANT_JSON" "CONFIG_ERROR" 2 "out" "cannot lock $D/.submit.lock"
     USE_FLOCK=1
   else
     LOCK_DIR="$D/.submit.lockdir"
-    [ -L "$LOCK_DIR" ] && die "refusing symlinked $LOCK_DIR"
-    mkdir "$LOCK_DIR" 2>/dev/null || die "concurrent submission in progress for $D"
+    [ -L "$LOCK_DIR" ] && die_cmd "$WANT_JSON" "VALIDATION_ERROR" 2 "out" "refusing symlinked $LOCK_DIR"
+    mkdir "$LOCK_DIR" 2>/dev/null || die_cmd "$WANT_JSON" "CONFIG_ERROR" 2 "out" "concurrent submission in progress for $D"
   fi
   PD=""
   cleanup_submit() {
@@ -216,26 +334,29 @@ if [ "${1:-}" = "submit" ]; then
   }
   trap 'cleanup_submit' EXIT
 
-  [ -e "$D/slurm.jobid" ] || [ -e "$D/local.pid" ] && die "already submitted"
+  if [ -e "$D/slurm.jobid" ] || [ -e "$D/local.pid" ]; then
+    die_cmd "$WANT_JSON" "CONFIG_ERROR" 2 "out" "already submitted"
+  fi
   # Copy into a fresh caller-private 0700 directory, validate the copy, and submit the copy so the checked file
   # cannot be swapped before sbatch or bash reads it.
-  PD=$(mktemp -d "${TMPDIR:-/tmp}/aimip-submit.XXXXXX") || die "cannot create a private directory"
+  PD=$(mktemp -d "${TMPDIR:-/tmp}/aimip-submit.XXXXXX") || die_cmd "$WANT_JSON" "CONFIG_ERROR" 2 "" "cannot create a private directory"
   chmod 700 "$PD"; T=$PD/job.sbatch
-  cat "$D/job.sbatch" > "$T" || die "cannot read $D/job.sbatch"; chmod 400 "$T"
-  check_job_script "$T" "$D"
+  cat "$D/job.sbatch" > "$T" || die_cmd "$WANT_JSON" "CONFIG_ERROR" 2 "out" "cannot read $D/job.sbatch"; chmod 400 "$T"
+  if ! ( check_job_script "$T" "$D" ) 2>"$PD/chk.err"; then
+    cerr=$(cat "$PD/chk.err" 2>/dev/null || echo "invalid job.sbatch")
+    die_cmd "$WANT_JSON" "VALIDATION_ERROR" 2 "job.sbatch" "${cerr#aimip: }"
+  fi
 
   EFF_SCHED=$SCHEDULER
   VERIFIED_DIGEST=""
   if [ -e "$D/plan.json" ] || [ -e "$D/aimip-manifest.json" ] || [ -n "$EXPECT_DIGEST" ]; then
-    vout=$(verify_submit_in_container "$D" "$PD" "$T" "$EXPECT_DIGEST" 2>"$PD/verify.err")
+    vout=$(verify_submit_in_container "$D" "$PD" "$T" "$EXPECT_DIGEST" "$SITE_CFG_ARG" 2>"$PD/verify.err")
     vrc=$?
     if [ $vrc != 0 ]; then
       verr=$(cat "$PD/verify.err" 2>/dev/null || echo "plan verification failed")
+      printf '%s\n' "$verr" >&2
       if [ "$WANT_JSON" = 1 ]; then
-        printf '%s\n' "$verr" >&2
-        printf '{"aimip":"1","ok":false,"error":{"type":"ApprovalError","field":"digest","message":"Host submit verification failed; approve again."}}\n'
-      else
-        printf '%s\n' "$verr" >&2
+        emit_json_err "APPROVAL_ERROR" "$vrc" "digest" "Host submit verification failed; approve again."
       fi
       exit $vrc
     fi
@@ -244,6 +365,8 @@ if [ "${1:-}" = "submit" ]; then
     vmode=${vrest%%|*}
     [ "$vmode" = "local" ] && EFF_SCHED=none
   fi
+  DIG_JSON="null"
+  [ -n "$VERIFIED_DIGEST" ] && DIG_JSON="\"$VERIFIED_DIGEST\""
 
   if [ "$EFF_SCHED" = slurm ]; then
     JNAME=$(sed -n 's/^#SBATCH --job-name=//p' "$T" | head -n 1)
@@ -256,14 +379,13 @@ if [ "${1:-}" = "submit" ]; then
           write_in_dir "$D" slurm.jobid "$rec_id"
           write_in_dir "$D" submit-intent.json "{\"state\":\"reconciled\",\"run_dir\":\"$D\",\"job_name\":\"$JNAME\",\"user\":\"$U\",\"attempt_nonce\":\"$pnonce\",\"job_id\":\"$rec_id\"}"
           if [ "$WANT_JSON" = 1 ]; then
-            printf '{"aimip":"1","ok":true,"result":{"out_dir":"%s","run_dir":"%s","scheduler":"slurm","slurm_job_id":"%s","local_pid":null,"log_path":null,"reconciled":true}}\n' "$D" "$D" "$rec_id"
+            printf '{"aimip":"1","ok":true,"result":{"out_dir":"%s","run_dir":"%s","run_name":"%s","digest":%s,"scheduler":"slurm","attempt_id":"%s","slurm_job_id":"%s","job_id":"%s","local_pid":null,"log_path":null,"state":"SUBMITTED","reconciled":true,"host_command":null}}\n' "$D" "$D" "$RNAME" "$DIG_JSON" "$rec_id" "$rec_id" "$rec_id"
           else
             echo "reconciled job $rec_id   (then: aimip status $D)"
           fi
           exit 0
         fi
-        echo "aimip: previous submission for $D had an uncertain scheduler reply; refusing blind retry" >&2
-        exit 1
+        die_cmd "$WANT_JSON" "EXECUTION_ERROR" 1 "" "previous submission for $D had an uncertain scheduler reply; refusing blind retry"
       fi
     fi
 
@@ -283,18 +405,17 @@ if [ "${1:-}" = "submit" ]; then
             write_in_dir "$D" slurm.jobid "$rec_id"
             write_in_dir "$D" submit-intent.json "{\"state\":\"reconciled\",\"run_dir\":\"$D\",\"job_name\":\"$JNAME\",\"user\":\"$U\",\"attempt_nonce\":\"$attempt_nonce\",\"job_id\":\"$rec_id\"}"
             if [ "$WANT_JSON" = 1 ]; then
-              printf '{"aimip":"1","ok":true,"result":{"out_dir":"%s","run_dir":"%s","scheduler":"slurm","slurm_job_id":"%s","local_pid":null,"log_path":null,"reconciled":true}}\n' "$D" "$D" "$rec_id"
+              printf '{"aimip":"1","ok":true,"result":{"out_dir":"%s","run_dir":"%s","run_name":"%s","digest":%s,"scheduler":"slurm","attempt_id":"%s","slurm_job_id":"%s","job_id":"%s","local_pid":null,"log_path":null,"state":"SUBMITTED","reconciled":true,"host_command":null}}\n' "$D" "$D" "$RNAME" "$DIG_JSON" "$rec_id" "$rec_id" "$rec_id"
             else
               echo "reconciled job $rec_id   (then: aimip status $D)"
             fi
             exit 0
           fi
           write_in_dir "$D" submit-intent.json "{\"state\":\"uncertain\",\"run_dir\":\"$D\",\"job_name\":\"$JNAME\",\"user\":\"$U\",\"attempt_nonce\":\"$attempt_nonce\"}"
-          echo "aimip: uncertain scheduler reply ($sb_err); recorded submit-intent.json and refusing blind retry" >&2
-          exit 1;;
+          die_cmd "$WANT_JSON" "EXECUTION_ERROR" 1 "" "uncertain scheduler reply ($sb_err); recorded submit-intent.json and refusing blind retry";;
         *)
           write_in_dir "$D" submit-intent.json "{\"state\":\"failed_before_submit\",\"run_dir\":\"$D\",\"job_name\":\"$JNAME\",\"user\":\"$U\",\"attempt_nonce\":\"$attempt_nonce\"}"
-          die "sbatch failed${sb_err:+: $sb_err}";;
+          die_cmd "$WANT_JSON" "CONFIG_ERROR" 2 "" "sbatch failed${sb_err:+: $sb_err}";;
       esac
     fi
     jid=${out%%;*}; jid=$(printf '%s' "$jid" | tr -d '[:space:]')
@@ -304,24 +425,33 @@ if [ "${1:-}" = "submit" ]; then
           jid=$rec_id
         else
           write_in_dir "$D" submit-intent.json "{\"state\":\"uncertain\",\"run_dir\":\"$D\",\"job_name\":\"$JNAME\",\"user\":\"$U\",\"attempt_nonce\":\"$attempt_nonce\"}"
-          echo "aimip: sbatch returned non-numeric job ID ($out); recorded uncertain intent" >&2
-          exit 1
+          die_cmd "$WANT_JSON" "EXECUTION_ERROR" 1 "" "sbatch returned non-numeric job ID ($out); recorded uncertain intent"
         fi;;
     esac
     write_in_dir "$D" slurm.jobid "$jid"
     write_in_dir "$D" submit-intent.json "{\"state\":\"submitted\",\"run_dir\":\"$D\",\"job_name\":\"$JNAME\",\"user\":\"$U\",\"attempt_nonce\":\"$attempt_nonce\",\"job_id\":\"$jid\"}"
     if [ "$WANT_JSON" = 1 ]; then
-      printf '{"aimip":"1","ok":true,"result":{"out_dir":"%s","run_dir":"%s","scheduler":"slurm","slurm_job_id":"%s","local_pid":null,"log_path":null,"reconciled":false}}\n' "$D" "$D" "$jid"
+      printf '{"aimip":"1","ok":true,"result":{"out_dir":"%s","run_dir":"%s","run_name":"%s","digest":%s,"scheduler":"slurm","attempt_id":"%s","slurm_job_id":"%s","job_id":"%s","local_pid":null,"log_path":null,"state":"SUBMITTED","reconciled":false,"host_command":null}}\n' "$D" "$D" "$RNAME" "$DIG_JSON" "$jid" "$jid" "$jid"
     else
-      echo "submitted job $jid   (then: aimip status $D  or: aimip watch $(basename "$D"))"
+      echo "submitted job $jid   (then: aimip status $D  or: aimip watch $RNAME)"
     fi
   else
-    PD_KEEP=$PD; PD=""   # local runs execute the private copy in the background until completion
-    [ -L "$D/local-run.log" ] && die "refusing symlinked $D/local-run.log"
-    nohup bash "$PD_KEEP/job.sbatch" > "$D/local-run.log" 2>&1 & write_in_dir "$D" local.pid "$!"
-    lpid=$(cat "$D/local.pid")
+    PD_KEEP=$PD; PD=""   # local runs execute the private copy in a dedicated session/process group until completion
+    [ -L "$D/local-run.log" ] && die_cmd "$WANT_JSON" "VALIDATION_ERROR" 2 "out" "refusing symlinked $D/local-run.log"
+    if command -v setsid >/dev/null 2>&1; then
+      setsid bash "$PD_KEEP/job.sbatch" </dev/null > "$D/local-run.log" 2>&1 &
+    elif command -v python3 >/dev/null 2>&1; then
+      python3 -c 'import os, sys; os.setsid(); os.execvp("bash", ["bash", sys.argv[1]])' "$PD_KEEP/job.sbatch" </dev/null > "$D/local-run.log" 2>&1 &
+    else
+      nohup bash "$PD_KEEP/job.sbatch" </dev/null > "$D/local-run.log" 2>&1 &
+    fi
+    lpid=$!
+    lstart=$(pid_start_id "$lpid")
+    esc_lstart=$(json_escape "${lstart:-}")
+    write_in_dir "$D" local.pid "$lpid"
+    write_in_dir "$D" submit-intent.json "{\"state\":\"submitted_local\",\"run_dir\":\"$D\",\"user\":\"$U\",\"local_pid\":$lpid,\"local_pgid\":$lpid,\"local_start_id\":\"$esc_lstart\"}"
     if [ "$WANT_JSON" = 1 ]; then
-      printf '{"aimip":"1","ok":true,"result":{"out_dir":"%s","run_dir":"%s","scheduler":"none","slurm_job_id":null,"local_pid":%s,"log_path":"%s/local-run.log"}}\n' "$D" "$D" "$lpid" "$D"
+      printf '{"aimip":"1","ok":true,"result":{"out_dir":"%s","run_dir":"%s","run_name":"%s","digest":%s,"scheduler":"none","attempt_id":"%s","slurm_job_id":null,"local_pid":%s,"log_path":"%s/local-run.log","state":"RUNNING_LOCAL","reconciled":false,"host_command":null}}\n' "$D" "$D" "$RNAME" "$DIG_JSON" "$lpid" "$lpid" "$D"
     else
       echo "started locally, pid $lpid   (log: $D/local-run.log)"
     fi
@@ -329,45 +459,91 @@ if [ "${1:-}" = "submit" ]; then
   exit 0
 fi
 
-if [ "${1:-}" = "cancel" ] && [ -n "${2:-}" ]; then
+if [ "${1:-}" = "cancel" ] && [ $# -ge 2 ] && ! has_help_flag "${@:2}"; then
   scrub_host_secrets
   CD=""; WANT_JSON=0
-  for a in "${@:2}"; do case "$a" in --json) WANT_JSON=1;; -*) ;; *) [ -z "$CD" ] && CD=$a;; esac; done
+  shift
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --json) WANT_JSON=1; shift;;
+      --site-config=*) shift;;
+      --site-config) [ $# -ge 2 ] || die_cmd "$WANT_JSON" "VALIDATION_ERROR" 2 "site_config" "--site-config requires a path"; shift 2;;
+      -*) die_cmd "$WANT_JSON" "VALIDATION_ERROR" 2 "" "unsupported option for cancel: $1";;
+      *) [ -z "$CD" ] && CD=$1 || die_cmd "$WANT_JSON" "VALIDATION_ERROR" 2 "out" "usage: aimip cancel <run-dir-or-name> [--json]"; shift;;
+    esac
+  done
   if [ -n "$CD" ]; then
-    CD=$(resolve_target "$CD") || exit 2
-    trusted_dir "$CD"
+    CD=$(resolve_target "$CD") || die_cmd "$WANT_JSON" "VALIDATION_ERROR" 2 "out" "invalid run target"
+    if ! ( trusted_dir "$CD" ) 2>"${TMPDIR:-/tmp}/.aimip_cdir.$$"; then
+      cerr=$(cat "${TMPDIR:-/tmp}/.aimip_cdir.$$" 2>/dev/null || echo "untrusted run directory"); rm -f "${TMPDIR:-/tmp}/.aimip_cdir.$$"
+      die_cmd "$WANT_JSON" "VALIDATION_ERROR" 2 "out" "${cerr#aimip: }"
+    fi
+    rm -f "${TMPDIR:-/tmp}/.aimip_cdir.$$"
+    CNAME=$(basename "$CD")
     if [ "$SCHEDULER" = slurm ] && [ -f "$CD/slurm.jobid" ]; then
       j=$(tr -dc '0-9' < "$CD/slurm.jobid")
-      [ -n "$j" ] || die "invalid slurm.jobid in $CD"
+      [ -n "$j" ] || die_cmd "$WANT_JSON" "VALIDATION_ERROR" 2 "slurm_job_id" "invalid slurm.jobid in $CD"
       sa_st=$(sacct -n -X -P -j "$j" -o State 2>/dev/null | head -n 1 | awk '{print $1}')
       [ -n "$sa_st" ] || [ ! -f "$CD/sacct.txt" ] || sa_st=$(cut -d'|' -f2 "$CD/sacct.txt" 2>/dev/null | head -n 1 | awk '{print $1}')
       case "${sa_st%+}" in
         COMPLETED|FAILED|CANCELLED*|TIMEOUT|OUT_OF_MEMORY|NODE_FAIL|PREEMPTED|BOOT_FAIL|DEADLINE)
-          die "run $CD is already in terminal state $sa_st and cannot be cancelled";;
+          die_cmd "$WANT_JSON" "CONFIG_ERROR" 2 "run" "run $CD is already in terminal state $sa_st and cannot be cancelled";;
       esac
-      scancel "$j" || die "scancel $j failed"
+      scancel "$j" || die_cmd "$WANT_JSON" "EXECUTION_ERROR" 1 "" "scancel $j failed"
       write_in_dir "$CD" cancel-requested.txt "job=$j requested_by=$U"
       if [ "$WANT_JSON" = 1 ]; then
-        printf '{"aimip":"1","ok":true,"result":{"run_dir":"%s","scheduler":"slurm","attempt_id":"%s","cancelled":true,"status":"cancel_requested"}}\n' "$CD" "$j"
+        printf '{"aimip":"1","ok":true,"result":{"run_name":"%s","run_dir":"%s","scheduler":"slurm","attempt_id":"%s","cancelled":true,"status":"cancel_requested"}}\n' "$CNAME" "$CD" "$j"
       else
         echo "cancel requested for job $j ($CD)"
       fi
       exit 0
     elif [ -f "$CD/local.pid" ]; then
       lpid=$(tr -dc '0-9' < "$CD/local.pid")
-      [ -n "$lpid" ] && [ "$lpid" -gt 1 ] || die "invalid local.pid in $CD"
-      if kill -TERM "$lpid" 2>/dev/null; then
-        write_in_dir "$CD" cancel-requested.txt "pid=$lpid requested_by=$U"
-        if [ "$WANT_JSON" = 1 ]; then
-          printf '{"aimip":"1","ok":true,"result":{"run_dir":"%s","scheduler":"none","attempt_id":"%s","cancelled":true,"status":"cancel_requested"}}\n' "$CD" "$lpid"
-        else
-          echo "cancel requested for local pid $lpid ($CD)"
-        fi
-        exit 0
-      else
-        echo "aimip: local process $lpid for $CD not found (already exited)" >&2
-        exit 1
+      [ -n "$lpid" ] && [ "$lpid" -gt 1 ] || die_cmd "$WANT_JSON" "VALIDATION_ERROR" 2 "local_pid" "invalid local.pid in $CD"
+      rec_pgid=""
+      rec_start=""
+      if [ -f "$CD/submit-intent.json" ]; then
+        rec_pgid=$(sed -n 's/.*"local_pgid"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p' "$CD/submit-intent.json" | head -n 1)
+        rec_start=$(sed -n 's/.*"local_start_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$CD/submit-intent.json" | head -n 1)
       fi
+      if ! kill -0 "$lpid" 2>/dev/null || is_pid_zombie_sh "$lpid"; then
+        die_cmd "$WANT_JSON" "EXECUTION_ERROR" 1 "" "local process $lpid for $CD not found (already exited)"
+      fi
+      if [ -n "$rec_start" ]; then
+        live_start=$(pid_start_id "$lpid")
+        if [ -n "$live_start" ] && [ "$live_start" != "$rec_start" ]; then
+          die_cmd "$WANT_JSON" "EXECUTION_ERROR" 1 "" "refusing to signal local pid $lpid for $CD: process start identity changed"
+        fi
+      fi
+      my_pgid=$(ps -o pgid= -p $$ 2>/dev/null | tr -d '[:space:]' || true)
+      tpgid=${rec_pgid:-}
+      if [ -n "$tpgid" ] && [ "$tpgid" -gt 1 ] && [ "$tpgid" != "${my_pgid:-0}" ]; then
+        kill -TERM "-$tpgid" 2>/dev/null || kill -TERM "$lpid" 2>/dev/null || die_cmd "$WANT_JSON" "EXECUTION_ERROR" 1 "" "local process $lpid for $CD not found"
+      else
+        kill -TERM "$lpid" 2>/dev/null || die_cmd "$WANT_JSON" "EXECUTION_ERROR" 1 "" "local process $lpid for $CD not found"
+      fi
+      write_in_dir "$CD" cancel-requested.txt "pid=$lpid pgid=${tpgid:-$lpid} requested_by=$U"
+      for _ in 1 2 3 4 5 6 7 8 9 10; do
+        if [ -n "$tpgid" ] && [ "$tpgid" -gt 1 ] && [ "$tpgid" != "${my_pgid:-0}" ]; then
+          kill -0 "-$tpgid" 2>/dev/null || break
+        else
+          kill -0 "$lpid" 2>/dev/null && ! is_pid_zombie_sh "$lpid" || break
+        fi
+        sleep 0.05 2>/dev/null || break
+      done
+      if [ -n "$tpgid" ] && [ "$tpgid" -gt 1 ] && [ "$tpgid" != "${my_pgid:-0}" ] && kill -0 "-$tpgid" 2>/dev/null; then
+        kill -KILL "-$tpgid" 2>/dev/null || true
+      elif kill -0 "$lpid" 2>/dev/null && ! is_pid_zombie_sh "$lpid"; then
+        kill -KILL "$lpid" 2>/dev/null || true
+      fi
+      if [ "$WANT_JSON" = 1 ]; then
+        printf '{"aimip":"1","ok":true,"result":{"run_name":"%s","run_dir":"%s","scheduler":"none","attempt_id":"%s","cancelled":true,"status":"cancel_requested"}}\n' "$CNAME" "$CD" "$lpid"
+      else
+        echo "cancel requested for local pid $lpid ($CD)"
+      fi
+      exit 0
+    else
+      die_cmd "$WANT_JSON" "CONFIG_ERROR" 2 "run" "run $CD has no recorded Slurm job ID or local PID to cancel"
     fi
   fi
 fi
@@ -416,8 +592,14 @@ cleanup_refresh_bg() {
   fi
 }
 
-if { [ "${1:-}" = "status" ] || [ "${1:-}" = "watch" ] || [ "${1:-}" = "logs" ]; } && [ -n "${2:-}" ] && [ "$SCHEDULER" = slurm ]; then
-  SD=$(resolve_target "$2" 2>/dev/null || true)
+TARGET_ARG=""
+case "${1:-}" in
+  status|watch|logs|cancel|summary|collect|ls)
+    TARGET_ARG=$(extract_target_arg "${@:2}" || true);;
+esac
+
+if { [ "${1:-}" = "status" ] || [ "${1:-}" = "watch" ] || [ "${1:-}" = "logs" ]; } && [ -n "$TARGET_ARG" ] && [ "$SCHEDULER" = slurm ]; then
+  SD=$(resolve_target "$TARGET_ARG" 2>/dev/null || true)
   if [ -n "$SD" ] && [ -f "$SD/slurm.jobid" ] && ( trusted_dir "$SD" ) 2>/dev/null; then
     j=$(tr -dc '0-9' < "$SD/slurm.jobid")
     if [ -n "$j" ] && command -v sacct >/dev/null 2>&1; then
@@ -465,31 +647,66 @@ fi
 
 # ---------------- container commands ----------------
 RW=()
-args=("$@"); n=${#args[@]}
+RO_FILES=()
+CONTAINER_ARGS=("$@"); n=${#CONTAINER_ARGS[@]}
+resolve_host_file() {
+  local raw=$1 dpart bpart phys_d
+  case "$raw" in /*) ;; *) raw="$HOST_PWD/$raw";; esac
+  dpart=$(dirname "$raw"); bpart=$(basename "$raw")
+  if [ -d "$dpart" ]; then
+    phys_d=$(cd "$dpart" 2>/dev/null && pwd -P) || phys_d=$dpart
+    raw="${phys_d%/}/$bpart"
+  fi
+  safe_path "$raw"
+  [ -L "$raw" ] && die "refusing symlinked file: $raw"
+  printf '%s\n' "$raw"
+}
 for ((i=0; i<n; i++)); do
-  case "${args[$i]}" in
-    --out|--ocean-out) [ $((i+1)) -lt $n ] && RW+=("${args[$((i+1))]}");;
-    --out=*) RW+=("${args[$i]#--out=}");;
-    --ocean-out=*) RW+=("${args[$i]#--ocean-out=}");;
+  case "${CONTAINER_ARGS[$i]}" in
+    --out|--ocean-out) [ $((i+1)) -lt $n ] && RW+=("${CONTAINER_ARGS[$((i+1))]}");;
+    --out=*) RW+=("${CONTAINER_ARGS[$i]#--out=}");;
+    --ocean-out=*) RW+=("${CONTAINER_ARGS[$i]#--ocean-out=}");;
+    --config)
+      if [ $((i+1)) -lt $n ] && { [ "${1:-}" = "plan" ] || [ "${1:-}" = "run" ]; }; then
+        cfg_abs=$(resolve_host_file "${CONTAINER_ARGS[$((i+1))]}") || exit 2
+        CONTAINER_ARGS[$((i+1))]="$cfg_abs"
+        [ -f "$cfg_abs" ] && RO_FILES+=("$cfg_abs")
+      fi;;
+    --config=*)
+      if [ "${1:-}" = "plan" ] || [ "${1:-}" = "run" ]; then
+        cfg_abs=$(resolve_host_file "${CONTAINER_ARGS[$i]#--config=}") || exit 2
+        CONTAINER_ARGS[$i]="--config=$cfg_abs"
+        [ -f "$cfg_abs" ] && RO_FILES+=("$cfg_abs")
+      fi;;
   esac
 done
-case "${1:-}" in exec-fme|status|watch|logs|cancel|summary|collect|ls) case "${2:-}" in /*) RW+=("$2");; esac;; esac
-# At job time the run directory is read again (config.yaml, manifest): verify it is still safely the caller's.
-[ "${1:-}" = "exec-fme" ] && { [ -n "${2:-}" ] || die "usage: aimip exec-fme <run-dir>"; safe_path "$2"; trusted_dir "${2%/}"; }
+if [ "${1:-}" = "exec-fme" ]; then
+  [ -n "${2:-}" ] || die "usage: aimip exec-fme <run-dir>"
+  safe_path "$2"; trusted_dir "${2%/}"
+  verify_container_image strict
+  RW+=("$2")
+else
+  verify_container_image fast
+  case "${1:-}" in status|watch|logs|cancel|summary|collect|ls) case "$TARGET_ARG" in /*) RW+=("$TARGET_ARG");; esac;; esac
+fi
 mkdir -p "$RUN_ROOT" 2>/dev/null || true
 
 declare -a MOUNTS=()   # "src:dst:mode"
 MOUNTS+=("$PREFIX:$PREFIX:ro")
-# data: rw for setup/fetch, and for run/ic/chat/mcp/ui when the caller may write it;
+# data: rw for setup/fetch, and for run/ic/chat/mcp/ui/approve when the caller may write it;
 # non-writable callers see it read-only and are told up front to have `aimip fetch -m <model>` run first.
 DATA_MODE=ro
 case "${1:-}" in
   setup|fetch) mkdir -p "$DATA" 2>/dev/null; [ -w "$DATA" ] || die "$DATA is not writable by you: ask the install owner to run this"; DATA_MODE=rw;;
-  run|ic|chat|mcp|ui) mkdir -p "$DATA" 2>/dev/null || true; [ -w "$DATA" ] && DATA_MODE=rw;;
+  run|ic|chat|mcp|ui|approve) mkdir -p "$DATA" 2>/dev/null || true; [ -w "$DATA" ] && DATA_MODE=rw;;
 esac
 [ -d "$DATA" ] && [ $DATA_MODE = rw ] && MOUNTS+=("$DATA:$DATA:rw")
 [ -d "$RUN_ROOT" ] && MOUNTS+=("$RUN_ROOT:$RUN_ROOT:rw")
 for e in $EXTRA_RO; do [ -d "$e" ] && MOUNTS+=("$e:$e:ro"); done
+for rf in ${RO_FILES[@]+"${RO_FILES[@]}"}; do
+  case "$rf" in "$RUN_ROOT"/*) continue;; esac
+  MOUNTS+=("$rf:$rf:ro")
+done
 for d in ${RW[@]+"${RW[@]}"}; do
   safe_path "$d"
   case "$d" in "$RUN_ROOT"/*) continue;; esac
@@ -544,7 +761,7 @@ if [ "${1:-}" = "doctor" ] || [ "${1:-}" = "ui" ]; then
 fi
 
 case "$STATE_DIR" in "$RUN_ROOT"/*) ;; *) safe_path "$STATE_DIR"; mkdir -p "$STATE_DIR" 2>/dev/null || true; [ -d "$STATE_DIR" ] && MOUNTS+=("$STATE_DIR:$STATE_DIR:rw");; esac
-IMG_SHA=$(cut -c1-64 "$PREFIX/image.sha256" 2>/dev/null || echo unknown)
+IMG_SHA=$(read_expected_image_sha)
 OMP_SAFE=${OMP_NUM_THREADS:-16}; OMP_SAFE=${OMP_SAFE//,/;}
 ENVS=("AIMIP_HOME=$PREFIX" "AIMIP_PLAYGROUND=$PREFIX" "AIMIP_DATA=$DATA" "AIMIP_IMAGE_SHA=$IMG_SHA" "AIMIP_DEFAULT_OUT_ROOT=$RUN_ROOT" "AIMIP_STATE=$STATE_DIR"
       "AIMIP_USER=$U" "AIMIP_SCHEDULER=$SCHEDULER" "AIMIP_SITE_CONFIG=$PREFIX/site.json" "AIMIP_EXTRA_RO_BINDS=$EXTRA_RO" "AIMIP_DATA_MODE=$DATA_MODE" "AIMIP_CHAT_LOG_DIR=$RUN_ROOT/chat-logs" "HOME=/tmp" "HF_HOME=$DATA/.hf" "OMP_NUM_THREADS=$OMP_SAFE" ${KEYENV[@]+"${KEYENV[@]}"} ${DOCENV[@]+"${DOCENV[@]}"})
@@ -576,4 +793,4 @@ run_main_container() {
     *) die "unknown runtime $RUNTIME";;
   esac
 }
-run_main_container "$@"
+run_main_container ${CONTAINER_ARGS[@]+"${CONTAINER_ARGS[@]}"}

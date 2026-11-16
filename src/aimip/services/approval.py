@@ -93,6 +93,68 @@ def resolve_state_dir(
     return Path(validated)
 
 
+def _open_readonly_verified_private_subdir(
+    base_state: Path, subdir_name: str
+) -> tuple[Path, int] | None:
+    """Open an existing `<base_state>/<subdir_name>` read-only (`0700`, caller-owned) without `mkdir`/`chmod`."""
+    if base_state.is_symlink():
+        raise ApprovalError(f"Refusing symlinked state directory: {base_state}")
+    if not base_state.exists():
+        return None
+
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        base_dfd = os.open(base_state, flags)
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        raise ApprovalError(f"Cannot open state directory {base_state}: {exc}") from exc
+    try:
+        base_info = os.fstat(base_dfd)
+        if not stat.S_ISDIR(base_info.st_mode):
+            raise ApprovalError(f"State path is not a directory: {base_state}")
+        if base_info.st_uid != os.geteuid():
+            raise ApprovalError(f"State directory {base_state} is not owned by the current user")
+        if stat.S_IMODE(base_info.st_mode) & 0o077:
+            raise ApprovalError(f"State directory {base_state} must have mode 0700")
+    finally:
+        os.close(base_dfd)
+
+    sub = base_state / subdir_name
+    if sub.is_symlink():
+        raise ApprovalError(f"Refusing symlinked {subdir_name} directory: {sub}")
+    if not sub.exists():
+        return None
+
+    try:
+        check_ancestry(str(sub))
+        phys = os.path.realpath(str(sub))
+        if phys != str(sub):
+            check_ancestry(phys)
+    except ValidationError as exc:
+        raise ApprovalError(f"Untrusted state directory ancestry ({sub}): {exc}") from exc
+
+    try:
+        dfd = os.open(sub, flags)
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        raise ApprovalError(f"Cannot open state directory {sub}: {exc}") from exc
+
+    try:
+        info = os.fstat(dfd)
+        if not stat.S_ISDIR(info.st_mode):
+            raise ApprovalError(f"State path is not a directory: {sub}")
+        if info.st_uid != os.geteuid():
+            raise ApprovalError(f"State directory {sub} is not owned by the current user")
+        if stat.S_IMODE(info.st_mode) & 0o077:
+            raise ApprovalError(f"State directory {sub} must have mode 0700")
+        return sub, dfd
+    except BaseException:
+        os.close(dfd)
+        raise
+
+
 def _open_verified_private_subdir(base_state: Path, subdir_name: str) -> tuple[Path, int]:
     """Create `<base_state>/<subdir_name>` with mode `0700` and return `(path, dir_fd)` after ancestry/mode checks."""
     base_state.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -526,7 +588,16 @@ def read_state_proposal(
     if not _HEX64_RE.match(norm_digest):
         raise ValidationError(f"Invalid digest {digest!r}", field="digest")
     base = resolve_state_dir(state_dir)
-    _, dfd = _open_verified_private_subdir(base, "proposals")
+    opened = _open_readonly_verified_private_subdir(base, "proposals")
+    if opened is None:
+        raise ApprovalError(
+            f"No human approval or active proposal found for digest {norm_digest[:12]} "
+            "(already consumed or not proposed); call `propose_run` to create a fresh proposal, "
+            "then run `aimip approve <prefix>`.",
+            field="digest",
+            next_command="propose_run",
+        )
+    _, dfd = opened
     try:
         try:
             return _read_and_verify_regular_0600(dfd, f"{norm_digest}.json")
@@ -815,12 +886,10 @@ def read_sealed_prepared(
         site_config_path=site_config_path,
         fallback_run_dir=run_dir,
     )
-    prep_sub = base / "prepared"
-    if prep_sub.is_symlink():
-        raise ApprovalError(f"Refusing symlinked prepared state directory: {prep_sub}")
-    if not prep_sub.exists():
+    opened = _open_readonly_verified_private_subdir(base, "prepared")
+    if opened is None:
         return None
-    _, dfd = _open_verified_private_subdir(base, "prepared")
+    _, dfd = opened
     try:
         try:
             return _read_and_verify_regular_0600(dfd, f"{norm_digest}.json")

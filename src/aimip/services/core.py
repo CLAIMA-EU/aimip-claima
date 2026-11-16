@@ -9,6 +9,7 @@ from __future__ import annotations
 from collections.abc import Callable
 import dataclasses
 import datetime
+import fcntl
 import hashlib
 import json
 import os
@@ -58,10 +59,12 @@ from ..status import (
     refresh_sacct_batch,
     summarize_run,
 )
+from .. import submit as _submit_mod
 from ..submit import (
     check_ancestry,
     check_safe_path,
     check_trusted_run_dir,
+    inspect_local_process,
     is_trusted_run_dir,
     sanitized_subprocess_env,
     submit_run,
@@ -838,6 +841,11 @@ def plan(
     }
     digest = compute_plan_digest(canonical_payload)
     card_meta = card_for_model(model_spec.name)
+    ic_prov = (
+        f"Custom IC override: {spec.ic}"
+        if spec.ic
+        else get_model_ic_provenance(model_spec.name, model_spec.notes)
+    )
 
     return ResolvedPlan(
         spec=spec,
@@ -869,6 +877,8 @@ def plan(
         canonical_payload=canonical_payload,
         digest=digest,
         ic_checked=bool(validated.get("ic_checked", True)),
+        ic_provenance=ic_prov,
+        limitations=str(card_meta.get("limitations") or ""),
     )
 
 
@@ -1040,107 +1050,120 @@ def prepare(
         validated = adapter.validate(model_spec, spec, data_dir=resolved_data)
 
         eff_manifest_mode = "dry-run" if spec.mode == "local" else (manifest_mode or "dry-run")
-        manifest = adapter.build_config(
-            model_spec,
-            spec,
-            validated,
-            out_dir=canonical_out,
-            allow_fetch=effective_allow_fetch,
-            slurm_opts=slurm_opts,
-            site_config=site,
-            playground_dir=resolved_pg,
-            data_dir=resolved_data,
-            manifest_mode=eff_manifest_mode,
-            argv=argv,
-        )
+        prep_lock_fd: int | None = None
+        if os.path.isdir(canonical_out) and not os.path.islink(canonical_out):
+            prep_lock_fd = _submit_mod._acquire_run_submit_lock(canonical_out)
+        try:
+            manifest = adapter.build_config(
+                model_spec,
+                spec,
+                validated,
+                out_dir=canonical_out,
+                allow_fetch=effective_allow_fetch,
+                slurm_opts=slurm_opts,
+                site_config=site,
+                playground_dir=resolved_pg,
+                data_dir=resolved_data,
+                manifest_mode=eff_manifest_mode,
+                argv=argv,
+            )
+            if prep_lock_fd is None and os.path.isdir(canonical_out) and not os.path.islink(canonical_out):
+                prep_lock_fd = _submit_mod._acquire_run_submit_lock(canonical_out)
 
-        # Re-resolve `plan(...)` after staging on the bound physical `canonical_out` path so `plan.json`
-        # carries exact post-stage IC digests, `missing_assets == ()`, and the immutable physical destination.
-        resolved_spec = RunSpec(
-            **{
-                **spec.to_dict(),
-                "out": canonical_out,
-                "name": None,
-                "cli_overrides": spec.cli_overrides,
-            }
-        )
-        final_plan = plan(
-            resolved_spec,
-            registry_path=registry_path,
-            playground_dir=resolved_pg,
-            data_dir=resolved_data,
-            site_config_path=site_config_path,
-        )
-        if spec.name:
-            final_plan = dataclasses.replace(final_plan, run_name=spec.name, spec=resolved_spec)
+            # Re-resolve `plan(...)` after staging on the bound physical `canonical_out` path so `plan.json`
+            # carries exact post-stage IC digests, `missing_assets == ()`, and the immutable physical destination.
+            resolved_spec = RunSpec(
+                **{
+                    **spec.to_dict(),
+                    "out": canonical_out,
+                    "name": None,
+                    "cli_overrides": spec.cli_overrides,
+                }
+            )
+            final_plan = plan(
+                resolved_spec,
+                registry_path=registry_path,
+                playground_dir=resolved_pg,
+                data_dir=resolved_data,
+                site_config_path=site_config_path,
+            )
+            if spec.name:
+                final_plan = dataclasses.replace(final_plan, run_name=spec.name, spec=resolved_spec)
 
-        from ..lora import sha256_file
+            from ..lora import sha256_file
 
-        trusted_out = check_trusted_run_dir(canonical_out)
+            trusted_out = check_trusted_run_dir(canonical_out)
 
-        if spec.mode == "local":
-            manifest["mode"] = "local"
-            write_in_trusted_dir(
-                trusted_out,
-                "aimip-manifest.json",
-                json.dumps(manifest, indent=2),
+            if spec.mode == "local":
+                manifest["mode"] = "local"
+                write_in_trusted_dir(
+                    trusted_out,
+                    "aimip-manifest.json",
+                    json.dumps(manifest, indent=2),
+                )
+
+            if execute_local and spec.mode == "local":
+                if require_authorization or authorization is not None:
+                    raise ApprovalError(
+                        "Authorization-controlled preparation cannot execute locally inline.",
+                        field="execute_local",
+                    )
+                manifest = adapter.execute(trusted_out)
+
+            artifact_hashes: dict[str, str] = {}
+            for fname in _SEALED_EXECUTION_ARTIFACTS:
+                cand = os.path.join(trusted_out, fname)
+                if os.path.isfile(cand) and not os.path.islink(cand):
+                    artifact_hashes[fname] = sha256_file(cand)
+            trusted_prefix = trusted_out.rstrip("/") + "/"
+            for asset in final_plan.assets:
+                if not asset.prospective and asset.path.startswith(trusted_prefix):
+                    rel_leaf = asset.path[len(trusted_prefix) :]
+                    if (
+                        _is_safe_sealed_artifact_name(rel_leaf)
+                        and rel_leaf not in artifact_hashes
+                        and os.path.isfile(asset.path)
+                        and not os.path.islink(asset.path)
+                    ):
+                        artifact_hashes[rel_leaf] = sha256_file(asset.path)
+
+            record_sealed_prepared(
+                digest=final_plan.digest,
+                run_dir=trusted_out,
+                artifact_hashes=artifact_hashes,
+                site_config_path=site_config_path,
             )
 
-        if execute_local and spec.mode == "local":
-            if require_authorization or authorization is not None:
-                raise ApprovalError(
-                    "Authorization-controlled preparation cannot execute locally inline.",
-                    field="execute_local",
-                )
-            manifest = adapter.execute(trusted_out)
+            plan_doc = final_plan.to_dict()
+            plan_doc["artifact_hashes"] = dict(artifact_hashes)
+            plan_path = write_in_trusted_dir(
+                trusted_out,
+                "plan.json",
+                json.dumps(plan_doc, indent=2),
+            )
+            write_in_trusted_dir(
+                trusted_out,
+                "experiment.yaml",
+                yaml.safe_dump(spec.to_dict(), sort_keys=False),
+            )
 
-        artifact_hashes: dict[str, str] = {}
-        for fname in _SEALED_EXECUTION_ARTIFACTS:
-            cand = os.path.join(trusted_out, fname)
-            if os.path.isfile(cand) and not os.path.islink(cand):
-                artifact_hashes[fname] = sha256_file(cand)
-        trusted_prefix = trusted_out.rstrip("/") + "/"
-        for asset in final_plan.assets:
-            if not asset.prospective and asset.path.startswith(trusted_prefix):
-                rel_leaf = asset.path[len(trusted_prefix) :]
-                if (
-                    _is_safe_sealed_artifact_name(rel_leaf)
-                    and rel_leaf not in artifact_hashes
-                    and os.path.isfile(asset.path)
-                    and not os.path.islink(asset.path)
-                ):
-                    artifact_hashes[rel_leaf] = sha256_file(asset.path)
-
-        record_sealed_prepared(
-            digest=final_plan.digest,
-            run_dir=trusted_out,
-            artifact_hashes=artifact_hashes,
-            site_config_path=site_config_path,
-        )
-
-        plan_doc = final_plan.to_dict()
-        plan_doc["artifact_hashes"] = dict(artifact_hashes)
-        plan_path = write_in_trusted_dir(
-            trusted_out,
-            "plan.json",
-            json.dumps(plan_doc, indent=2),
-        )
-        write_in_trusted_dir(
-            trusted_out,
-            "experiment.yaml",
-            yaml.safe_dump(spec.to_dict(), sort_keys=False),
-        )
-
-        return PreparedRun(
-            plan=final_plan,
-            run_dir=trusted_out,
-            plan_path=plan_path,
-            manifest_path=os.path.join(trusted_out, "aimip-manifest.json"),
-            config_path=os.path.join(trusted_out, "config.yaml"),
-            sbatch_path=os.path.join(trusted_out, "job.sbatch"),
-            manifest=manifest,
-            artifact_hashes=dict(artifact_hashes),
-        )
+            return PreparedRun(
+                plan=final_plan,
+                run_dir=trusted_out,
+                plan_path=plan_path,
+                manifest_path=os.path.join(trusted_out, "aimip-manifest.json"),
+                config_path=os.path.join(trusted_out, "config.yaml"),
+                sbatch_path=os.path.join(trusted_out, "job.sbatch"),
+                manifest=manifest,
+                artifact_hashes=dict(artifact_hashes),
+            )
+        finally:
+            if prep_lock_fd is not None:
+                try:
+                    fcntl.flock(prep_lock_fd, fcntl.LOCK_UN)
+                except OSError:
+                    pass
+                os.close(prep_lock_fd)
     except BaseException:
         if broker is not None:
             broker.burn_token(authorization)
@@ -1418,56 +1441,108 @@ def submit(
                     f"Run directory {trusted_dir} has no plan.json digest to verify against human approval.",
                     field="digest",
                 )
-            if broker is not None:
+            now_check = float(broker._now_fn()) if broker is not None else time.time()
+            if broker is not None and broker._tokens.get(authorization.nonce) != authorization:
+                raise ApprovalError(
+                    "Authorization was already used, revoked, or not minted by this host broker.",
+                    field="authorization",
+                )
+            MemoryApprovalBroker.verify_authorization_fields(
+                authorization,
+                expected_action="submit",
+                expected_digest=saved_digest,
+                now_ts=now_check,
+            )
+
+        site_cfg = load_site_config(site_config_path)
+        sched_override = "none" if saved_mode == "local" else None
+        effective_sched = sched_override or site_cfg.scheduler
+        in_container = os.environ.get("AIMIP_IMAGE_SHA", "native") not in ("native", "")
+
+        # Container fallback: inside an isolated container, neither Slurm (`sbatch` absent) nor detached
+        # local execution (`effective_sched == 'none'`, whose `job.sbatch` invokes the host wrapper) may
+        # launch in-container — return the exact digest-bound host command instead.
+        if in_container and (
+            effective_sched == "none"
+            or (effective_sched == "slurm" and shutil.which("sbatch") is None)
+        ):
+            if (require_authorization or authorization is not None) and broker is not None and authorization is not None:
                 broker.consume(
                     authorization,
                     expected_action="submit",
-                    expected_digest=saved_digest,
+                    expected_digest=str(saved_digest),
                 )
-            else:
-                MemoryApprovalBroker.verify_authorization_fields(
-                    authorization,
-                    expected_action="submit",
-                    expected_digest=saved_digest,
-                )
+            host_args = ["aimip", "submit"]
+            if saved_digest:
+                host_args.append(f"--expect-digest={saved_digest}")
+            host_args.append(trusted_dir)
+            host_cmd = shlex.join(host_args)
+            return Attempt(
+                run_dir=trusted_dir,
+                run_name=run_name,
+                digest=saved_digest,
+                scheduler=effective_sched,
+                attempt_id=None,
+                state="PREPARED_AWAITING_HOST_SUBMIT",
+                reconciled=False,
+                host_command=host_cmd,
+            )
+
+        consumed_inside_lock = False
+
+        def _verify_locked_private_copy(priv_script_path: str) -> None:
+            nonlocal saved_digest, consumed_inside_lock
+            _, locked_digest, _ = verify_prepared_run_for_submit(
+                trusted_dir,
+                require_plan=need_plan,
+                expected_digest=saved_digest or expected_digest,
+                in_memory_hashes=in_mem_hashes,
+                script_override_path=priv_script_path,
+                playground_dir=playground_dir,
+                registry_path=registry_path,
+                data_dir=data_dir,
+                site_config_path=site_config_path,
+            )
+            saved_digest = locked_digest
+            if require_authorization or authorization is not None:
+                assert authorization is not None and saved_digest is not None
+                if broker is not None:
+                    broker.consume(
+                        authorization,
+                        expected_action="submit",
+                        expected_digest=saved_digest,
+                    )
+                    consumed_inside_lock = True
+                else:
+                    MemoryApprovalBroker.verify_authorization_fields(
+                        authorization,
+                        expected_action="submit",
+                        expected_digest=saved_digest,
+                    )
+
+        sub_res = submit_run(
+            trusted_dir,
+            playground_dir=playground_dir,
+            site_config_path=site_config_path,
+            scheduler_override=sched_override,
+            verify_private_script_fn=_verify_locked_private_copy,
+        )
+        if (
+            (require_authorization or authorization is not None)
+            and broker is not None
+            and authorization is not None
+            and not consumed_inside_lock
+        ):
+            broker.consume(
+                authorization,
+                expected_action="submit",
+                expected_digest=str(saved_digest),
+            )
     except BaseException:
         if broker is not None:
             broker.burn_token(authorization)
         raise
 
-    site_cfg = load_site_config(site_config_path)
-    sched_override = "none" if saved_mode == "local" else None
-    effective_sched = sched_override or site_cfg.scheduler
-
-    # Container fallback: if running inside an isolated container where `sbatch` is not mounted,
-    # never claim submission succeeded — return the exact digest-bound host command instead.
-    if (
-        effective_sched == "slurm"
-        and shutil.which("sbatch") is None
-        and os.environ.get("AIMIP_IMAGE_SHA", "native") not in ("native", "")
-    ):
-        host_args = ["aimip", "submit"]
-        if saved_digest:
-            host_args.append(f"--expect-digest={saved_digest}")
-        host_args.append(trusted_dir)
-        host_cmd = shlex.join(host_args)
-        return Attempt(
-            run_dir=trusted_dir,
-            run_name=run_name,
-            digest=saved_digest,
-            scheduler="slurm",
-            attempt_id=None,
-            state="PREPARED_AWAITING_HOST_SUBMIT",
-            reconciled=False,
-            host_command=host_cmd,
-        )
-
-    sub_res = submit_run(
-        trusted_dir,
-        playground_dir=playground_dir,
-        site_config_path=site_config_path,
-        scheduler_override=sched_override,
-    )
     sched = str(sub_res["scheduler"])
     att_id = (
         str(sub_res["slurm_job_id"])
@@ -2020,7 +2095,10 @@ def cancel(
     if job_id:
         scancel_bin = shutil.which("scancel")
         if not scancel_bin:
-            raise ExecutionError("scancel not found on PATH; run `aimip cancel` on the cluster login node.")
+            raise ExecutionError(
+                f"scancel not found on PATH; run `aimip cancel {run_name}` on the cluster login node.",
+                next_command=f"aimip cancel {run_name}",
+            )
         proc = subprocess.run(
             [scancel_bin, str(job_id)],
             capture_output=True,
@@ -2052,16 +2130,61 @@ def cancel(
         raise ValidationError(f"Refusing invalid local PID {pid_int}", field="local_pid")
     if os.environ.get("AIMIP_IMAGE_SHA", "native") not in ("", "native"):
         raise ExecutionError(
-            f"Local PID {pid_int} runs in the host PID namespace; run `aimip cancel {run_name}` on the host."
+            f"Local PID {pid_int} runs in the host PID namespace; run `aimip cancel {run_name}` on the host.",
+            next_command=f"aimip cancel {run_name}",
         )
+    alive, pgid, reason = inspect_local_process(trusted, pid_int)
+    if reason == "reused_pid":
+        raise ExecutionError(
+            f"Refusing to signal local PID {pid_int} for run {run_name!r}: process start identity changed (PID was reused)."
+        )
+    if not alive:
+        raise ExecutionError(
+            f"Local process {pid_int} for run {run_name!r} was not found (process already exited)."
+        )
+    use_pgid = pgid is not None and pgid > 1 and pgid != os.getpgrp()
     try:
-        os.kill(pid_int, signal.SIGTERM)
+        if use_pgid and pgid is not None:
+            os.killpg(pgid, signal.SIGTERM)
+        else:
+            os.kill(pid_int, signal.SIGTERM)
     except ProcessLookupError as exc:
         raise ExecutionError(
             f"Local process {pid_int} for run {run_name!r} was not found (process already exited)."
         ) from exc
     except PermissionError as exc:
         raise ExecutionError(f"Permission denied signalling local PID {pid_int}: {exc}") from exc
+
+    write_in_trusted_dir(
+        trusted,
+        "cancel-requested.txt",
+        f"pid={pid_int} pgid={pgid or pid_int} requested_by={current_user()}",
+    )
+
+    deadline = time.monotonic() + 0.5
+    while time.monotonic() < deadline:
+        still_alive, _, _ = inspect_local_process(trusted, pid_int)
+        pg_alive = False
+        if use_pgid and pgid is not None:
+            try:
+                os.killpg(pgid, 0)
+                pg_alive = True
+            except ProcessLookupError:
+                pg_alive = False
+            except PermissionError:
+                pg_alive = True
+        if not still_alive and not pg_alive:
+            break
+        time.sleep(0.025)
+    else:
+        try:
+            if use_pgid and pgid is not None:
+                os.killpg(pgid, signal.SIGKILL)
+            else:
+                os.kill(pid_int, signal.SIGKILL)
+        except OSError:
+            pass
+
     return {
         "run_name": run_name,
         "run_dir": trusted,

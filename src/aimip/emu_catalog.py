@@ -59,16 +59,6 @@ def artifacts() -> list[dict[str, Any]]:
     return out
 
 
-def lock_entries() -> dict[str, dict[str, Any]]:
-    entries: dict[str, dict[str, Any]] = {}
-    for a in artifacts():
-        src: dict[str, Any] = {"kind": "hf", "repo": a["repo"], "path": a["path"], "revision": a["revision"]}
-        if a["repo_type"] != "model":
-            src["repo_type"] = a["repo_type"]
-        entries[a["rel_path"]] = {"size": a["size"], "sha256": a["sha256"], "source": src}
-    return entries
-
-
 def required_files(model: str) -> list[str]:
     return [a["rel_path"] for a in artifacts() if model in a["models"]]
 

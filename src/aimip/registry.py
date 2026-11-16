@@ -84,7 +84,8 @@ MODEL_IC_PROVENANCE: dict[str, str] = {
     ),
     "hiro-ace": (
         "Shipped ic_1994.nc is allenai/HiRO-ACE initial_conditions/ic_2014.nc state 0 "
-        "(2014-01-01 state) relabelled to 1994-01-01T00:00:00; "
+        "(2014-01-01 state) relabelled to 1994-01-01T00:00:00 for AIMIP's experimental "
+        "1994-2014 extension outside the 2014-2022 training period; "
         "discard the first simulated year as spin-up."
     ),
     "ace2-som": (
@@ -945,7 +946,7 @@ def build_default_registry_payload(
             "timestep_hours": 6,
             "stochastic": True,
             "default_n_ensemble_per_ic": 1,
-            "notes": "HiRO-ACE ACE2S stage (Ai2), stochastic (amip-hist 1994-2014 + amip-oos 2014-2024). Shipped ic_1994.nc is a HiRO 2014-01-01 state (ic_2014.nc[0]) relabelled to 1994-01-01; discard the first simulated year as spin-up.",
+            "notes": "HiRO-ACE ACE2S stage (Ai2), stochastic; trained only on 9 years of X-SHiELD (2014-2022) and not expected by the authors to generalize outside training forcing. Here 2014-2022 (in amip-oos 2014-2024) is the training period, and amip-hist (1994-2014) is AIMIP's experimental extension outside training. Shipped ic_1994.nc is a HiRO 2014-01-01 state (ic_2014.nc[0]) relabelled to 1994-01-01; discard the first simulated year as spin-up.",
         },
         {
             "name": "ace2-som",
@@ -1021,7 +1022,7 @@ def build_default_registry_payload(
             "timestep_hours": 6,
             "stochastic": True,
             "default_n_ensemble_per_ic": 1,
-            "notes": "ACE2S standalone global stochastic atmosphere emulator (allenai/HiRO-ACE ACE2S.ckpt on HF-native 2014-2023 forcing and ic_2014/ic_2023; julian calendar).",
+            "notes": "ACE2S standalone global stochastic atmosphere emulator (allenai/HiRO-ACE ACE2S.ckpt, trained on X-SHiELD 2014-2022; HF-native 2014-2023 training-period forcing and ic_2014/ic_2023; julian calendar).",
         },
         {
             "name": "hiro-acev2",
@@ -1055,7 +1056,7 @@ def build_default_registry_payload(
             "timestep_hours": 6,
             "stochastic": True,
             "default_n_ensemble_per_ic": 1,
-            "notes": "HiRO-ACEv2 global ACE2S-X-SHiELD stage (allenai/HiRO-ACEv2, fme 2026.10.0 overlay), stochastic, julian calendar; HF-native 2014-2023 forcing and ic_2014/ic_2023 (3 km downscaler deferred).",
+            "notes": "HiRO-ACEv2 global ACE2S-X-SHiELD stage (allenai/HiRO-ACEv2, trained on X-SHiELD 2014-2022, fme 2026.10.0 overlay), stochastic, julian calendar; HF-native 2014-2023 training-period forcing and ic_2014/ic_2023 (3 km downscaler deferred).",
         },
         {
             "name": "samudrace-cm4",

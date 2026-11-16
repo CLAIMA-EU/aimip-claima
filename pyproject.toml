@@ -30,7 +30,7 @@ agent = [
     "langchain-google-genai>=4.0",
 ]
 # Optional `aimip mcp` Model Context Protocol stdio server.
-mcp = ["mcp>=1.0"]
+mcp = ["mcp>=1.26,<2"]
 # Optional server-side PNG plotting for `aimip ui` (falls back to tables when absent).
 ui = ["matplotlib>=3.8"]
 # Offline test suite (`pytest -q`).

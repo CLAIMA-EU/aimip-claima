@@ -32,7 +32,8 @@ Every command accepts `--json`: the result is printed on standard output as
 `{"aimip": "1", "ok": true, "result": …}` or `{"aimip": "1", "ok": false, "error": {"code", "message", "field",
 "allowed", "next_command", …}}`; progress and warnings go to standard error. Exit codes: 0 success, 1 a failed
 `doctor` check or a scheduler/execution failure, 2 a usage or validation error, 3 missing files with `--no-fetch`,
-4 an approval that was refused, expired or no longer matches the plan.
+4 an approval that was refused, expired or no longer matches the plan, 75 when `watch` reaches `--timeout` before the
+run finishes.
 
 ## Approval: the human confirms the exact plan
 
@@ -52,13 +53,16 @@ From the console: `aimip run <model> … --approve` asks on the terminal and the
 
 The agent plans runs in conversation and proposes them; it cannot approve them. After a proposal, `aimip chat` shows
 the card and asks you on the terminal for the digest prefix (and, if files are missing, for download consent). The
-agent uses a Gemini model through Google's API or Vertex AI (see [agent.md](agent.md)); your messages and the
-model cards are sent to that service.
+agent uses a Gemini model through Google's API or Vertex AI (see [agent.md](agent.md)). Everything the agent reads is
+sent to that service: your messages, model cards, plan cards, run lists, run status and the job log excerpts it
+looks at.
 
 ## MCP server (`aimip mcp`)
 
-`aimip mcp` serves the same tools over MCP (standard input/output) for an MCP host. Install the optional extra
-with `pip install 'aimip[mcp]'`. Runs proposed through MCP are approved in your terminal with
+`aimip mcp` serves the same tools over MCP (standard input/output) for an MCP host. The `mcp` Python package is
+installed in the container image and by `install/install-native.sh` (from `container/requirements-agent.txt`); in a
+manual venv, install it from the checkout (`pip install -c container/constraints.txt -r container/requirements-agent.txt`).
+Runs proposed through MCP are approved in your terminal with
 `aimip approve <digest prefix>` (twice for models that prepare inputs).
 
 ## Web UI (`aimip ui`)
@@ -76,8 +80,14 @@ ssh -N -L 8765:127.0.0.1:8765 <user>@<login node>
 
 The page keeps the token for this browser tab only. Pages: models and cards, a run form with the same fields and
 checks as the console, the plan card with Approve, the list of runs with status and log tail, and a run page with
-the summary and plots of the monthly means (plots need `pip install 'aimip[ui]'`). The approve button sends the
+the summary and plots of the monthly means (plots need `matplotlib` in the environment that runs `aimip`;
+the container image has it; without it the run page shows the numbers as a table). The approve button sends the
 digest of the card on the screen; the server refuses it if the plan has changed.
 
-In a container installation the web UI prepares runs; the submit command is shown for you to run on the host,
-because Slurm commands run outside the container.
+In a container installation the web UI, `aimip chat`, MCP and `run --approve` prepare runs; the submit command is
+shown for you to run on the host, because Slurm commands run outside the container.
+
+Errors you may see: "plan changed, approve again" (an input, resource or file changed after approval: re-plan and
+approve the new card); "approval expired" (older than 10 minutes); "already used" (each approval works once);
+"prepare-only approval cannot submit" (approve the final card of a model that prepares inputs); `plan.json`
+missing or not matching (the run directory was edited after preparation: prepare it again).

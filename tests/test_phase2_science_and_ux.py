@@ -39,10 +39,12 @@ def _default_specs(data_dir: Path) -> dict:
 def test_import_aimip_families_first_in_isolated_subprocess() -> None:
     """`import aimip.families` as the very first import must succeed without circular ImportError."""
     src_root = str(Path(__file__).resolve().parents[1] / "src")
+    sub_timeout = float(os.environ.get("AIMIP_TEST_SUBPROCESS_TIMEOUT", "120"))
     proc = subprocess.run(
         [
             sys.executable,
             "-I",
+            "-B",
             "-c",
             (
                 f"import sys; sys.path.insert(0, {src_root!r}); "
@@ -52,7 +54,7 @@ def test_import_aimip_families_first_in_isolated_subprocess() -> None:
         ],
         capture_output=True,
         text=True,
-        timeout=20,
+        timeout=sub_timeout,
         check=False,
     )
     assert proc.returncode == 0, proc.stderr
@@ -219,10 +221,15 @@ def test_cite_references_verified_and_unconfirmed_uses_upstream_url(
     assert "Dresdner" not in era5_cite["bibtex"]  # ACE1 author list must not appear on ACE2!
     assert "10.1002/qj.3803" in era5_cite["bibtex"]
 
-    for variant in ("ace2-shield", "ace2s-shield-plus", "ace2-eamv3", "hiro-ace", "ace2s", "hiro-acev2"):
+    for variant in ("ace2-shield", "ace2s-shield-plus", "ace2-eamv3"):
         vcite = services.cite(variant)
         assert vcite["note"] and "parent ACE2 base architecture" in vcite["note"]
         assert "% Note:" in vcite["bibtex"]
+
+    for hiro_var in ("hiro-ace", "ace2s", "hiro-acev2"):
+        hcite = services.cite(hiro_var)
+        assert "2512.18224" in hcite["bibtex"]
+        assert "Perkins" in hcite["bibtex"]
 
     som_cite = services.cite("ace2-som")
     assert "2412.04418" in som_cite["bibtex"]

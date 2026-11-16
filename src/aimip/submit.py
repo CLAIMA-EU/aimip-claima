@@ -7,8 +7,9 @@ direct `aimip submit <run-dir>` calls have identical submission guarantees.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 import fcntl
+import json
 import os
 import pwd
 import re
@@ -440,6 +441,118 @@ def _acquire_run_submit_lock(run_dir: str) -> int:
         raise
 
 
+def is_pid_zombie(pid: int) -> bool:
+    """Return True when *pid* is an exited zombie process awaiting `wait`."""
+    if pid <= 1:
+        return False
+    stat_path = f"/proc/{pid}/stat"
+    if os.path.isfile(stat_path):
+        try:
+            with open(stat_path, encoding="utf-8", errors="replace") as fh:
+                raw = fh.read()
+            after = raw.rsplit(")", 1)[1].split()
+            return bool(after and after[0] == "Z")
+        except (OSError, IndexError):
+            return False
+    try:
+        proc = subprocess.run(
+            ["ps", "-o", "stat=", "-p", str(pid)],
+            capture_output=True,
+            text=True,
+            env=sanitized_subprocess_env(),
+            timeout=2,
+            check=False,
+        )
+        if proc.returncode == 0 and proc.stdout.strip():
+            return proc.stdout.strip().startswith("Z")
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return False
+
+
+def read_pid_start_id(pid: int) -> str | None:
+    """Return a kernel start-time fingerprint for *pid* (`/proc/<pid>/stat` field 22, fallback `ps -o lstart=`)."""
+    if pid <= 1:
+        return None
+    stat_path = f"/proc/{pid}/stat"
+    if os.path.isfile(stat_path):
+        try:
+            with open(stat_path, encoding="utf-8", errors="replace") as fh:
+                raw = fh.read()
+            after = raw.rsplit(")", 1)[1].split()
+            if len(after) > 19:
+                return f"proc:{after[19]}"
+        except (OSError, IndexError):
+            pass
+    try:
+        proc = subprocess.run(
+            ["ps", "-o", "lstart=", "-p", str(pid)],
+            capture_output=True,
+            text=True,
+            env=sanitized_subprocess_env(),
+            timeout=3,
+            check=False,
+        )
+        if proc.returncode == 0 and proc.stdout.strip():
+            return f"ps:{' '.join(proc.stdout.split())}"
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return None
+
+
+def inspect_local_process(run_dir: str, local_pid: int) -> tuple[bool, int | None, str | None]:
+    """Verify whether *local_pid* for *run_dir* is still alive and matches its recorded start identity.
+
+    Returns `(alive, pgid, reason)` where `reason` is `"reused_pid"`, `"not_found"`, or `None`.
+    """
+    if local_pid <= 1:
+        return False, None, "invalid_pid"
+
+    recorded_pgid: int | None = None
+    recorded_start_id: str | None = None
+    intent_path = os.path.join(run_dir, "submit-intent.json")
+    if os.path.isfile(intent_path) and not os.path.islink(intent_path):
+        try:
+            with open(intent_path, encoding="utf-8") as fh:
+                intent = json.load(fh)
+            if isinstance(intent, dict) and intent.get("local_pid") in (None, local_pid):
+                raw_pgid = intent.get("local_pgid")
+                if isinstance(raw_pgid, int) and raw_pgid > 1:
+                    recorded_pgid = raw_pgid
+                raw_start = intent.get("local_start_id")
+                if isinstance(raw_start, str) and raw_start.strip():
+                    recorded_start_id = raw_start.strip()
+        except (OSError, json.JSONDecodeError):
+            pass
+
+    try:
+        os.kill(local_pid, 0)
+    except ProcessLookupError:
+        return False, recorded_pgid, "not_found"
+    except PermissionError:
+        if recorded_start_id:
+            return False, None, "reused_pid"
+        return True, recorded_pgid, None
+
+    if is_pid_zombie(local_pid):
+        return False, recorded_pgid, "not_found"
+
+    if recorded_start_id:
+        live_start = read_pid_start_id(local_pid)
+        if live_start is not None and live_start != recorded_start_id:
+            return False, None, "reused_pid"
+
+    eff_pgid = recorded_pgid
+    if eff_pgid is None:
+        try:
+            cand_pgid = os.getpgid(local_pid)
+            if cand_pgid > 1 and cand_pgid == local_pid:
+                eff_pgid = cand_pgid
+        except OSError:
+            eff_pgid = None
+    return True, eff_pgid, None
+
+
 def submit_run(
     run_dir: str,
     *,
@@ -447,6 +560,7 @@ def submit_run(
     site_config_path: str | None = None,
     scheduler_override: str | None = None,
     sbatch_timeout: float = 60.0,
+    verify_private_script_fn: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     """Validate `<run_dir>/job.sbatch` in a caller-private 0700 copy and submit via `sbatch` or detached `bash`.
 
@@ -561,6 +675,8 @@ def submit_run(
                 raise ConfigError(f"cannot read {sbatch_src}: {exc}") from exc
 
             check_job_script(priv_script, d, prefix)
+            if verify_private_script_fn is not None:
+                verify_private_script_fn(priv_script)
             clean_env = sanitized_subprocess_env()
 
             if scheduler == "slurm":
@@ -704,17 +820,33 @@ def submit_run(
                     raise ConfigError(f"failed to launch background bash job: {exc}") from exc
 
             keep_priv_dir = True
-            write_in_trusted_dir(d, "local.pid", str(bg_proc.pid))
+            local_pid_int = int(bg_proc.pid)
+            try:
+                local_pgid = int(os.getpgid(local_pid_int))
+            except OSError:
+                local_pgid = local_pid_int
+            local_start_id = read_pid_start_id(local_pid_int)
+            write_in_trusted_dir(d, "local.pid", str(local_pid_int))
             write_in_trusted_dir(
                 d,
                 "submit-intent.json",
-                json.dumps({"state": "submitted_local", "local_pid": int(bg_proc.pid)}, indent=2),
+                json.dumps(
+                    {
+                        "state": "submitted_local",
+                        "run_dir": d,
+                        "user": caller_user,
+                        "local_pid": local_pid_int,
+                        "local_pgid": local_pgid,
+                        "local_start_id": local_start_id,
+                    },
+                    indent=2,
+                ),
             )
             return {
                 "out_dir": d,
                 "scheduler": "none",
                 "slurm_job_id": None,
-                "local_pid": int(bg_proc.pid),
+                "local_pid": local_pid_int,
                 "log_path": log_path,
                 "reconciled": False,
             }

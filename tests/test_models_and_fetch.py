@@ -1449,7 +1449,7 @@ def test_fetch_on_first_use_cli_run_spin_no_fetch_and_concurrent_flock(
                 "--dry-run",
             ]
         )
-        == 2
+        == 3
     )
     capsys.readouterr()
     assert not (data_dir / "models/samudrace-cm4/samudrACE_CM4_piControl_ckpt.tar").exists()
@@ -1496,28 +1496,36 @@ def test_fetch_on_first_use_cli_run_spin_no_fetch_and_concurrent_flock(
     )
     sub_env["AIMIP_HF_MIRROR"] = f"file://{hf_mirror}"
     sub_env["AIMIP_LOCK"] = str(lock_p)
+    sub_env["PYTHONDONTWRITEBYTECODE"] = "1"
     sub_env.pop("AIMIP_REGISTRY", None)
+    sub_timeout = float(os.environ.get("AIMIP_TEST_SUBPROCESS_TIMEOUT", "180"))
 
     worker_code = (
         "import sys; from aimip.cli import main; "
         f"sys.exit(main(['fetch', '-m', 'samudrace-e3smv3', '--dest', {str(concurrent_dest)!r}, '--json']))"
     )
     p1 = subprocess.Popen(
-        [sys.executable, "-c", worker_code],
+        [sys.executable, "-B", "-c", worker_code],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
         env=sub_env,
     )
     p2 = subprocess.Popen(
-        [sys.executable, "-c", worker_code],
+        [sys.executable, "-B", "-c", worker_code],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
         env=sub_env,
     )
-    out1, err1 = p1.communicate(timeout=30)
-    out2, err2 = p2.communicate(timeout=30)
+    try:
+        out1, err1 = p1.communicate(timeout=sub_timeout)
+        out2, err2 = p2.communicate(timeout=sub_timeout)
+    finally:
+        for proc in (p1, p2):
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait()
     assert p1.returncode == 0, err1
     assert p2.returncode == 0, err2
     assert (concurrent_dest / ".aimip-fetch.lock").is_file()

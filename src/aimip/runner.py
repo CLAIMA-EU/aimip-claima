@@ -48,6 +48,7 @@ from __future__ import annotations
 
 import dataclasses
 import datetime
+import fnmatch
 import getpass
 import hashlib
 import importlib
@@ -69,7 +70,7 @@ from typing import Any
 import yaml
 
 from . import __version__
-from .errors import ConfigError, ValidationError
+from .errors import ConfigError, MissingAssetsError, ValidationError
 from .ic import (
     ICFileInfo,
     _default_companion_ocean_ic_path,
@@ -294,10 +295,12 @@ def ensure_model_files_ready(
         shown = ", ".join(missing[:3])
         if len(missing) > 3:
             shown += f", ... ({len(missing)} missing)"
-        raise ConfigError(
+        raise MissingAssetsError(
             f"Model {model.name!r} is missing required data file(s) under "
             f"{resolved_data or '$AIMIP_DATA'} ({shown}) and --no-fetch was specified. "
-            f"Run `aimip fetch -m {model.name}` first or omit --no-fetch."
+            f"Run `aimip fetch -m {model.name}` first or omit --no-fetch.",
+            field="model",
+            next_command=f"aimip fetch -m {model.name}",
         )
     _check_data_dir_writable_for_autofetch(model.name, resolved_data)
 
@@ -388,10 +391,12 @@ def resolve_model_for_prepare(
     resolved_pg = resolve_playground_dir(playground_dir)
     resolved_data = resolve_data_dir(data_dir, playground_dir=resolved_pg)
     if not auto_fetch:
-        raise ConfigError(
+        raise MissingAssetsError(
             f"Model {default_spec.name!r} is not yet fetched/verified in "
             f"{resolved_data or '$AIMIP_DATA'} and --no-fetch was specified. "
-            f"Run `aimip fetch -m {default_spec.name}` first or omit --no-fetch."
+            f"Run `aimip fetch -m {default_spec.name}` first or omit --no-fetch.",
+            field="model",
+            next_command=f"aimip fetch -m {default_spec.name}",
         )
     _check_data_dir_writable_for_autofetch(default_spec.name, resolved_data)
 
@@ -624,10 +629,57 @@ def _list_forcing_files(forcing_dir: str) -> list[dict[str, Any]]:
     entries: list[dict[str, Any]] = []
     for name in sorted(os.listdir(validated_dir)):
         full = os.path.join(validated_dir, name)
-        if os.path.isfile(full):
+        if os.path.isfile(full) and not os.path.islink(full):
             st = os.stat(full)
             entries.append({"name": name, "size_bytes": int(st.st_size)})
     return entries
+
+
+def _hash_and_verify_forcing_files(
+    forcing_dir: str,
+    file_pattern: str | None = None,
+    *,
+    model: ModelSpec | None = None,
+    data_dir: str | None = None,
+) -> dict[str, str]:
+    """Hash matched forcing files in *forcing_dir* and verify pinned `required_files` against `aimip.lock`."""
+    validated_dir = validate_safe_path(forcing_dir, label="forcing_set.dir")
+    if not os.path.isdir(validated_dir) or os.path.islink(validated_dir):
+        raise ValidationError(f"Forcing directory not found or symlinked: {validated_dir}")
+
+    pat = file_pattern or "*.nc"
+    required_set = set(model.required_files) if (model is not None and model.required_files) else set()
+    lock_files: dict[str, Any] = {}
+    derived_overrides: dict[str, str] = {}
+    base_data = data_dir.rstrip("/") if data_dir else ""
+    if required_set and base_data:
+        from .families import _load_derived_overrides, _load_lock_entries
+
+        lock_files = _load_lock_entries(data_dir=base_data)
+        derived_overrides = _load_derived_overrides(data_dir=base_data)
+
+    hashes: dict[str, str] = {}
+    for name in sorted(os.listdir(validated_dir)):
+        if not fnmatch.fnmatch(name, pat):
+            continue
+        full = os.path.join(validated_dir, name)
+        if os.path.islink(full):
+            raise ValidationError(f"Refusing symlinked forcing file: {full}")
+        if not os.path.isfile(full):
+            continue
+        actual_sha = sha256_file(full)
+        if required_set and base_data and full.startswith(base_data + "/"):
+            rel = full[len(base_data) + 1 :]
+            if rel in required_set:
+                expected_sha = derived_overrides.get(rel) or (lock_files.get(rel) or {}).get("sha256")
+                if expected_sha and actual_sha.lower() != str(expected_sha).lower():
+                    raise ValidationError(
+                        f"Pinned forcing SHA-256 mismatch for {rel} ({full}): "
+                        f"expected {expected_sha}, got {actual_sha}. "
+                        f"Re-run `aimip fetch -m {model.name} --force-rebuild`."
+                    )
+        hashes[full] = actual_sha
+    return hashes
 
 
 def _write_json_atomic(target_path: str, payload: dict[str, Any]) -> None:
@@ -1502,6 +1554,7 @@ def prepare_run(
     validated_steps = validate_int_range(steps, "--steps", min_value=1, max_value=10_000_000)
     resolved_seed = validate_seed(0 if seed is None else seed)
     resolved_playground = resolve_playground_dir(playground_dir)
+    resolved_data = resolve_data_dir(data_dir, playground_dir=resolved_playground)
     active_site = site_config if site_config is not None else load_site_config()
 
     if ocean_ic_path is not None and not model.is_coupled:
@@ -1677,9 +1730,22 @@ def prepare_run(
             )
 
     forcing_files = _list_forcing_files(selected_set.dir)
+    forcing_files_sha256 = _hash_and_verify_forcing_files(
+        selected_set.dir,
+        selected_set.file_pattern,
+        model=model,
+        data_dir=resolved_data,
+    )
     ocean_forcing_files: list[dict[str, Any]] | None = None
+    ocean_forcing_files_sha256: dict[str, str] | None = None
     if selected_set.ocean_dir is not None:
         ocean_forcing_files = _list_forcing_files(selected_set.ocean_dir)
+        ocean_forcing_files_sha256 = _hash_and_verify_forcing_files(
+            selected_set.ocean_dir,
+            selected_set.ocean_file_pattern,
+            model=model,
+            data_dir=resolved_data,
+        )
 
     effective_slurm = (
         slurm_opts.validate()
@@ -1928,8 +1994,10 @@ def prepare_run(
         "forcing_set": selected_set.to_dict(),
         "forcing_dir": selected_set.dir,
         "forcing_files": forcing_files,
+        "forcing_files_sha256": forcing_files_sha256,
         "ocean_forcing_dir": selected_set.ocean_dir,
         "ocean_forcing_files": ocean_forcing_files,
+        "ocean_forcing_files_sha256": ocean_forcing_files_sha256,
         "site": {
             "name": active_site.name,
             "scheduler": effective_slurm.scheduler,
@@ -2272,6 +2340,39 @@ def exec_fme(out_dir: str) -> dict[str, Any]:
                 f"Ocean initial-condition SHA-256 mismatch at exec-fme time for {expected_ocean_ic}: "
                 f"manifest expects {expected_ocean_ic_sha}, got {actual_ocean_sha}."
             )
+
+    fs_manifest = manifest.get("forcing_set") if isinstance(manifest.get("forcing_set"), dict) else {}
+    for dir_key, sha_key, pat_key, label in (
+        ("forcing_dir", "forcing_files_sha256", "file_pattern", "forcing"),
+        ("ocean_forcing_dir", "ocean_forcing_files_sha256", "ocean_file_pattern", "ocean forcing"),
+    ):
+        raw_fdir = manifest.get(dir_key)
+        pinned_fshas = manifest.get(sha_key)
+        if isinstance(pinned_fshas, dict) and pinned_fshas:
+            if isinstance(raw_fdir, str) and raw_fdir:
+                checked_fdir = validate_safe_path(raw_fdir, label=dir_key)
+                if not os.path.isdir(checked_fdir) or os.path.islink(checked_fdir):
+                    raise ValidationError(f"Manifest {label} directory missing or symlinked at job time: {checked_fdir}")
+                pat = str(fs_manifest.get(pat_key) or "*.nc")
+                live_matched = {
+                    os.path.join(checked_fdir, fn)
+                    for fn in os.listdir(checked_fdir)
+                    if fnmatch.fnmatch(fn, pat) and (os.path.isfile(os.path.join(checked_fdir, fn)) or os.path.islink(os.path.join(checked_fdir, fn)))
+                }
+                if live_matched != set(pinned_fshas.keys()):
+                    raise ValidationError(
+                        f"Manifest {label} file set changed after preparation in {checked_fdir}."
+                    )
+            for fpath, want_fsha in pinned_fshas.items():
+                checked_fp = validate_safe_path(str(fpath), label=f"{label} file")
+                if not os.path.isfile(checked_fp) or os.path.islink(checked_fp):
+                    raise ValidationError(f"Pinned {label} file missing or symlinked at job time: {checked_fp}")
+                got_fsha = sha256_file(checked_fp).lower()
+                if got_fsha != str(want_fsha).strip().lower():
+                    raise ValidationError(
+                        f"SHA-256 mismatch at exec-fme time for {label} file {checked_fp}: "
+                        f"manifest expects {want_fsha}, got {got_fsha}."
+                    )
 
     raw_job_id = os.environ.get("SLURM_JOB_ID")
     if raw_job_id:

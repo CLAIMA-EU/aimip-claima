@@ -261,8 +261,10 @@ def test_rendered_wrapper_submit_verifies_plan_rejects_drift_and_never_blindly_r
     prefix: Path = playground_env["playground_dir"]
     (prefix / "bin").mkdir(parents=True, exist_ok=True)
     (prefix / "data").mkdir(parents=True, exist_ok=True)
-    (prefix / "img.sif").write_bytes(b"fake-sif")
-    (prefix / "image.sha256").write_text("sha256:deadbeef1234\n", encoding="utf-8")
+    sif_bytes = b"fake-sif"
+    sif_sha = hashlib.sha256(sif_bytes).hexdigest()
+    (prefix / "img.sif").write_bytes(sif_bytes)
+    (prefix / "image.sha256").write_text(f"{sif_sha}\n", encoding="utf-8")
     (prefix / "data" / "registry.json").write_text(
         playground_env["registry_path"].read_text(encoding="utf-8"),
         encoding="utf-8",
@@ -318,6 +320,7 @@ def test_rendered_wrapper_submit_verifies_plan_rejects_drift_and_never_blindly_r
     monkeypatch.delenv("AIMIP_REGISTRY", raising=False)
     monkeypatch.setenv("AIMIP_DATA", str(prefix / "data"))
     monkeypatch.setenv("AIMIP_SITE_CONFIG", str(prefix / "site.json"))
+    monkeypatch.setenv("AIMIP_IMAGE_SHA", sif_sha)
 
     prepared = svc.prepare(
         RunSpec(model="ace2-era5", start="1979-01-01T00:00:00", steps=4, name="wrap-r3b", resources={"time": "00:10:00"}),

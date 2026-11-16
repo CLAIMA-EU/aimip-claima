@@ -37,7 +37,7 @@ from collections.abc import Sequence
 from typing import Any
 
 from . import __version__
-from .errors import ConfigError, ValidationError
+from .errors import ConfigError, MissingAssetsError, ValidationError
 from .emu_catalog import DLESYM_IC_WINDOW
 from .lora import sha256_file
 from .registry import ModelSpec, resolve_data_dir, resolve_playground_dir
@@ -78,10 +78,6 @@ ARCHES_SECONDS_PER_MONTH = 2.0
 EMU_FIXED_SECONDS = 900
 EMU_SAFETY = 3.0
 EMU_MIN_WALLTIME = 2700
-
-
-def is_emu_family(family: str | None) -> bool:
-    return str(family or "fme") in EMU_FAMILIES
 
 
 def emu_python() -> str:
@@ -167,7 +163,15 @@ def _scenario_files(model: ModelSpec, data_dir: str, scenario: str) -> list[dict
     for rel in model.required_files:
         if rel.startswith("inputs/") and tag in rel and rel.endswith(".memmap"):
             p = os.path.join(data_dir, rel)
-            rows.append({"path": p, "size": os.path.getsize(p) if os.path.isfile(p) else None})
+            ok_file = os.path.isfile(p) and not os.path.islink(p)
+            rows.append(
+                {
+                    "rel_path": rel,
+                    "path": p,
+                    "size": os.path.getsize(p) if ok_file else None,
+                    "sha256": sha256_file(p) if ok_file else None,
+                }
+            )
     return rows
 
 
@@ -369,11 +373,13 @@ def prepare_emu_run(
         ic_path=ic_path, ocean_ic_path=ocean_ic_path, lora_path=lora_path,
     )
     if model.family == "e2s-dlesym" and not auto_fetch:
-        # --no-fetch (and the chat agent, which always passes it) must not download anything.
-        raise ConfigError(
+        # --no-fetch forbids network downloads during preparation.
+        raise MissingAssetsError(
             f"{model.name} reads its ERA5 initial state from ARCO-ERA5 when the run is prepared, and --no-fetch forbids "
             f"downloads. Prepare it on the host: aimip run -m {model.name} --start {req['start']} --steps {req['steps']} "
-            "--submit"
+            "--submit",
+            field="model",
+            next_command=f"aimip run -m {model.name} --start {req['start']} --steps {req['steps']} --submit",
         )
     resolved_seed = validate_seed(0 if seed is None else seed)
     resolved_playground = resolve_playground_dir(playground_dir)
@@ -433,8 +439,14 @@ def prepare_emu_run(
     else:
         scen = req["scenario"]
         scenario_rows = _scenario_files(model, data_root, scen)
-        if not scenario_rows or any(r["size"] is None for r in scenario_rows):
+        if not scenario_rows or any(r["size"] is None or not r.get("sha256") for r in scenario_rows):
             raise ConfigError(f"{model.name}: scenario {scen} files are missing; run `aimip fetch -m {model.name}`.")
+        _check_against_lock(
+            model.name,
+            {str(r["rel_path"]): str(r["path"]) for r in scenario_rows},
+            {str(r["path"]): str(r["sha256"]) for r in scenario_rows},
+            data_root,
+        )
         job = {"family": model.family, "model": model.name, "scenario": scen, "domain": ARCHES_DOMAIN[scen],
                "model_dir": os.path.dirname(model.checkpoint),
                "memmap_dir": os.path.join(data_root, "inputs/archesclimate-ssp/memmap_filled_in"),
@@ -605,8 +617,17 @@ def exec_emu(validated_out: str, manifest: dict[str, Any], manifest_path: str) -
             raise ValidationError(f"SHA-256 mismatch at job time for {p}: manifest expects {want}, got {got}.")
     for row in manifest.get("forcing_files") or []:
         p = validate_safe_path(str(row.get("path")), label="scenario file")
-        if not os.path.isfile(p) or os.path.getsize(p) != row.get("size"):
+        if not os.path.isfile(p) or os.path.islink(p) or os.path.getsize(p) != row.get("size"):
             raise ValidationError(f"Scenario file changed or missing at job time: {p}")
+        want_scen_sha = str(row.get("sha256") or "").strip().lower()
+        if len(want_scen_sha) != 64:
+            raise ValidationError(f"Manifest does not pin SHA-256 for scenario file: {p}")
+        got_scen_sha = sha256_file(p).lower()
+        if got_scen_sha != want_scen_sha:
+            raise ValidationError(
+                f"SHA-256 mismatch at job time for scenario file {p}: "
+                f"manifest expects {want_scen_sha}, got {got_scen_sha}."
+            )
 
     raw_job_id = os.environ.get("SLURM_JOB_ID")
     if raw_job_id:

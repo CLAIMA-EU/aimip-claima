@@ -592,7 +592,14 @@ def _cmd_ic_spin(args: argparse.Namespace, raw_argv: Sequence[str]) -> int:
 def _cmd_collect(args: argparse.Namespace) -> int:
     from .ic import collect_spin
 
+    from .services import resolve_run_target
+
     playground_dir = resolve_playground_dir(args.playground)
+    resolved_spin_dir, _ = resolve_run_target(
+        args.spin_dir,
+        site_config_path=getattr(args, "site_config", None),
+        playground_dir=playground_dir,
+    )
     ref_ic: str | None = None
     ref_ocean_ic: str | None = None
     if args.model:
@@ -608,7 +615,7 @@ def _cmd_collect(args: argparse.Namespace) -> int:
             ref_ocean_ic = spec.ocean_ic_files[0]
 
     merged_info = collect_spin(
-        args.spin_dir,
+        resolved_spin_dir,
         args.out,
         out_ocean_ic_path=args.ocean_out,
         target_time=args.to_time,
@@ -620,7 +627,7 @@ def _cmd_collect(args: argparse.Namespace) -> int:
         return _emit_json_ok(merged_info.to_dict())
     dims_str = "/".join(merged_info.spatial_dims) if merged_info.spatial_dims else "-"
     print(
-        f"Merged {merged_info.n_samples} spin restart(s) from {args.spin_dir} into {merged_info.path} "
+        f"Merged {merged_info.n_samples} spin restart(s) from {resolved_spin_dir} into {merged_info.path} "
         f"(time={merged_info.timestamps[0]}, calendar={merged_info.calendar}, "
         f"dims=sample/{dims_str}, vars={len(merged_info.variable_names)})."
     )
@@ -1426,6 +1433,12 @@ def build_parser() -> argparse.ArgumentParser:
         dest="to_time",
         default=None,
         help="Optional expected target ISO timestamp T verification override.",
+    )
+    p_collect.add_argument(
+        "--site-config",
+        dest="site_config",
+        default=None,
+        help="Optional site.json path for resolving bare spin names.",
     )
     p_collect.add_argument("--json", action="store_true", help="Emit JSON output.")
     _add_registry_args(p_collect)

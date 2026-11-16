@@ -51,7 +51,7 @@ from ..errors import (
     ValidationError,
 )
 from ..ic import list_model_ics, list_model_ocean_ics
-from ..registry import get_model, resolve_data_dir
+from ..registry import get_model, get_model_ic_provenance, resolve_data_dir
 from ..services import (
     APPROVAL_TTL_SECONDS,
     TERMINAL_RUN_STATES,
@@ -209,7 +209,7 @@ def _ui_runtime_capabilities() -> dict[str, Any]:
         scheduler = os.environ.get("AIMIP_SCHEDULER") or "slurm"
     sbatch_available = shutil.which("sbatch") is not None
     can_submit_directly = bool(
-        scheduler != "slurm" or sbatch_available or not in_container
+        not in_container or (scheduler == "slurm" and sbatch_available)
     )
     return {
         "in_container": in_container,
@@ -652,15 +652,17 @@ def _list_run_directory_files(run_dir: str) -> list[dict[str, Any]]:
 
 
 def _plan_decision_context(resolved: ResolvedPlan) -> dict[str, Any]:
-    """Attach model tier definition, licence, limitations, and container submission honesty to a proposal."""
+    """Attach model tier definition, licence, limitations, IC provenance, and container submission honesty to a proposal."""
     mcard = card_for_model(resolved.model)
     in_container = os.environ.get("AIMIP_IMAGE_SHA", "native") not in ("", "native")
-    sched = str(resolved.runtime_identity.get("scheduler", "slurm"))
+    eff_sched = (
+        "none"
+        if resolved.spec.mode == "local"
+        else str(resolved.runtime_identity.get("scheduler", "slurm"))
+    )
     will_prepare_only = bool(
         in_container
-        and sched == "slurm"
-        and resolved.spec.mode != "local"
-        and shutil.which("sbatch") is None
+        and (eff_sched == "none" or (eff_sched == "slurm" and shutil.which("sbatch") is None))
     )
     return {
         "model_card": {
@@ -670,6 +672,7 @@ def _plan_decision_context(resolved: ResolvedPlan) -> dict[str, Any]:
                 TIER_DEFINITIONS.get(resolved.status_tier, ""),
             ),
             "licence": mcard.get("licence", ""),
+            "ic_provenance": resolved.ic_provenance or get_model_ic_provenance(resolved.model),
             "limitations": mcard.get("limitations", ""),
         },
         "will_prepare_only_in_container": will_prepare_only,

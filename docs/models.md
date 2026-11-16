@@ -8,10 +8,10 @@
 | `ace2-shield` | deterministic, trained on SHiELD | 1979–2014; 2014–2024 with AIMIP SST; julian | one state, 1979-01-01 (from the ACE2S-SHiELD-plus package; ACE2-SHiELD ships none) | none from the shipped state |
 | `ace2s-shield-plus` | stochastic | 1979–2014; 2014–2024; julian | one state, 1979-01-01 | `--members K` (model noise) |
 | `ace2-eamv3` | deterministic, trained on E3SMv3 | 1994–2014; noleap calendar | one state stamped 1994-01-01 (**a 1971 model state**) | none from the shipped state |
-| `hiro-ace` | stochastic | 1994–2014; 2014–2024; julian | one state stamped 1994-01-01 (**a 2014 model state**) | `--members K` |
+| `hiro-ace` | stochastic; trained only on 9 years of X-SHiELD (2014–2022) | 2014–2024 (training period 2014–2022); 1994–2014 is our own extension outside the training period; julian | one state stamped 1994-01-01 (**a 2014 model state**) | `--members K` |
 | `ace2-som` | deterministic, slab ocean | scenarios `1xCO2` (default) and `3xCO2`, nominal years 2032–2035 | one state per scenario, 2032-01-01 | pass several states with `--ic` |
-| `ace2s` | stochastic (the `hiro-ace` checkpoint with the authors' forcing) | 2014–2023; julian calendar | `ic_2014.nc`, `ic_2023.nc`, 12 states each | `--members K` |
-| `hiro-acev2` | stochastic, ACE2S-X-SHiELD global stage; `fme` 2026.10.0 | 2014–2023; julian | `ic_2014.nc`, `ic_2023.nc`, 12 states each | `--members K` |
+| `ace2s` | stochastic (the `hiro-ace` checkpoint with the authors' forcing; trained on X-SHiELD 2014–2022) | 2014–2023 (the training period); julian calendar | `ic_2014.nc`, `ic_2023.nc`, 12 states each | `--members K` |
+| `hiro-acev2` | stochastic, ACE2S-X-SHiELD global stage; `fme` 2026.10.0 | 2014–2023 (the training period); julian | `ic_2014.nc`, `ic_2023.nc`, 12 states each | `--members K` |
 | `samudrace-cm4` | **coupled** atmosphere–ocean, deterministic, CM4 preindustrial control | `picontrol-0311`: labels 0311–0410, `picontrol-0151`: 0151-01-06 … 0250-12-27 (one forcing year repeated); noleap | five states 0311 … 0319, one state 0151-01-06 | different initial conditions (`ic spin`) |
 | `samudrace-e3smv3` | **coupled**, stochastic; `fme` 2026.10.0 | one year, 0425-01-03 … 0425-12-29 (**at most 72 steps**); noleap | three states in one file | `--members K` |
 | `dlesym-v1.0` | **coupled** atmosphere–ocean (HEALPix-64, output 0.25°), deterministic; Earth2Studio | not forced; any 6-hourly start 1940-01-04 … 2023-12-31 | ERA5 at `--start`, downloaded by `aimip run` | — |
@@ -83,6 +83,12 @@ its author's GitHub repository into `$AIMIP_DATA/code/ArchesClimate-SSP` and che
 | `ace2-shield`, `ace2s-shield-plus` | Ai2's SHiELD+ AMIP forcing (`allenai/ACE2S-SHiELD-plus`) | AIMIP SST and sea ice (Zenodo 17065758, ERA5 0.25° monthly, regridded conservatively to the models' 1° grid, linear in time); insolation and statics from the model's reference year; CO2 from the ACE2-ERA5 series, extrapolated linearly after 2022 |
 | `ace2-eamv3` | ERA5 SST and sea ice from the Ai2 ERA5 forcing; land fraction, orography, insolation cycle from the authors' 1971 file; noleap calendar (29 February dropped); no CO2 input | — |
 | `hiro-ace` | SHiELD+ AMIP time-varying fields with HiRO's own statics (coastal cells take SST from the nearest SHiELD+ ocean cell) | as for SHiELD+ |
+
+The authors of HiRO-ACE state that ACE2S was trained only on 9 years of X-SHiELD (2014–2022) and is not expected to
+generalize outside the forcing conditions used in training (model card `allenai/HiRO-ACE`; Perkins et al.,
+"HiRO-ACE: Fast and skillful AI emulation and downscaling trained on a 3 km global storm-resolving model",
+arXiv:2512.18224). The 1994–2014 window of `hiro-ace` is therefore outside its training period, with forcing we
+build from another model's package and a 2014 state given a 1994 date: treat it as an experiment.
 
 The other models use their authors' forcing packages unchanged (`allenai/ACE2-SOM`, `allenai/HiRO-ACE`,
 `allenai/HiRO-ACEv2`, `allenai/SamudrACE-CM4-piControl`, `allenai/SamudrACE-E3SMv3`, `gclyne/ArchesClimate-data`).

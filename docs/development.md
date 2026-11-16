@@ -4,7 +4,7 @@
 
 | path | content |
 |---|---|
-| `src/aimip/` | the package: command line (`cli.py`), run preparation and execution (`runner.py`), model registry (`registry.py`, `registry.default.json`), downloads and the lock (`setup_data.py`, `aimip.lock`), derived forcing (`builders.py`), initial conditions and spin-up (`ic.py`), DLESyM/ArchesClimate support (`emu*.py`), LoRA tools (`lora.py`), status and summaries (`status.py`), the planning assistant (`agent/`) |
+| `src/aimip/` | the package: command line (`cli.py`), shared services and approval broker (`services/`, `plan_types.py`, `families/`), run preparation and execution (`runner.py`), model registry (`registry.py`, `registry.default.json`), downloads and the lock (`setup_data.py`, `aimip.lock`), derived forcing (`builders.py`), initial conditions and spin-up (`ic.py`), DLESyM/ArchesClimate support (`emu*.py`), LoRA tools (`lora.py`), status and summaries (`status.py`), the planning assistant (`agent/`), the stdio MCP server (`mcp_server.py`), and the local web UI (`ui/`) |
 | `tests/` | the pytest suite (offline: synthetic data, fake runtimes) and `tests/wrapper/`, the shell tests of the host wrapper and the submit gate |
 | `container/` | `Dockerfile` (the canonical image recipe), `gen_apptainer_def.py` (derives the Apptainer recipe from it), pinned requirements, the host wrapper `aimip-wrapper.in` |
 | `install/` | `install-container.sh`, `install-native.sh`, site presets |
