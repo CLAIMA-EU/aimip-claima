@@ -1,0 +1,222 @@
+{
+ "nvidia/dlesym-v1-era5": {
+  "repo_type": "model",
+  "revision": "b88155cfc2c988a2a9058d5e35a41220e2b01941",
+  "files": {
+   "checkpoints/v1.0/atmos/atmos_model_0.mdlus": {
+    "size": 39393280,
+    "sha256": "e2b4064f202997eafcf751754466e19475a3900f03fb3647d3163721f64d6cf0"
+   },
+   "checkpoints/v1.0/atmos/atmos_model_1.mdlus": {
+    "size": 39393280,
+    "sha256": "c85ae4367c0bbdd869ede7724291e718d30edb4b7c0ab82870f82d08af710c1c"
+   },
+   "checkpoints/v1.0/atmos/atmos_model_2.mdlus": {
+    "size": 39393280,
+    "sha256": "e700a370d2626cee5f5b3f8fdaa3d8f74d173b968e8894fa8eaca94913fb4c15"
+   },
+   "checkpoints/v1.0/atmos/atmos_model_3.mdlus": {
+    "size": 39393280,
+    "sha256": "10386d365fd79ed3a84a09afe9bf983486763ae19886afee5f62d3be9bac2915"
+   },
+   "checkpoints/v1.0/config.yaml": {
+    "size": 1477,
+    "sha256": "a1041d4345a8f93d36d5cb587ad0c8b03ef24c930b6b327c1dfd0fb2c2ed59b2"
+   },
+   "checkpoints/v1.0/ocean/ocean_model_0.mdlus": {
+    "size": 3112960,
+    "sha256": "42ef6740811ef75246c712dc2532caade55b865aace0f5139fd4f508e55b4e0b"
+   },
+   "checkpoints/v1.0/ocean/ocean_model_1.mdlus": {
+    "size": 3112960,
+    "sha256": "7db0ec70a70f58c1d3a39b71df6613d1db8081958ddb4837864ceafd5dc3b807"
+   },
+   "checkpoints/v1.0/ocean/ocean_model_2.mdlus": {
+    "size": 3112960,
+    "sha256": "472f42408f5f0c6f37b6472a27c15778b8e0ae010a0ee7436b2200d321b31cbc"
+   },
+   "checkpoints/v1.0/ocean/ocean_model_3.mdlus": {
+    "size": 3112960,
+    "sha256": "3b605790051e87caf1a9c6a9a71bea54ff368a9c8ac741c96bbd4dbf5fde3582"
+   },
+   "checkpoints/v1.1/atmos/atmos_model_0.mdlus": {
+    "size": 20650834,
+    "sha256": "d3752ccd163c0157263f1dcdb722824cb4a2cca7368b07050172a8ba632a0950"
+   },
+   "checkpoints/v1.1/config.yaml": {
+    "size": 1534,
+    "sha256": "ad28fa14e9236d35392b46c9b52f84c0670bd40abf66ce543b8ff4456319e88c"
+   },
+   "checkpoints/v1.1/ocean/ocean_model_0.mdlus": {
+    "size": 19555332,
+    "sha256": "0f88299adef56d7fbfba500c2656ebba3bc13da70b150a6dbb00fed82f8715e4"
+   },
+   "config.yaml": {
+    "size": 955,
+    "sha256": "1696ba349ff8cf2f13c95e30f28729af4f03349eba52db6b7ed675d94fe27fe3"
+   },
+   "hpx_lat.npy": {
+    "size": 393344,
+    "sha256": "028da9e8eb2809abacfe95389af6bcf7b817709fa3d8202caf52cb5b448b90ee"
+   },
+   "hpx_lon.npy": {
+    "size": 393344,
+    "sha256": "c9016566f0a94cf0694d584438ebddff1f76f1451c290a0051bf1b4beab5e1aa"
+   },
+   "land_sea_mask.npy": {
+    "size": 196736,
+    "sha256": "655824a374267ce81d4d0b33a22ef7815f5c9de4a577de6ceeb59d8b55537951"
+   },
+   "topography.npy": {
+    "size": 196736,
+    "sha256": "7f243068055673b7abb954c2b00b1aed4d5013eb62ce6740ebc6981b865bb9dc"
+   }
+  }
+ },
+ "nvidia/dlesym-v0-isccp-era5": {
+  "repo_type": "model",
+  "revision": "924b2d62644ef61289dd960e018f60d6e067bfca",
+  "files": {
+   "atmos_model_0.mdlus": {
+    "size": 14087358,
+    "sha256": "a930bbfbcbe6a1e0c7d76b493bdff33b564d734f40a1f735b1709c0603ad0f5f"
+   },
+   "config.yaml": {
+    "size": 2477,
+    "sha256": "91b21a157f3508b4a50b217080c79c0385fe2d6f3aec65ed61d93f8af1ae3a1f"
+   },
+   "era5_ttr_doy_stats_hpx64.nc": {
+    "size": 143930776,
+    "sha256": "09ddca91d632dca28b450d90328dbf8f265acc66e255afa785cb1ccf451a1b06"
+   },
+   "hpx_lat.npy": {
+    "size": 393344,
+    "sha256": "19d262a26c5d4c7f28fd10b7cd41637955850ed0cc8572bc5b73fca1482244f1"
+   },
+   "hpx_lon.npy": {
+    "size": 393344,
+    "sha256": "c9016566f0a94cf0694d584438ebddff1f76f1451c290a0051bf1b4beab5e1aa"
+   },
+   "isccp_olr_doy_stats_hpx64.nc": {
+    "size": 143931314,
+    "sha256": "3be221d8ec15f0172b801bcfa5224c0f6af880ede01981756e3c3ad4393ecd7e"
+   },
+   "land_sea_mask.npy": {
+    "size": 196736,
+    "sha256": "cd39f2987740456a3898d41cd408edcd71b7c64216a93468e409e22b55cd9b7b"
+   },
+   "ocean_model_0.mdlus": {
+    "size": 3112241,
+    "sha256": "57340a519ecf760cac70c32be42c6fb44b01b3f82f3139d1e6b2f97b36f84363"
+   },
+   "precip_model_0.mdlus": {
+    "size": 5717964,
+    "sha256": "8f2d7d2c78f51678d17bea74fe113af5b8642fed96edd3b9d63306bc78cf9c45"
+   },
+   "topography.npy": {
+    "size": 196736,
+    "sha256": "c0104b4cc89a6ad5e2c2f4ea1dc1a2b6c0c67c584dfd523f39aada4e69d6a0db"
+   }
+  }
+ },
+ "gclyne/ArchesClimate": {
+  "repo_type": "model",
+  "revision": "06a914dd67b41df9ad4f52fa7b811ab65c63e34f",
+  "files": {
+   "archesclimate-ssp-deterministic/config.yaml": {
+    "size": 6556,
+    "sha256": "bd1e38b1f5d73633d06cc7e7bacc2dd01e197fcc7bac2e52642cf077684475c0"
+   },
+   "archesclimate-ssp-deterministic/model.ckpt": {
+    "size": 3751553041,
+    "sha256": "e0742f4d4deef466f2a628ac6b80bb8cb5f890d0bd3a6fd3ec8c0ca29257d4b9"
+   }
+  }
+ },
+ "gclyne/ArchesClimate-data": {
+  "repo_type": "dataset",
+  "revision": "b9f54586468b132fbc98f6c0664f9370e54d9a98",
+  "files": {
+   "ipsl_scenarios/r1i1p1f1_ssp434_interpolation.memmap/lev.memmap": {
+    "size": 855982080,
+    "sha256": "41cff44e103ab29bac5c9537c10334dbb00a0a18f028e628bec27450c285aaff"
+   },
+   "ipsl_scenarios/r1i1p1f1_ssp434_interpolation.memmap/level.memmap": {
+    "size": 7275847680,
+    "sha256": "5c3f685a9010cfd88b2579156bec4bdc75e61bb4e0df7d569b5fc0d69280bc60"
+   },
+   "ipsl_scenarios/r1i1p1f1_ssp434_interpolation.memmap/meta.json": {
+    "size": 683,
+    "sha256": "50f47934f1196533378624095a950202f93da75f0a65ec03fac1ecd02d0434c7"
+   },
+   "ipsl_scenarios/r1i1p1f1_ssp434_interpolation.memmap/non_spatial_forcings.memmap": {
+    "size": 24768,
+    "sha256": "0f21b8547d1bd290db98b2018a04fe5ba8ff07d8b44226fbe1d53449ac8b5a62"
+   },
+   "ipsl_scenarios/r1i1p1f1_ssp434_interpolation.memmap/ozone.memmap": {
+    "size": 5649481728,
+    "sha256": "68e16aee49460f2f0a0ea089789f5a3ef5b2a7c38152b735dc90f8be25d0b58e"
+   },
+   "ipsl_scenarios/r1i1p1f1_ssp434_interpolation.memmap/spatial_forcings.memmap": {
+    "size": 1626365952,
+    "sha256": "931969e70675dc0016cbcef40446bc17ada3fb773e7b40d6085be7712f587561"
+   },
+   "ipsl_scenarios/r1i1p1f1_ssp434_interpolation.memmap/surface.memmap": {
+    "size": 684785664,
+    "sha256": "de9b84bc7818f8d444dd1d201b45bfc916ad3810a19bf9fa809d7db5321b92f7"
+   },
+   "ipsl_scenarios/r1i1p1f1_ssp434_interpolation.memmap/time/meta.json": {
+    "size": 97,
+    "sha256": "6c5a94e563b389a31d5db77a3f24460cc2d6cf6f5436a13d360aecc149de2797"
+   },
+   "ipsl_scenarios/r1i1p1f1_ssp434_interpolation.memmap/time/other.pickle": {
+    "size": 8436,
+    "sha256": "15dec87e4d3275aa19ea449ce121301e008d23c55cd725e84acd2025fbfdf3d5"
+   },
+   "ipsl_scenarios/r1i1p1f1_ssp585_interpolation.memmap/lev.memmap": {
+    "size": 855982080,
+    "sha256": "1830fcb0a24322332e74a74fc13e40aab46618b35dc5d17869517eb205c8b6f0"
+   },
+   "ipsl_scenarios/r1i1p1f1_ssp585_interpolation.memmap/level.memmap": {
+    "size": 7275847680,
+    "sha256": "f0ee940107b69a1866c0e7fd133419603a962640a8d55c16c063a2d981b1e184"
+   },
+   "ipsl_scenarios/r1i1p1f1_ssp585_interpolation.memmap/meta.json": {
+    "size": 683,
+    "sha256": "50f47934f1196533378624095a950202f93da75f0a65ec03fac1ecd02d0434c7"
+   },
+   "ipsl_scenarios/r1i1p1f1_ssp585_interpolation.memmap/non_spatial_forcings.memmap": {
+    "size": 24768,
+    "sha256": "0f21b8547d1bd290db98b2018a04fe5ba8ff07d8b44226fbe1d53449ac8b5a62"
+   },
+   "ipsl_scenarios/r1i1p1f1_ssp585_interpolation.memmap/ozone.memmap": {
+    "size": 5649481728,
+    "sha256": "b51224457c859b656624b3ea7856e1a6e75b3c71cf25768f6803597ed280a8ed"
+   },
+   "ipsl_scenarios/r1i1p1f1_ssp585_interpolation.memmap/spatial_forcings.memmap": {
+    "size": 1626365952,
+    "sha256": "0aed0895f594edee1c8fa1279f3f51499416f8e13152fedd6c985b633339afb0"
+   },
+   "ipsl_scenarios/r1i1p1f1_ssp585_interpolation.memmap/surface.memmap": {
+    "size": 684785664,
+    "sha256": "d0924bc82a81da2ef0ce5f064722e72d9d313f340ed57ca360168d5c96c6f4ba"
+   },
+   "ipsl_scenarios/r1i1p1f1_ssp585_interpolation.memmap/time/meta.json": {
+    "size": 97,
+    "sha256": "6c5a94e563b389a31d5db77a3f24460cc2d6cf6f5436a13d360aecc149de2797"
+   },
+   "ipsl_scenarios/r1i1p1f1_ssp585_interpolation.memmap/time/other.pickle": {
+    "size": 8436,
+    "sha256": "15dec87e4d3275aa19ea449ce121301e008d23c55cd725e84acd2025fbfdf3d5"
+   },
+   "reference_data/orography.pt": {
+    "size": 84134,
+    "sha256": "5d67e92e0798414862a025acbec09b2b41b277e1d7592411c30e00f1dbf5bbde"
+   },
+   "stats/cmip_stats_new_ozone.pt": {
+    "size": 20408414,
+    "sha256": "e7650045d71532ba84bfe7c17d6008a4f7d101eb2b19e8c8ff7a69283ef38019"
+   }
+  }
+ }
+}

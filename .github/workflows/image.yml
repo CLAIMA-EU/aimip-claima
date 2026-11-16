@@ -1,0 +1,101 @@
+name: image
+
+# Builds container/Dockerfile and publishes ghcr.io/<owner>/aimip-claima:<version> (and :latest) from a matching
+# v<version> tag; manual workflow_dispatch runs publish :<version>-dev-<shortsha> only and never overwrite release tags.
+"on":
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: Free disk space for the CUDA image
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/local/graalvm /usr/share/swift
+          docker system prune -af
+          df -h /
+
+      - uses: actions/checkout@v4
+
+      - name: Version and image name
+        id: meta
+        run: |
+          version=$(tr -d '[:space:]' < container/VERSION)
+          if ! printf '%s\n' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "container/VERSION must match X.Y.Z, got: ${version}" >&2; exit 1
+          fi
+          owner=$(printf '%s' "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')
+          if ! printf '%s\n' "$owner" | grep -Eq '^[a-z0-9._-]+$'; then
+            echo "invalid repository owner: ${owner}" >&2; exit 1
+          fi
+          if [ "${GITHUB_EVENT_NAME:-}" = "push" ] && [ "${GITHUB_REF_TYPE:-}" = "tag" ]; then
+            if [ "${GITHUB_REF_NAME}" != "v${version}" ]; then
+              echo "tag ${GITHUB_REF_NAME} does not match container/VERSION ${version}" >&2; exit 1
+            fi
+            release=true
+            primary_tag="${version}"
+          else
+            shortsha=$(printf '%s' "${GITHUB_SHA}" | cut -c1-8)
+            if ! printf '%s\n' "$shortsha" | grep -Eq '^[0-9a-fA-F]{7,8}$'; then
+              echo "invalid GITHUB_SHA: ${GITHUB_SHA}" >&2; exit 1
+            fi
+            release=false
+            primary_tag="${version}-dev-${shortsha}"
+          fi
+          {
+            echo "image=ghcr.io/${owner}/aimip-claima"
+            echo "version=${version}"
+            echo "release=${release}"
+            echo "primary_tag=${primary_tag}"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build (runs the test suite inside the image)
+        env:
+          IMAGE_NAME: ${{ steps.meta.outputs.image }}
+          PRIMARY_TAG: ${{ steps.meta.outputs.primary_tag }}
+        run: docker build -f container/Dockerfile -t "${IMAGE_NAME}:${PRIMARY_TAG}" .
+
+      - name: Push
+        env:
+          IMAGE_NAME: ${{ steps.meta.outputs.image }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          RELEASE: ${{ steps.meta.outputs.release }}
+          PRIMARY_TAG: ${{ steps.meta.outputs.primary_tag }}
+        run: |
+          if [ "${RELEASE}" = "true" ]; then
+            if docker manifest inspect "${IMAGE_NAME}:${VERSION}" >/dev/null 2>&1; then
+              echo "release tag ${IMAGE_NAME}:${VERSION} already exists in registry; refusing to overwrite" >&2
+              exit 1
+            fi
+            docker tag "${IMAGE_NAME}:${PRIMARY_TAG}" "${IMAGE_NAME}:latest"
+            docker push "${IMAGE_NAME}:${VERSION}"
+            docker push "${IMAGE_NAME}:latest"
+          else
+            docker push "${IMAGE_NAME}:${PRIMARY_TAG}"
+          fi
+          digest=$(docker image inspect --format '{{index .RepoDigests 0}}' "${IMAGE_NAME}:${PRIMARY_TAG}" 2>/dev/null || true)
+          [ -n "$digest" ] || digest=$(docker image inspect --format '{{.Id}}' "${IMAGE_NAME}:${PRIMARY_TAG}")
+          echo "Pushed ${IMAGE_NAME}:${PRIMARY_TAG} (${digest})"
+          if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+            {
+              echo "### Published Container Image"
+              echo "- **Tag:** \`${IMAGE_NAME}:${PRIMARY_TAG}\`"
+              if [ "${RELEASE}" = "true" ]; then
+                echo "- **Latest:** \`${IMAGE_NAME}:latest\`"
+              fi
+              echo "- **Digest:** \`${digest}\`"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi

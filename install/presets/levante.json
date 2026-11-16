@@ -1,0 +1,4 @@
+{"name": "levante", "scheduler": "slurm",
+ "sbatch": {"partition": "gpu", "account": "CHANGE_ME", "gres": "gpu:a100_80:1", "cpus_per_task": 32, "mem": "64G", "max_time": "12:00:00"},
+ "run_root": "/scratch/${U1}/${USER}/aimip-runs",
+ "extra_ro_binds": ["/work"], "gpu_check": "nvidia-smi"}

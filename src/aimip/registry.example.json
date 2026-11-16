@@ -1,0 +1,844 @@
+{
+  "schema_version": 3,
+  "generated_by": "aimip setup",
+  "models": [
+    {
+      "name": "ace2-era5",
+      "family": "fme",
+      "fme_version": "2026.5.1",
+      "fme_module": "fme.ace.inference",
+      "calendar": "proleptic_gregorian",
+      "checkpoint": "${DATA}/models/ace2-era5/ace2_era5_ckpt.tar",
+      "checkpoint_sha256": "0e2522df5a8db087f18bcebea6e88277cea7c3b71892b868c427aca27673edc2",
+      "ic_files": [
+        "${DATA}/inputs/ace2-era5/ic/ic_1979.nc",
+        "${DATA}/inputs/ace2-era5/ic/ic_2001.nc"
+      ],
+      "ic_sha256": {
+        "${DATA}/inputs/ace2-era5/ic/ic_1979.nc": "a4e8c13f281bcefd759a18fd5aac21b7af3524fa19ed9b5b53e22f32598e8793",
+        "${DATA}/inputs/ace2-era5/ic/ic_2001.nc": "e80ba139af21ad77bf3e5818a6ae54088a5cdc1a09cd1c1d668dee9eed7636bf"
+      },
+      "forcing_sets": [
+        {
+          "name": "amip-hist",
+          "dir": "${DATA}/inputs/ace2-era5/amip-hist",
+          "window": [
+            "1979-01-01T00:00:00",
+            "2014-12-31T18:00:00"
+          ]
+        }
+      ],
+      "required_files": [
+        "models/ace2-era5/ace2_era5_ckpt.tar",
+        "inputs/ace2-era5/ic/ic_1979.nc",
+        "inputs/ace2-era5/ic/ic_2001.nc",
+        "inputs/ace2-era5/amip-hist/forcing_1979.nc",
+        "inputs/ace2-era5/amip-hist/forcing_1980.nc",
+        "inputs/ace2-era5/amip-hist/forcing_1981.nc",
+        "inputs/ace2-era5/amip-hist/forcing_1982.nc",
+        "inputs/ace2-era5/amip-hist/forcing_1983.nc",
+        "inputs/ace2-era5/amip-hist/forcing_1984.nc",
+        "inputs/ace2-era5/amip-hist/forcing_1985.nc",
+        "inputs/ace2-era5/amip-hist/forcing_1986.nc",
+        "inputs/ace2-era5/amip-hist/forcing_1987.nc",
+        "inputs/ace2-era5/amip-hist/forcing_1988.nc",
+        "inputs/ace2-era5/amip-hist/forcing_1989.nc",
+        "inputs/ace2-era5/amip-hist/forcing_1990.nc",
+        "inputs/ace2-era5/amip-hist/forcing_1991.nc",
+        "inputs/ace2-era5/amip-hist/forcing_1992.nc",
+        "inputs/ace2-era5/amip-hist/forcing_1993.nc",
+        "inputs/ace2-era5/amip-hist/forcing_1994.nc",
+        "inputs/ace2-era5/amip-hist/forcing_1995.nc",
+        "inputs/ace2-era5/amip-hist/forcing_1996.nc",
+        "inputs/ace2-era5/amip-hist/forcing_1997.nc",
+        "inputs/ace2-era5/amip-hist/forcing_1998.nc",
+        "inputs/ace2-era5/amip-hist/forcing_1999.nc",
+        "inputs/ace2-era5/amip-hist/forcing_2000.nc",
+        "inputs/ace2-era5/amip-hist/forcing_2001.nc",
+        "inputs/ace2-era5/amip-hist/forcing_2002.nc",
+        "inputs/ace2-era5/amip-hist/forcing_2003.nc",
+        "inputs/ace2-era5/amip-hist/forcing_2004.nc",
+        "inputs/ace2-era5/amip-hist/forcing_2005.nc",
+        "inputs/ace2-era5/amip-hist/forcing_2006.nc",
+        "inputs/ace2-era5/amip-hist/forcing_2007.nc",
+        "inputs/ace2-era5/amip-hist/forcing_2008.nc",
+        "inputs/ace2-era5/amip-hist/forcing_2009.nc",
+        "inputs/ace2-era5/amip-hist/forcing_2010.nc",
+        "inputs/ace2-era5/amip-hist/forcing_2011.nc",
+        "inputs/ace2-era5/amip-hist/forcing_2012.nc",
+        "inputs/ace2-era5/amip-hist/forcing_2013.nc",
+        "inputs/ace2-era5/amip-hist/forcing_2014.nc"
+      ],
+      "timestep_hours": 6,
+      "stochastic": false,
+      "default_n_ensemble_per_ic": 1,
+      "notes": "ACE2-ERA5 (Ai2), deterministic, trained on ERA5 1979-2008/2012-2019; shipped ICs: 12 monthly times in 1979 and 2001."
+    },
+    {
+      "name": "ace2-shield",
+      "family": "fme",
+      "fme_version": "2026.5.1",
+      "fme_module": "fme.ace.inference",
+      "calendar": "julian",
+      "checkpoint": "${DATA}/models/ace2-shield/ace2_shield_ckpt.tar",
+      "checkpoint_sha256": "2debfee21a4cee81f34631c81539a7f312b9ea67a73cebd0f9b00cbe3cc23482",
+      "ic_files": [
+        "${DATA}/models/ace2s-shield-plus/ic.nc"
+      ],
+      "ic_sha256": {
+        "${DATA}/models/ace2s-shield-plus/ic.nc": "3263356a1ff67726a96a5c42e93dc0579d49dc48a35328ea231910b95ef70120"
+      },
+      "forcing_sets": [
+        {
+          "name": "amip-hist",
+          "dir": "${DATA}/inputs/shield/amip-hist",
+          "window": [
+            "1979-01-01T00:00:00",
+            "2014-12-31T18:00:00"
+          ]
+        },
+        {
+          "name": "amip-oos",
+          "dir": "${DATA}/inputs/shield/amip-oos",
+          "window": [
+            "2014-01-01T00:00:00",
+            "2024-12-31T18:00:00"
+          ]
+        }
+      ],
+      "required_files": [
+        "models/ace2-shield/ace2_shield_ckpt.tar",
+        "models/ace2s-shield-plus/ic.nc",
+        "inputs/shield/amip-hist/forcing_1979.nc",
+        "inputs/shield/amip-hist/forcing_1980.nc",
+        "inputs/shield/amip-hist/forcing_1981.nc",
+        "inputs/shield/amip-hist/forcing_1982.nc",
+        "inputs/shield/amip-hist/forcing_1983.nc",
+        "inputs/shield/amip-hist/forcing_1984.nc",
+        "inputs/shield/amip-hist/forcing_1985.nc",
+        "inputs/shield/amip-hist/forcing_1986.nc",
+        "inputs/shield/amip-hist/forcing_1987.nc",
+        "inputs/shield/amip-hist/forcing_1988.nc",
+        "inputs/shield/amip-hist/forcing_1989.nc",
+        "inputs/shield/amip-hist/forcing_1990.nc",
+        "inputs/shield/amip-hist/forcing_1991.nc",
+        "inputs/shield/amip-hist/forcing_1992.nc",
+        "inputs/shield/amip-hist/forcing_1993.nc",
+        "inputs/shield/amip-hist/forcing_1994.nc",
+        "inputs/shield/amip-hist/forcing_1995.nc",
+        "inputs/shield/amip-hist/forcing_1996.nc",
+        "inputs/shield/amip-hist/forcing_1997.nc",
+        "inputs/shield/amip-hist/forcing_1998.nc",
+        "inputs/shield/amip-hist/forcing_1999.nc",
+        "inputs/shield/amip-hist/forcing_2000.nc",
+        "inputs/shield/amip-hist/forcing_2001.nc",
+        "inputs/shield/amip-hist/forcing_2002.nc",
+        "inputs/shield/amip-hist/forcing_2003.nc",
+        "inputs/shield/amip-hist/forcing_2004.nc",
+        "inputs/shield/amip-hist/forcing_2005.nc",
+        "inputs/shield/amip-hist/forcing_2006.nc",
+        "inputs/shield/amip-hist/forcing_2007.nc",
+        "inputs/shield/amip-hist/forcing_2008.nc",
+        "inputs/shield/amip-hist/forcing_2009.nc",
+        "inputs/shield/amip-hist/forcing_2010.nc",
+        "inputs/shield/amip-hist/forcing_2011.nc",
+        "inputs/shield/amip-hist/forcing_2012.nc",
+        "inputs/shield/amip-hist/forcing_2013.nc",
+        "inputs/shield/amip-hist/forcing_2014.nc",
+        "inputs/shield/amip-oos/forcing_2014.nc",
+        "inputs/shield/amip-oos/forcing_2015.nc",
+        "inputs/shield/amip-oos/forcing_2016.nc",
+        "inputs/shield/amip-oos/forcing_2017.nc",
+        "inputs/shield/amip-oos/forcing_2018.nc",
+        "inputs/shield/amip-oos/forcing_2019.nc",
+        "inputs/shield/amip-oos/forcing_2020.nc",
+        "inputs/shield/amip-oos/forcing_2021.nc",
+        "inputs/shield/amip-oos/forcing_2022.nc",
+        "inputs/shield/amip-oos/forcing_2023.nc",
+        "inputs/shield/amip-oos/forcing_2024.nc"
+      ],
+      "timestep_hours": 6,
+      "stochastic": false,
+      "default_n_ensemble_per_ic": 1,
+      "notes": "ACE2-SHiELD (Ai2), deterministic, trained on SHiELD; single shipped IC (1979-01-01) shared from ACE2S-SHiELD-plus AMIP package; amip-oos = AIMIP SST/SIC 2015-2024 (Zenodo 17065758)."
+    },
+    {
+      "name": "ace2s-shield-plus",
+      "family": "fme",
+      "fme_version": "2026.5.1",
+      "fme_module": "fme.ace.inference",
+      "calendar": "julian",
+      "checkpoint": "${DATA}/models/ace2s-shield-plus/ace2s_shield_plus_ckpt.tar",
+      "checkpoint_sha256": "4d11bf3ceb714d2c0ca971a5a7c1304efeab01f70edfe8a318e7816af0fbab25",
+      "ic_files": [
+        "${DATA}/models/ace2s-shield-plus/ic.nc"
+      ],
+      "ic_sha256": {
+        "${DATA}/models/ace2s-shield-plus/ic.nc": "3263356a1ff67726a96a5c42e93dc0579d49dc48a35328ea231910b95ef70120"
+      },
+      "forcing_sets": [
+        {
+          "name": "amip-hist",
+          "dir": "${DATA}/inputs/shield/amip-hist",
+          "window": [
+            "1979-01-01T00:00:00",
+            "2014-12-31T18:00:00"
+          ]
+        },
+        {
+          "name": "amip-oos",
+          "dir": "${DATA}/inputs/shield/amip-oos",
+          "window": [
+            "2014-01-01T00:00:00",
+            "2024-12-31T18:00:00"
+          ]
+        }
+      ],
+      "required_files": [
+        "models/ace2s-shield-plus/ace2s_shield_plus_ckpt.tar",
+        "models/ace2s-shield-plus/ic.nc",
+        "inputs/shield/amip-hist/forcing_1979.nc",
+        "inputs/shield/amip-hist/forcing_1980.nc",
+        "inputs/shield/amip-hist/forcing_1981.nc",
+        "inputs/shield/amip-hist/forcing_1982.nc",
+        "inputs/shield/amip-hist/forcing_1983.nc",
+        "inputs/shield/amip-hist/forcing_1984.nc",
+        "inputs/shield/amip-hist/forcing_1985.nc",
+        "inputs/shield/amip-hist/forcing_1986.nc",
+        "inputs/shield/amip-hist/forcing_1987.nc",
+        "inputs/shield/amip-hist/forcing_1988.nc",
+        "inputs/shield/amip-hist/forcing_1989.nc",
+        "inputs/shield/amip-hist/forcing_1990.nc",
+        "inputs/shield/amip-hist/forcing_1991.nc",
+        "inputs/shield/amip-hist/forcing_1992.nc",
+        "inputs/shield/amip-hist/forcing_1993.nc",
+        "inputs/shield/amip-hist/forcing_1994.nc",
+        "inputs/shield/amip-hist/forcing_1995.nc",
+        "inputs/shield/amip-hist/forcing_1996.nc",
+        "inputs/shield/amip-hist/forcing_1997.nc",
+        "inputs/shield/amip-hist/forcing_1998.nc",
+        "inputs/shield/amip-hist/forcing_1999.nc",
+        "inputs/shield/amip-hist/forcing_2000.nc",
+        "inputs/shield/amip-hist/forcing_2001.nc",
+        "inputs/shield/amip-hist/forcing_2002.nc",
+        "inputs/shield/amip-hist/forcing_2003.nc",
+        "inputs/shield/amip-hist/forcing_2004.nc",
+        "inputs/shield/amip-hist/forcing_2005.nc",
+        "inputs/shield/amip-hist/forcing_2006.nc",
+        "inputs/shield/amip-hist/forcing_2007.nc",
+        "inputs/shield/amip-hist/forcing_2008.nc",
+        "inputs/shield/amip-hist/forcing_2009.nc",
+        "inputs/shield/amip-hist/forcing_2010.nc",
+        "inputs/shield/amip-hist/forcing_2011.nc",
+        "inputs/shield/amip-hist/forcing_2012.nc",
+        "inputs/shield/amip-hist/forcing_2013.nc",
+        "inputs/shield/amip-hist/forcing_2014.nc",
+        "inputs/shield/amip-oos/forcing_2014.nc",
+        "inputs/shield/amip-oos/forcing_2015.nc",
+        "inputs/shield/amip-oos/forcing_2016.nc",
+        "inputs/shield/amip-oos/forcing_2017.nc",
+        "inputs/shield/amip-oos/forcing_2018.nc",
+        "inputs/shield/amip-oos/forcing_2019.nc",
+        "inputs/shield/amip-oos/forcing_2020.nc",
+        "inputs/shield/amip-oos/forcing_2021.nc",
+        "inputs/shield/amip-oos/forcing_2022.nc",
+        "inputs/shield/amip-oos/forcing_2023.nc",
+        "inputs/shield/amip-oos/forcing_2024.nc"
+      ],
+      "timestep_hours": 6,
+      "stochastic": true,
+      "default_n_ensemble_per_ic": 1,
+      "notes": "ACE2S-SHiELD-plus (Ai2), stochastic (ensemble members via IC replication along sample + model noise); shipped IC: 1979-01-01 from AMIP package."
+    },
+    {
+      "name": "ace2-eamv3",
+      "family": "fme",
+      "fme_version": "2026.5.1",
+      "fme_module": "fme.ace.inference",
+      "calendar": "noleap",
+      "checkpoint": "${DATA}/models/ace2-eamv3/ace2_EAMv3_ckpt.tar",
+      "checkpoint_sha256": "99c0bc44966394aab2a7bc91241893a115c163b57965af1717c5ac0e9bbf0e06",
+      "ic_files": [
+        "${DATA}/inputs/ace2-eamv3/ic/ic_1994.nc"
+      ],
+      "ic_sha256": {
+        "${DATA}/inputs/ace2-eamv3/ic/ic_1994.nc": "b4f7214a0069d911ed941c3c415b0931db72f22e47b316ea6e80846cff34c875"
+      },
+      "forcing_sets": [
+        {
+          "name": "amip-hist",
+          "dir": "${DATA}/inputs/ace2-eamv3/amip-hist",
+          "window": [
+            "1994-01-01T00:00:00",
+            "2014-12-31T18:00:00"
+          ]
+        }
+      ],
+      "required_files": [
+        "models/ace2-eamv3/ace2_EAMv3_ckpt.tar",
+        "inputs/ace2-eamv3/ic/ic_1994.nc",
+        "inputs/ace2-eamv3/amip-hist/1994.nc",
+        "inputs/ace2-eamv3/amip-hist/1995.nc",
+        "inputs/ace2-eamv3/amip-hist/1996.nc",
+        "inputs/ace2-eamv3/amip-hist/1997.nc",
+        "inputs/ace2-eamv3/amip-hist/1998.nc",
+        "inputs/ace2-eamv3/amip-hist/1999.nc",
+        "inputs/ace2-eamv3/amip-hist/2000.nc",
+        "inputs/ace2-eamv3/amip-hist/2001.nc",
+        "inputs/ace2-eamv3/amip-hist/2002.nc",
+        "inputs/ace2-eamv3/amip-hist/2003.nc",
+        "inputs/ace2-eamv3/amip-hist/2004.nc",
+        "inputs/ace2-eamv3/amip-hist/2005.nc",
+        "inputs/ace2-eamv3/amip-hist/2006.nc",
+        "inputs/ace2-eamv3/amip-hist/2007.nc",
+        "inputs/ace2-eamv3/amip-hist/2008.nc",
+        "inputs/ace2-eamv3/amip-hist/2009.nc",
+        "inputs/ace2-eamv3/amip-hist/2010.nc",
+        "inputs/ace2-eamv3/amip-hist/2011.nc",
+        "inputs/ace2-eamv3/amip-hist/2012.nc",
+        "inputs/ace2-eamv3/amip-hist/2013.nc",
+        "inputs/ace2-eamv3/amip-hist/2014.nc"
+      ],
+      "timestep_hours": 6,
+      "stochastic": false,
+      "default_n_ensemble_per_ic": 1,
+      "notes": "ACE2-EAMv3 (Ai2), deterministic, trained on E3SMv3 EAM; noleap calendar; window 1994-2014 only. Shipped ic_1994.nc is an E3SM 1971-01-01 state relabelled to 1994-01-01; discard the first simulated year as spin-up."
+    },
+    {
+      "name": "hiro-ace",
+      "family": "fme",
+      "fme_version": "2026.5.1",
+      "fme_module": "fme.ace.inference",
+      "calendar": "julian",
+      "checkpoint": "${DATA}/models/hiro-ace/ACE2S.ckpt",
+      "checkpoint_sha256": "0b39d182074c02c92d6700088dfe5f6f1ae9488d50eb4a260564121ec2dcbf0e",
+      "ic_files": [
+        "${DATA}/inputs/hiro-ace/ic/ic_1994.nc"
+      ],
+      "ic_sha256": {
+        "${DATA}/inputs/hiro-ace/ic/ic_1994.nc": "4ed27e044c0a7d9c653655853adce573b41dd45e09d6d68b544e573b9778a7be"
+      },
+      "forcing_sets": [
+        {
+          "name": "amip-hist",
+          "dir": "${DATA}/inputs/hiro-ace/amip-hist",
+          "window": [
+            "1994-01-01T00:00:00",
+            "2014-12-31T18:00:00"
+          ]
+        },
+        {
+          "name": "amip-oos",
+          "dir": "${DATA}/inputs/hiro-ace/amip-oos",
+          "window": [
+            "2014-01-01T00:00:00",
+            "2024-12-31T18:00:00"
+          ]
+        }
+      ],
+      "required_files": [
+        "models/hiro-ace/ACE2S.ckpt",
+        "inputs/hiro-ace/ic/ic_1994.nc",
+        "inputs/hiro-ace/amip-hist/forcing_1994.nc",
+        "inputs/hiro-ace/amip-hist/forcing_1995.nc",
+        "inputs/hiro-ace/amip-hist/forcing_1996.nc",
+        "inputs/hiro-ace/amip-hist/forcing_1997.nc",
+        "inputs/hiro-ace/amip-hist/forcing_1998.nc",
+        "inputs/hiro-ace/amip-hist/forcing_1999.nc",
+        "inputs/hiro-ace/amip-hist/forcing_2000.nc",
+        "inputs/hiro-ace/amip-hist/forcing_2001.nc",
+        "inputs/hiro-ace/amip-hist/forcing_2002.nc",
+        "inputs/hiro-ace/amip-hist/forcing_2003.nc",
+        "inputs/hiro-ace/amip-hist/forcing_2004.nc",
+        "inputs/hiro-ace/amip-hist/forcing_2005.nc",
+        "inputs/hiro-ace/amip-hist/forcing_2006.nc",
+        "inputs/hiro-ace/amip-hist/forcing_2007.nc",
+        "inputs/hiro-ace/amip-hist/forcing_2008.nc",
+        "inputs/hiro-ace/amip-hist/forcing_2009.nc",
+        "inputs/hiro-ace/amip-hist/forcing_2010.nc",
+        "inputs/hiro-ace/amip-hist/forcing_2011.nc",
+        "inputs/hiro-ace/amip-hist/forcing_2012.nc",
+        "inputs/hiro-ace/amip-hist/forcing_2013.nc",
+        "inputs/hiro-ace/amip-hist/forcing_2014.nc",
+        "inputs/hiro-ace/amip-oos/forcing_2014.nc",
+        "inputs/hiro-ace/amip-oos/forcing_2015.nc",
+        "inputs/hiro-ace/amip-oos/forcing_2016.nc",
+        "inputs/hiro-ace/amip-oos/forcing_2017.nc",
+        "inputs/hiro-ace/amip-oos/forcing_2018.nc",
+        "inputs/hiro-ace/amip-oos/forcing_2019.nc",
+        "inputs/hiro-ace/amip-oos/forcing_2020.nc",
+        "inputs/hiro-ace/amip-oos/forcing_2021.nc",
+        "inputs/hiro-ace/amip-oos/forcing_2022.nc",
+        "inputs/hiro-ace/amip-oos/forcing_2023.nc",
+        "inputs/hiro-ace/amip-oos/forcing_2024.nc"
+      ],
+      "timestep_hours": 6,
+      "stochastic": true,
+      "default_n_ensemble_per_ic": 1,
+      "notes": "HiRO-ACE ACE2S stage (Ai2), stochastic (amip-hist 1994-2014 + amip-oos 2014-2024). Shipped ic_1994.nc is a HiRO 2014-01-01 state (ic_2014.nc[0]) relabelled to 1994-01-01; discard the first simulated year as spin-up."
+    },
+    {
+      "name": "ace2-som",
+      "family": "fme",
+      "fme_version": "2026.5.1",
+      "fme_module": "fme.ace.inference",
+      "calendar": "proleptic_gregorian",
+      "checkpoint": "${DATA}/models/ace2-som/ace2_som_ckpt.tar",
+      "checkpoint_sha256": "b191174e45ac16d86f3a5ccfa99b8952866ec6482b19e08edbd0f05114f5f9ab",
+      "ic_files": [
+        "${DATA}/inputs/ace2-som/ic/1xCO2/ic.nc",
+        "${DATA}/inputs/ace2-som/ic/3xCO2/ic.nc"
+      ],
+      "ic_sha256": {
+        "${DATA}/inputs/ace2-som/ic/1xCO2/ic.nc": "f481537cc80e4dd4c41f4e629563b2f62b4c3b1d9ede3db67f429ed3669fab13",
+        "${DATA}/inputs/ace2-som/ic/3xCO2/ic.nc": "449b50d6b97d360d70bb52f90ee604e933a84d1168cab7658c2fba20774ef751"
+      },
+      "forcing_sets": [
+        {
+          "name": "1xCO2",
+          "dir": "${DATA}/inputs/ace2-som/1xCO2",
+          "window": [
+            "2032-01-01T00:00:00",
+            "2035-12-31T18:00:00"
+          ],
+          "ic_files": [
+            "${DATA}/inputs/ace2-som/ic/1xCO2/ic.nc"
+          ]
+        },
+        {
+          "name": "3xCO2",
+          "dir": "${DATA}/inputs/ace2-som/3xCO2",
+          "window": [
+            "2032-01-01T00:00:00",
+            "2035-12-31T18:00:00"
+          ],
+          "ic_files": [
+            "${DATA}/inputs/ace2-som/ic/3xCO2/ic.nc"
+          ]
+        }
+      ],
+      "required_files": [
+        "models/ace2-som/ace2_som_ckpt.tar",
+        "inputs/ace2-som/ic/1xCO2/ic.nc",
+        "inputs/ace2-som/ic/3xCO2/ic.nc",
+        "inputs/ace2-som/1xCO2/forcing_2032.nc",
+        "inputs/ace2-som/1xCO2/forcing_2033.nc",
+        "inputs/ace2-som/1xCO2/forcing_2034.nc",
+        "inputs/ace2-som/1xCO2/forcing_2035.nc",
+        "inputs/ace2-som/3xCO2/forcing_2032.nc",
+        "inputs/ace2-som/3xCO2/forcing_2033.nc",
+        "inputs/ace2-som/3xCO2/forcing_2034.nc",
+        "inputs/ace2-som/3xCO2/forcing_2035.nc"
+      ],
+      "timestep_hours": 6,
+      "stochastic": false,
+      "default_n_ensemble_per_ic": 1,
+      "notes": "ACE2-SOM (Ai2 / GFDL SHiELD slab-ocean), deterministic, proleptic_gregorian; scenario forcing sets 1xCO2 (default) and 3xCO2 over 2032-2035, each paired with its equilibrated mixed-layer IC."
+    },
+    {
+      "name": "ace2s",
+      "family": "fme",
+      "fme_version": "2026.5.1",
+      "fme_module": "fme.ace.inference",
+      "calendar": "julian",
+      "checkpoint": "${DATA}/models/hiro-ace/ACE2S.ckpt",
+      "checkpoint_sha256": "0b39d182074c02c92d6700088dfe5f6f1ae9488d50eb4a260564121ec2dcbf0e",
+      "ic_files": [
+        "${DATA}/inputs/ace2s/ic/ic_2014.nc",
+        "${DATA}/inputs/ace2s/ic/ic_2023.nc"
+      ],
+      "ic_sha256": {
+        "${DATA}/inputs/ace2s/ic/ic_2014.nc": "81633b64252b2bcf0b8101935ed01373af26e31f25bc7bc610cd16e12f4d5d9a",
+        "${DATA}/inputs/ace2s/ic/ic_2023.nc": "55d199efe0d9979a2daf378d2bd53790f539fa1a44ce3815104b77ac3adb2d78"
+      },
+      "forcing_sets": [
+        {
+          "name": "amip-2014-2023",
+          "dir": "${DATA}/inputs/ace2s/amip-2014-2023",
+          "window": [
+            "2014-01-01T00:00:00",
+            "2023-12-31T18:00:00"
+          ]
+        }
+      ],
+      "required_files": [
+        "models/hiro-ace/ACE2S.ckpt",
+        "inputs/ace2s/ic/ic_2014.nc",
+        "inputs/ace2s/ic/ic_2023.nc",
+        "inputs/ace2s/amip-2014-2023/forcing_2014.nc",
+        "inputs/ace2s/amip-2014-2023/forcing_2015.nc",
+        "inputs/ace2s/amip-2014-2023/forcing_2016.nc",
+        "inputs/ace2s/amip-2014-2023/forcing_2017.nc",
+        "inputs/ace2s/amip-2014-2023/forcing_2018.nc",
+        "inputs/ace2s/amip-2014-2023/forcing_2019.nc",
+        "inputs/ace2s/amip-2014-2023/forcing_2020.nc",
+        "inputs/ace2s/amip-2014-2023/forcing_2021.nc",
+        "inputs/ace2s/amip-2014-2023/forcing_2022.nc",
+        "inputs/ace2s/amip-2014-2023/forcing_2023.nc"
+      ],
+      "timestep_hours": 6,
+      "stochastic": true,
+      "default_n_ensemble_per_ic": 1,
+      "notes": "ACE2S standalone global stochastic atmosphere emulator (allenai/HiRO-ACE ACE2S.ckpt on HF-native 2014-2023 forcing and ic_2014/ic_2023; julian calendar)."
+    },
+    {
+      "name": "hiro-acev2",
+      "family": "fme",
+      "fme_version": "2026.10.0",
+      "fme_module": "fme.ace.inference",
+      "calendar": "julian",
+      "checkpoint": "${DATA}/models/hiro-acev2/ACE2S-X-SHiELD.ckpt",
+      "checkpoint_sha256": "121bcce0d03de915c7964aff6619e11e32fd6d0780fc9ca0b654f88c6535729f",
+      "ic_files": [
+        "${DATA}/inputs/hiro-acev2/ic/ic_2014.nc",
+        "${DATA}/inputs/hiro-acev2/ic/ic_2023.nc"
+      ],
+      "ic_sha256": {
+        "${DATA}/inputs/hiro-acev2/ic/ic_2014.nc": "81633b64252b2bcf0b8101935ed01373af26e31f25bc7bc610cd16e12f4d5d9a",
+        "${DATA}/inputs/hiro-acev2/ic/ic_2023.nc": "55d199efe0d9979a2daf378d2bd53790f539fa1a44ce3815104b77ac3adb2d78"
+      },
+      "forcing_sets": [
+        {
+          "name": "amip-2014-2023",
+          "dir": "${DATA}/inputs/hiro-acev2/amip-2014-2023",
+          "window": [
+            "2014-01-01T00:00:00",
+            "2023-12-31T18:00:00"
+          ]
+        }
+      ],
+      "required_files": [
+        "models/hiro-acev2/ACE2S-X-SHiELD.ckpt",
+        "inputs/hiro-acev2/ic/ic_2014.nc",
+        "inputs/hiro-acev2/ic/ic_2023.nc",
+        "inputs/hiro-acev2/amip-2014-2023/forcing_2014.nc",
+        "inputs/hiro-acev2/amip-2014-2023/forcing_2015.nc",
+        "inputs/hiro-acev2/amip-2014-2023/forcing_2016.nc",
+        "inputs/hiro-acev2/amip-2014-2023/forcing_2017.nc",
+        "inputs/hiro-acev2/amip-2014-2023/forcing_2018.nc",
+        "inputs/hiro-acev2/amip-2014-2023/forcing_2019.nc",
+        "inputs/hiro-acev2/amip-2014-2023/forcing_2020.nc",
+        "inputs/hiro-acev2/amip-2014-2023/forcing_2021.nc",
+        "inputs/hiro-acev2/amip-2014-2023/forcing_2022.nc",
+        "inputs/hiro-acev2/amip-2014-2023/forcing_2023.nc"
+      ],
+      "timestep_hours": 6,
+      "stochastic": true,
+      "default_n_ensemble_per_ic": 1,
+      "notes": "HiRO-ACEv2 global ACE2S-X-SHiELD stage (allenai/HiRO-ACEv2, fme 2026.10.0 overlay), stochastic, julian calendar; HF-native 2014-2023 forcing and ic_2014/ic_2023 (3 km downscaler deferred)."
+    },
+    {
+      "name": "samudrace-cm4",
+      "family": "fme",
+      "fme_version": "2026.5.1",
+      "fme_module": "fme.coupled.inference",
+      "calendar": "noleap",
+      "checkpoint": "${DATA}/models/samudrace-cm4/samudrACE_CM4_piControl_ckpt.tar",
+      "checkpoint_sha256": "cc20dcc8ec4254729f42acad7c2d55efc1b61a118f4370f730e537cdae8c2b79",
+      "ic_files": [
+        "${DATA}/inputs/samudrace-cm4/ic/0311-01-01T000000/atmosphere/initial_condition.nc",
+        "${DATA}/inputs/samudrace-cm4/ic/0313-01-01T000000/atmosphere/initial_condition.nc",
+        "${DATA}/inputs/samudrace-cm4/ic/0315-01-01T000000/atmosphere/initial_condition.nc",
+        "${DATA}/inputs/samudrace-cm4/ic/0317-01-01T000000/atmosphere/initial_condition.nc",
+        "${DATA}/inputs/samudrace-cm4/ic/0319-01-01T000000/atmosphere/initial_condition.nc",
+        "${DATA}/inputs/samudrace-cm4/ic/0151-01-06T000000/atmosphere/initial_condition.nc"
+      ],
+      "ocean_ic_files": [
+        "${DATA}/inputs/samudrace-cm4/ic/0311-01-01T000000/ocean/initial_condition.nc",
+        "${DATA}/inputs/samudrace-cm4/ic/0313-01-01T000000/ocean/initial_condition.nc",
+        "${DATA}/inputs/samudrace-cm4/ic/0315-01-01T000000/ocean/initial_condition.nc",
+        "${DATA}/inputs/samudrace-cm4/ic/0317-01-01T000000/ocean/initial_condition.nc",
+        "${DATA}/inputs/samudrace-cm4/ic/0319-01-01T000000/ocean/initial_condition.nc",
+        "${DATA}/inputs/samudrace-cm4/ic/0151-01-06T000000/ocean/initial_condition.nc"
+      ],
+      "ic_sha256": {
+        "${DATA}/inputs/samudrace-cm4/ic/0311-01-01T000000/atmosphere/initial_condition.nc": "48401621295aa4dbe168c3c4c636657a68ec3363dfb0f7e0bfbd5bff0210c264",
+        "${DATA}/inputs/samudrace-cm4/ic/0313-01-01T000000/atmosphere/initial_condition.nc": "061a82f8c101a46f073ea5c9588b005b07e32ff34ebc6cc69030ccff423eab50",
+        "${DATA}/inputs/samudrace-cm4/ic/0315-01-01T000000/atmosphere/initial_condition.nc": "1b60da411a6b1644fa7ff456a704874a495a5ea087716aaafa58a42f42fec4e2",
+        "${DATA}/inputs/samudrace-cm4/ic/0317-01-01T000000/atmosphere/initial_condition.nc": "2d05e0e73238862dea46cb70baa82ec03f27f2a3129f940705b85cdcce5c457e",
+        "${DATA}/inputs/samudrace-cm4/ic/0319-01-01T000000/atmosphere/initial_condition.nc": "bdd50e6dbae686022e4a13b87b8843a0b77f9cbe112c8ea5953d2ddedbefa649",
+        "${DATA}/inputs/samudrace-cm4/ic/0151-01-06T000000/atmosphere/initial_condition.nc": "5552c031c74c14d3a82e985ab5ab3de9d00157d716db576cb431b800909487af"
+      },
+      "ocean_ic_sha256": {
+        "${DATA}/inputs/samudrace-cm4/ic/0311-01-01T000000/ocean/initial_condition.nc": "6a84dbfae2da51a6de2dd3f55a5b1218f167e2631d6c7a3011639ccd2a3b200e",
+        "${DATA}/inputs/samudrace-cm4/ic/0313-01-01T000000/ocean/initial_condition.nc": "f6f2876c73b4e53d561c3da55c4842bb8012c8b894fb67e5689b04515894d2ff",
+        "${DATA}/inputs/samudrace-cm4/ic/0315-01-01T000000/ocean/initial_condition.nc": "a8179b6331e27b66a4e3b679afbad1c60a8332615ed2dc2e12ce36f039e0c95b",
+        "${DATA}/inputs/samudrace-cm4/ic/0317-01-01T000000/ocean/initial_condition.nc": "c8923fd85e9f0068f656f6ec0611b8f6113e5e23619d21671339c6faf32fee09",
+        "${DATA}/inputs/samudrace-cm4/ic/0319-01-01T000000/ocean/initial_condition.nc": "be4bd002e6a5416296114fa849cb22524a6500b276145fde5ae96746e7cb7f85",
+        "${DATA}/inputs/samudrace-cm4/ic/0151-01-06T000000/ocean/initial_condition.nc": "19e993bd1138a59464acbd704af1cc3ac05ac60cdd8e857b837226339bf0b4f3"
+      },
+      "forcing_sets": [
+        {
+          "name": "picontrol-0311",
+          "dir": "${DATA}/inputs/samudrace-cm4/forcing",
+          "window": [
+            "0311-01-01T00:00:00",
+            "0410-12-27T00:00:00"
+          ],
+          "file_pattern": "forcing_0311.nc",
+          "ic_files": [
+            "${DATA}/inputs/samudrace-cm4/ic/0311-01-01T000000/atmosphere/initial_condition.nc",
+            "${DATA}/inputs/samudrace-cm4/ic/0313-01-01T000000/atmosphere/initial_condition.nc",
+            "${DATA}/inputs/samudrace-cm4/ic/0315-01-01T000000/atmosphere/initial_condition.nc",
+            "${DATA}/inputs/samudrace-cm4/ic/0317-01-01T000000/atmosphere/initial_condition.nc",
+            "${DATA}/inputs/samudrace-cm4/ic/0319-01-01T000000/atmosphere/initial_condition.nc"
+          ],
+          "ocean_ic_files": [
+            "${DATA}/inputs/samudrace-cm4/ic/0311-01-01T000000/ocean/initial_condition.nc",
+            "${DATA}/inputs/samudrace-cm4/ic/0313-01-01T000000/ocean/initial_condition.nc",
+            "${DATA}/inputs/samudrace-cm4/ic/0315-01-01T000000/ocean/initial_condition.nc",
+            "${DATA}/inputs/samudrace-cm4/ic/0317-01-01T000000/ocean/initial_condition.nc",
+            "${DATA}/inputs/samudrace-cm4/ic/0319-01-01T000000/ocean/initial_condition.nc"
+          ],
+          "repeat_period_hours": 8760,
+          "repeat_base_start": "0311-01-01T00:00:00"
+        },
+        {
+          "name": "picontrol-0151",
+          "dir": "${DATA}/inputs/samudrace-cm4/forcing",
+          "window": [
+            "0151-01-06T00:00:00",
+            "0250-12-27T00:00:00"
+          ],
+          "file_pattern": "forcing_0151.nc",
+          "ic_files": [
+            "${DATA}/inputs/samudrace-cm4/ic/0151-01-06T000000/atmosphere/initial_condition.nc"
+          ],
+          "ocean_ic_files": [
+            "${DATA}/inputs/samudrace-cm4/ic/0151-01-06T000000/ocean/initial_condition.nc"
+          ],
+          "repeat_period_hours": 8760,
+          "repeat_base_start": "0151-01-01T00:00:00"
+        }
+      ],
+      "required_files": [
+        "models/samudrace-cm4/samudrACE_CM4_piControl_ckpt.tar",
+        "inputs/samudrace-cm4/forcing/forcing_0151.nc",
+        "inputs/samudrace-cm4/forcing/forcing_0311.nc",
+        "inputs/samudrace-cm4/ic/0311-01-01T000000/atmosphere/initial_condition.nc",
+        "inputs/samudrace-cm4/ic/0313-01-01T000000/atmosphere/initial_condition.nc",
+        "inputs/samudrace-cm4/ic/0315-01-01T000000/atmosphere/initial_condition.nc",
+        "inputs/samudrace-cm4/ic/0317-01-01T000000/atmosphere/initial_condition.nc",
+        "inputs/samudrace-cm4/ic/0319-01-01T000000/atmosphere/initial_condition.nc",
+        "inputs/samudrace-cm4/ic/0151-01-06T000000/atmosphere/initial_condition.nc",
+        "inputs/samudrace-cm4/ic/0311-01-01T000000/ocean/initial_condition.nc",
+        "inputs/samudrace-cm4/ic/0313-01-01T000000/ocean/initial_condition.nc",
+        "inputs/samudrace-cm4/ic/0315-01-01T000000/ocean/initial_condition.nc",
+        "inputs/samudrace-cm4/ic/0317-01-01T000000/ocean/initial_condition.nc",
+        "inputs/samudrace-cm4/ic/0319-01-01T000000/ocean/initial_condition.nc",
+        "inputs/samudrace-cm4/ic/0151-01-06T000000/ocean/initial_condition.nc"
+      ],
+      "timestep_hours": 120,
+      "stochastic": false,
+      "default_n_ensemble_per_ic": 1,
+      "notes": "SamudrACE-CM4 coupled atmosphere-ocean piControl emulator (Ai2/M2LInES/GFDL, fme 2026.5.1, fme.coupled.inference); 120h (5-day) coupled step = 20x6h atmosphere steps, noleap calendar; 1-year forcing_0311.nc / forcing_0151.nc extended via n_repeats when multi-year."
+    },
+    {
+      "name": "samudrace-e3smv3",
+      "family": "fme",
+      "fme_version": "2026.10.0",
+      "fme_module": "fme.coupled.inference",
+      "calendar": "noleap",
+      "checkpoint": "${DATA}/models/samudrace-e3smv3/SamudrACE-E3SMv3.tar",
+      "checkpoint_sha256": "dd5f9245e7d05f8e220ea7ed74b7a4ebd5621a9bfe5f540ddb136fc4625f0be4",
+      "ic_files": [
+        "${DATA}/inputs/samudrace-e3smv3/ic/SamudrACE-E3SMv3-ICx3-train_atmosphere_ic.nc"
+      ],
+      "ocean_ic_files": [
+        "${DATA}/inputs/samudrace-e3smv3/ic/SamudrACE-E3SMv3-ICx3-train_ocean_ic.nc"
+      ],
+      "ic_sha256": {
+        "${DATA}/inputs/samudrace-e3smv3/ic/SamudrACE-E3SMv3-ICx3-train_atmosphere_ic.nc": "9f97310b98bfa29a4c21c8a316014ede221d20b9b37d9e5cfda39a4e3bed0161"
+      },
+      "ocean_ic_sha256": {
+        "${DATA}/inputs/samudrace-e3smv3/ic/SamudrACE-E3SMv3-ICx3-train_ocean_ic.nc": "b21bf023757ad5d80c387dfaf3d71a8bc50b168258cfc555e9e195759d582609"
+      },
+      "forcing_sets": [
+        {
+          "name": "train-1yr",
+          "dir": "${DATA}/inputs/samudrace-e3smv3/forcing",
+          "window": [
+            "0425-01-03T12:00:00",
+            "0425-12-29T12:00:00"
+          ],
+          "file_pattern": "atmosphere-forcing-1yr.nc",
+          "ocean_dir": "${DATA}/inputs/samudrace-e3smv3/forcing",
+          "ocean_file_pattern": "ocean-forcing-1yr.nc"
+        }
+      ],
+      "required_files": [
+        "models/samudrace-e3smv3/SamudrACE-E3SMv3.tar",
+        "inputs/samudrace-e3smv3/ic/SamudrACE-E3SMv3-ICx3-train_atmosphere_ic.nc",
+        "inputs/samudrace-e3smv3/ic/SamudrACE-E3SMv3-ICx3-train_ocean_ic.nc",
+        "inputs/samudrace-e3smv3/forcing/atmosphere-forcing-1yr.nc",
+        "inputs/samudrace-e3smv3/forcing/ocean-forcing-1yr.nc"
+      ],
+      "timestep_hours": 120,
+      "stochastic": true,
+      "default_n_ensemble_per_ic": 1,
+      "notes": "SamudrACE-E3SMv3 stochastic coupled atmosphere-ocean piControl emulator (Ai2, fme 2026.10.0 overlay, fme.coupled.inference); 120h (5-day) coupled step = 20x6h atmosphere steps, noleap calendar; 1-year native forcing (max 72 coupled steps; fme 2026.10.0 has no n_repeats) + 3-state ICx3 at 0425-01-03T12:00:00."
+    },
+    {
+      "name": "dlesym-v1.0",
+      "family": "e2s-dlesym",
+      "fme_module": "aimip.emu_job",
+      "calendar": "proleptic_gregorian",
+      "checkpoint": "${DATA}/models/dlesym-v1/checkpoints/v1.0/atmos/atmos_model_0.mdlus",
+      "checkpoint_sha256": "e2b4064f202997eafcf751754466e19475a3900f03fb3647d3163721f64d6cf0",
+      "ic_files": [],
+      "forcing_sets": [
+        {
+          "name": "era5-initial-state",
+          "dir": "${DATA}/models/dlesym-v1",
+          "window": [
+            "1940-01-04T00:00:00",
+            "2023-12-31T18:00:00"
+          ]
+        }
+      ],
+      "required_files": [
+        "models/dlesym-v1/checkpoints/v1.0/atmos/atmos_model_0.mdlus",
+        "models/dlesym-v1/checkpoints/v1.0/atmos/atmos_model_1.mdlus",
+        "models/dlesym-v1/checkpoints/v1.0/atmos/atmos_model_2.mdlus",
+        "models/dlesym-v1/checkpoints/v1.0/atmos/atmos_model_3.mdlus",
+        "models/dlesym-v1/checkpoints/v1.0/config.yaml",
+        "models/dlesym-v1/checkpoints/v1.0/ocean/ocean_model_0.mdlus",
+        "models/dlesym-v1/checkpoints/v1.0/ocean/ocean_model_1.mdlus",
+        "models/dlesym-v1/checkpoints/v1.0/ocean/ocean_model_2.mdlus",
+        "models/dlesym-v1/checkpoints/v1.0/ocean/ocean_model_3.mdlus",
+        "models/dlesym-v1/config.yaml",
+        "models/dlesym-v1/hpx_lat.npy",
+        "models/dlesym-v1/hpx_lon.npy",
+        "models/dlesym-v1/land_sea_mask.npy",
+        "models/dlesym-v1/topography.npy"
+      ],
+      "timestep_hours": 6,
+      "stochastic": false,
+      "default_n_ensemble_per_ic": 1,
+      "notes": "DLESyM v1.0 (NVIDIA/UW, Earth2Studio): the prior ERA5 checkpoint of the S2S model, deprecated upstream; aimip loads checkpoint pair 0 of 4. Coupled atmosphere-ocean on HEALPix-64, output on 0.25 deg lat-lon, deterministic. The authors built the V1 checkpoints for subseasonal-to-seasonal forecasts (weeks to months); multi-year runs are outside what they validated. Multi-year rollouts can become unstable; aimip stops a run at the first non-finite or out-of-band month. Starts from ERA5 at --start (ARCO-ERA5, fetched at prepare time), not forced; --steps counts 6-h steps."
+    },
+    {
+      "name": "dlesym-v1.1",
+      "family": "e2s-dlesym",
+      "fme_module": "aimip.emu_job",
+      "calendar": "proleptic_gregorian",
+      "checkpoint": "${DATA}/models/dlesym-v1/checkpoints/v1.1/atmos/atmos_model_0.mdlus",
+      "checkpoint_sha256": "d3752ccd163c0157263f1dcdb722824cb4a2cca7368b07050172a8ba632a0950",
+      "ic_files": [],
+      "forcing_sets": [
+        {
+          "name": "era5-initial-state",
+          "dir": "${DATA}/models/dlesym-v1",
+          "window": [
+            "1940-01-04T00:00:00",
+            "2023-12-31T18:00:00"
+          ]
+        }
+      ],
+      "required_files": [
+        "models/dlesym-v1/checkpoints/v1.1/atmos/atmos_model_0.mdlus",
+        "models/dlesym-v1/checkpoints/v1.1/config.yaml",
+        "models/dlesym-v1/checkpoints/v1.1/ocean/ocean_model_0.mdlus",
+        "models/dlesym-v1/config.yaml",
+        "models/dlesym-v1/hpx_lat.npy",
+        "models/dlesym-v1/hpx_lon.npy",
+        "models/dlesym-v1/land_sea_mask.npy",
+        "models/dlesym-v1/topography.npy"
+      ],
+      "timestep_hours": 6,
+      "stochastic": true,
+      "default_n_ensemble_per_ic": 1,
+      "notes": "DLESyM v1.1 (Earth2Studio), AI Weather Quest checkpoint with conditional layer norm: samples noise every step, so --members gives distinct members (seed + k). The authors built the V1 checkpoints for subseasonal-to-seasonal forecasts (weeks to months); multi-year runs are outside what they validated. aimip stops a run at the first non-finite or out-of-band month. Diagnostic 6-h precipitation tp6 (monthly_precip.nc). Starts from ERA5 at --start; --steps counts 6-h steps."
+    },
+    {
+      "name": "dlesym-v0-isccp",
+      "family": "e2s-dlesym",
+      "fme_module": "aimip.emu_job",
+      "calendar": "proleptic_gregorian",
+      "checkpoint": "${DATA}/models/dlesym-v0-isccp/atmos_model_0.mdlus",
+      "checkpoint_sha256": "a930bbfbcbe6a1e0c7d76b493bdff33b564d734f40a1f735b1709c0603ad0f5f",
+      "ic_files": [],
+      "forcing_sets": [
+        {
+          "name": "era5-initial-state",
+          "dir": "${DATA}/models/dlesym-v0-isccp",
+          "window": [
+            "1940-01-04T00:00:00",
+            "2023-12-31T18:00:00"
+          ]
+        }
+      ],
+      "required_files": [
+        "models/dlesym-v0-isccp/atmos_model_0.mdlus",
+        "models/dlesym-v0-isccp/config.yaml",
+        "models/dlesym-v0-isccp/era5_ttr_doy_stats_hpx64.nc",
+        "models/dlesym-v0-isccp/hpx_lat.npy",
+        "models/dlesym-v0-isccp/hpx_lon.npy",
+        "models/dlesym-v0-isccp/isccp_olr_doy_stats_hpx64.nc",
+        "models/dlesym-v0-isccp/land_sea_mask.npy",
+        "models/dlesym-v0-isccp/ocean_model_0.mdlus",
+        "models/dlesym-v0-isccp/precip_model_0.mdlus",
+        "models/dlesym-v0-isccp/topography.npy"
+      ],
+      "timestep_hours": 6,
+      "stochastic": false,
+      "default_n_ensemble_per_ic": 1,
+      "notes": "DLESyMv0-ISCCP (Earth2Studio): the climate checkpoint Earth2Studio documents for 100-1000-year rollouts (Cresswell-Clay et al. 2024). It takes ISCCP-like OLR; with use_ttr the ERA5 OLR of the initial state is converted by the authors' day-of-year moment matching, then the model uses its own OLR. Deterministic; starts from ERA5 at --start; --steps counts 6-h steps."
+    },
+    {
+      "name": "archesclimate-ssp",
+      "family": "arches",
+      "fme_module": "aimip.emu_job",
+      "calendar": "proleptic_gregorian",
+      "checkpoint": "${DATA}/models/archesclimate-ssp/archesclimate-ssp-deterministic/model.ckpt",
+      "checkpoint_sha256": "e0742f4d4deef466f2a628ac6b80bb8cb5f890d0bd3a6fd3ec8c0ca29257d4b9",
+      "ic_files": [],
+      "forcing_sets": [
+        {
+          "name": "ssp434",
+          "dir": "${DATA}/inputs/archesclimate-ssp/memmap_filled_in/r1i1p1f1_ssp434_interpolation.memmap",
+          "window": [
+            "2015-01-01T00:00:00",
+            "2100-11-01T00:00:00"
+          ]
+        },
+        {
+          "name": "ssp585",
+          "dir": "${DATA}/inputs/archesclimate-ssp/memmap_filled_in/r1i1p1f1_ssp585_interpolation.memmap",
+          "window": [
+            "2015-01-01T00:00:00",
+            "2100-11-01T00:00:00"
+          ]
+        }
+      ],
+      "required_files": [
+        "models/archesclimate-ssp/archesclimate-ssp-deterministic/config.yaml",
+        "models/archesclimate-ssp/archesclimate-ssp-deterministic/model.ckpt",
+        "inputs/archesclimate-ssp/memmap_filled_in/r1i1p1f1_ssp434_interpolation.memmap/lev.memmap",
+        "inputs/archesclimate-ssp/memmap_filled_in/r1i1p1f1_ssp434_interpolation.memmap/level.memmap",
+        "inputs/archesclimate-ssp/memmap_filled_in/r1i1p1f1_ssp434_interpolation.memmap/meta.json",
+        "inputs/archesclimate-ssp/memmap_filled_in/r1i1p1f1_ssp434_interpolation.memmap/non_spatial_forcings.memmap",
+        "inputs/archesclimate-ssp/memmap_filled_in/r1i1p1f1_ssp434_interpolation.memmap/ozone.memmap",
+        "inputs/archesclimate-ssp/memmap_filled_in/r1i1p1f1_ssp434_interpolation.memmap/spatial_forcings.memmap",
+        "inputs/archesclimate-ssp/memmap_filled_in/r1i1p1f1_ssp434_interpolation.memmap/surface.memmap",
+        "inputs/archesclimate-ssp/memmap_filled_in/r1i1p1f1_ssp434_interpolation.memmap/time/meta.json",
+        "inputs/archesclimate-ssp/memmap_filled_in/r1i1p1f1_ssp434_interpolation.memmap/time/other.pickle",
+        "inputs/archesclimate-ssp/memmap_filled_in/r1i1p1f1_ssp585_interpolation.memmap/lev.memmap",
+        "inputs/archesclimate-ssp/memmap_filled_in/r1i1p1f1_ssp585_interpolation.memmap/level.memmap",
+        "inputs/archesclimate-ssp/memmap_filled_in/r1i1p1f1_ssp585_interpolation.memmap/meta.json",
+        "inputs/archesclimate-ssp/memmap_filled_in/r1i1p1f1_ssp585_interpolation.memmap/non_spatial_forcings.memmap",
+        "inputs/archesclimate-ssp/memmap_filled_in/r1i1p1f1_ssp585_interpolation.memmap/ozone.memmap",
+        "inputs/archesclimate-ssp/memmap_filled_in/r1i1p1f1_ssp585_interpolation.memmap/spatial_forcings.memmap",
+        "inputs/archesclimate-ssp/memmap_filled_in/r1i1p1f1_ssp585_interpolation.memmap/surface.memmap",
+        "inputs/archesclimate-ssp/memmap_filled_in/r1i1p1f1_ssp585_interpolation.memmap/time/meta.json",
+        "inputs/archesclimate-ssp/memmap_filled_in/r1i1p1f1_ssp585_interpolation.memmap/time/other.pickle",
+        "models/archesclimate-ssp/reference_data/orography.pt",
+        "models/archesclimate-ssp/stats/cmip_stats_new_ozone.pt"
+      ],
+      "timestep_hours": 730,
+      "stochastic": false,
+      "default_n_ensemble_per_ic": 1,
+      "notes": "ArchesClimate-SSP deterministic (INRIA/Mila, Clyne et al. 2026): monthly emulator of IPSL-CM6A-LR on a 144 x 144 grid (1.25 deg lat x 2.5 deg lon), atmosphere + upper-ocean temperature, driven by the scenario's forcing. Starts from the scenario's 2015 state (--start 2015-01-01T00:00:00; first output March 2015); --steps counts months (at most 1029); --forcing-set ssp434 (default, the authors' validation scenario) or ssp585 (test)."
+    }
+  ]
+}

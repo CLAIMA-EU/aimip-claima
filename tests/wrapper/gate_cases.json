@@ -1,0 +1,422 @@
+[
+  {
+    "name": "valid_standard_slurm_script",
+    "accept": true,
+    "lines": [
+      "#!/bin/bash",
+      "# aimip-generated v1",
+      "#SBATCH --job-name=aimip-ace2-era5",
+      "#SBATCH --partition=gpu",
+      "#SBATCH --account=proj_gpu",
+      "#SBATCH --gres=gpu:a100_80:1",
+      "#SBATCH --cpus-per-task=32",
+      "#SBATCH --hint=nomultithread",
+      "#SBATCH --mem=64G",
+      "#SBATCH --time=02:00:00",
+      "#SBATCH --output={RUN_DIR}/slurm-%j.out",
+      "#SBATCH --error={RUN_DIR}/slurm-%j.err",
+      "",
+      "set -euo pipefail",
+      "\"{PREFIX}/bin/aimip\" exec-fme \"{RUN_DIR}\""
+    ]
+  },
+  {
+    "name": "valid_minimal_local_script",
+    "accept": true,
+    "lines": [
+      "#!/bin/bash",
+      "# aimip-generated v1",
+      "",
+      "set -euo pipefail",
+      "\"{PREFIX}/bin/aimip\" exec-fme \"{RUN_DIR}\""
+    ]
+  },
+  {
+    "name": "valid_spin_multi_member_exec",
+    "accept": true,
+    "lines": [
+      "#!/bin/bash",
+      "# aimip-generated v1",
+      "set -euo pipefail",
+      "\"{PREFIX}/bin/aimip\" exec-fme \"{RUN_DIR}/0\"",
+      "\"{PREFIX}/bin/aimip\" exec-fme \"{RUN_DIR}/1\""
+    ]
+  },
+  {
+    "name": "valid_day_walltime_format",
+    "accept": true,
+    "lines": [
+      "#!/bin/bash",
+      "# aimip-generated v1",
+      "#SBATCH --time=2-12:00:00",
+      "#SBATCH --output={RUN_DIR}/slurm-%j.out",
+      "\"{PREFIX}/bin/aimip\" exec-fme \"{RUN_DIR}\""
+    ]
+  },
+  {
+    "name": "valid_sticky_world_writable_parent",
+    "accept": true,
+    "setup": "parent_1777_sticky",
+    "lines": [
+      "#!/bin/bash",
+      "# aimip-generated v1",
+      "\"{PREFIX}/bin/aimip\" exec-fme \"{RUN_DIR}\""
+    ]
+  },
+  {
+    "name": "refuse_arbitrary_shebang",
+    "accept": false,
+    "lines": [
+      "#!/usr/bin/env -S python3 -c print(314159)",
+      "# aimip-generated v1",
+      "\"{PREFIX}/bin/aimip\" exec-fme \"{RUN_DIR}\""
+    ]
+  },
+  {
+    "name": "refuse_missing_generated_marker",
+    "accept": false,
+    "lines": [
+      "#!/bin/bash",
+      "# custom script",
+      "\"{PREFIX}/bin/aimip\" exec-fme \"{RUN_DIR}\""
+    ]
+  },
+  {
+    "name": "refuse_crlf_line_endings",
+    "accept": false,
+    "raw_text": "#!/bin/bash\r\n# aimip-generated v1\r\n\"{PREFIX}/bin/aimip\" exec-fme \"{RUN_DIR}\"\r\n"
+  },
+  {
+    "name": "refuse_empty_script",
+    "accept": false,
+    "raw_text": ""
+  },
+  {
+    "name": "refuse_no_exec_fme_line",
+    "accept": false,
+    "lines": [
+      "#!/bin/bash",
+      "# aimip-generated v1",
+      "set -euo pipefail"
+    ]
+  },
+  {
+    "name": "refuse_regex_metachar_prefix_mismatch",
+    "accept": false,
+    "lines": [
+      "#!/bin/bash",
+      "# aimip-generated v1",
+      "\"{WRONG_PREFIX}/bin/aimip\" exec-fme \"{RUN_DIR}\""
+    ]
+  },
+  {
+    "name": "refuse_sbatch_hint_other_value",
+    "accept": false,
+    "lines": [
+      "#!/bin/bash",
+      "# aimip-generated v1",
+      "#SBATCH --hint=multithread",
+      "\"{PREFIX}/bin/aimip\" exec-fme \"{RUN_DIR}\""
+    ]
+  },
+  {
+    "name": "refuse_sbatch_key_without_equals",
+    "accept": false,
+    "lines": [
+      "#!/bin/bash",
+      "# aimip-generated v1",
+      "#SBATCH --partition",
+      "\"{PREFIX}/bin/aimip\" exec-fme \"{RUN_DIR}\""
+    ]
+  },
+  {
+    "name": "refuse_sbatch_empty_value",
+    "accept": false,
+    "lines": [
+      "#!/bin/bash",
+      "# aimip-generated v1",
+      "#SBATCH --partition=",
+      "\"{PREFIX}/bin/aimip\" exec-fme \"{RUN_DIR}\""
+    ]
+  },
+  {
+    "name": "refuse_sbatch_wrap_directive",
+    "accept": false,
+    "lines": [
+      "#!/bin/bash",
+      "# aimip-generated v1",
+      "#SBATCH --wrap=id",
+      "\"{PREFIX}/bin/aimip\" exec-fme \"{RUN_DIR}\""
+    ]
+  },
+  {
+    "name": "refuse_sbatch_export_directive",
+    "accept": false,
+    "lines": [
+      "#!/bin/bash",
+      "# aimip-generated v1",
+      "#SBATCH --export=ALL",
+      "\"{PREFIX}/bin/aimip\" exec-fme \"{RUN_DIR}\""
+    ]
+  },
+  {
+    "name": "refuse_sbatch_chdir_directive",
+    "accept": false,
+    "lines": [
+      "#!/bin/bash",
+      "# aimip-generated v1",
+      "#SBATCH --chdir=/tmp",
+      "\"{PREFIX}/bin/aimip\" exec-fme \"{RUN_DIR}\""
+    ]
+  },
+  {
+    "name": "refuse_sbatch_dot_dot_value",
+    "accept": false,
+    "lines": [
+      "#!/bin/bash",
+      "# aimip-generated v1",
+      "#SBATCH --output={RUN_DIR}/../../x-%j.out",
+      "\"{PREFIX}/bin/aimip\" exec-fme \"{RUN_DIR}\""
+    ]
+  },
+  {
+    "name": "refuse_sbatch_metachar_value",
+    "accept": false,
+    "lines": [
+      "#!/bin/bash",
+      "# aimip-generated v1",
+      "#SBATCH --job-name=bad;id",
+      "\"{PREFIX}/bin/aimip\" exec-fme \"{RUN_DIR}\""
+    ]
+  },
+  {
+    "name": "refuse_slurm_output_outside_run_dir",
+    "accept": false,
+    "lines": [
+      "#!/bin/bash",
+      "# aimip-generated v1",
+      "#SBATCH --output=/tmp/x-%j.out",
+      "\"{PREFIX}/bin/aimip\" exec-fme \"{RUN_DIR}\""
+    ]
+  },
+  {
+    "name": "refuse_slurm_error_outside_run_dir",
+    "accept": false,
+    "lines": [
+      "#!/bin/bash",
+      "# aimip-generated v1",
+      "#SBATCH --error={OTHER_DIR}/slurm-%j.err",
+      "\"{PREFIX}/bin/aimip\" exec-fme \"{RUN_DIR}\""
+    ]
+  },
+  {
+    "name": "refuse_slurm_log_escaping_dir_symlink",
+    "accept": false,
+    "setup": "symlink_log_subdir",
+    "lines": [
+      "#!/bin/bash",
+      "# aimip-generated v1",
+      "#SBATCH --output={RUN_DIR}/logs/slurm-%j.out",
+      "\"{PREFIX}/bin/aimip\" exec-fme \"{RUN_DIR}\""
+    ]
+  },
+  {
+    "name": "refuse_slurm_log_symlinked_file",
+    "accept": false,
+    "setup": "symlink_log_file",
+    "lines": [
+      "#!/bin/bash",
+      "# aimip-generated v1",
+      "#SBATCH --output={RUN_DIR}/slurm-%j.out",
+      "#SBATCH --error={RUN_DIR}/slurm-%j.err",
+      "\"{PREFIX}/bin/aimip\" exec-fme \"{RUN_DIR}\""
+    ]
+  },
+  {
+    "name": "refuse_slurm_log_nested_subdir",
+    "accept": false,
+    "setup": "nested_log_subdir",
+    "lines": [
+      "#!/bin/bash",
+      "# aimip-generated v1",
+      "#SBATCH --error={RUN_DIR}/sub/slurm-%j.err",
+      "\"{PREFIX}/bin/aimip\" exec-fme \"{RUN_DIR}\""
+    ]
+  },
+  {
+    "name": "refuse_slurm_log_percent_x_substitution",
+    "accept": false,
+    "setup": "symlink_percent_x_log",
+    "lines": [
+      "#!/bin/bash",
+      "# aimip-generated v1",
+      "#SBATCH --job-name=escape",
+      "#SBATCH --output={RUN_DIR}/%x.out",
+      "\"{PREFIX}/bin/aimip\" exec-fme \"{RUN_DIR}\""
+    ]
+  },
+  {
+    "name": "refuse_slurm_log_percent_j_expanded_symlink",
+    "accept": false,
+    "setup": "symlink_expanded_job_log",
+    "lines": [
+      "#!/bin/bash",
+      "# aimip-generated v1",
+      "#SBATCH --output={RUN_DIR}/slurm-%j.out",
+      "#SBATCH --error={RUN_DIR}/slurm-%j.err",
+      "\"{PREFIX}/bin/aimip\" exec-fme \"{RUN_DIR}\""
+    ]
+  },
+  {
+    "name": "valid_plain_slurm_log_filename",
+    "accept": true,
+    "lines": [
+      "#!/bin/bash",
+      "# aimip-generated v1",
+      "#SBATCH --output={RUN_DIR}/plain.out",
+      "#SBATCH --error={RUN_DIR}/plain.err",
+      "\"{PREFIX}/bin/aimip\" exec-fme \"{RUN_DIR}\""
+    ]
+  },
+  {
+    "name": "refuse_trailing_shell_command_after_exec",
+    "accept": false,
+    "lines": [
+      "#!/bin/bash",
+      "# aimip-generated v1",
+      "\"{PREFIX}/bin/aimip\" exec-fme \"{RUN_DIR}\"; id"
+    ]
+  },
+  {
+    "name": "refuse_command_substitution_in_exec",
+    "accept": false,
+    "lines": [
+      "#!/bin/bash",
+      "# aimip-generated v1",
+      "\"{PREFIX}/bin/aimip\" exec-fme \"{RUN_DIR}/$(id)\""
+    ]
+  },
+  {
+    "name": "refuse_dot_dot_in_exec_target",
+    "accept": false,
+    "lines": [
+      "#!/bin/bash",
+      "# aimip-generated v1",
+      "\"{PREFIX}/bin/aimip\" exec-fme \"{RUN_DIR}/../etc\""
+    ]
+  },
+  {
+    "name": "refuse_exec_target_outside_run_dir",
+    "accept": false,
+    "lines": [
+      "#!/bin/bash",
+      "# aimip-generated v1",
+      "\"{PREFIX}/bin/aimip\" exec-fme \"{OTHER_DIR}\""
+    ]
+  },
+  {
+    "name": "refuse_exec_target_sibling_prefix_collision",
+    "accept": false,
+    "lines": [
+      "#!/bin/bash",
+      "# aimip-generated v1",
+      "\"{PREFIX}/bin/aimip\" exec-fme \"{RUN_DIR}-sibling\""
+    ]
+  },
+  {
+    "name": "refuse_unexpected_shell_command_line",
+    "accept": false,
+    "lines": [
+      "#!/bin/bash",
+      "# aimip-generated v1",
+      "echo unexpected",
+      "\"{PREFIX}/bin/aimip\" exec-fme \"{RUN_DIR}\""
+    ]
+  },
+  {
+    "name": "refuse_group_writable_run_dir",
+    "accept": false,
+    "setup": "chmod_dir_gw",
+    "lines": [
+      "#!/bin/bash",
+      "# aimip-generated v1",
+      "\"{PREFIX}/bin/aimip\" exec-fme \"{RUN_DIR}\""
+    ]
+  },
+  {
+    "name": "refuse_world_writable_config_yaml",
+    "accept": false,
+    "setup": "chmod_config_0666",
+    "lines": [
+      "#!/bin/bash",
+      "# aimip-generated v1",
+      "\"{PREFIX}/bin/aimip\" exec-fme \"{RUN_DIR}\""
+    ]
+  },
+  {
+    "name": "refuse_symlinked_run_dir",
+    "accept": false,
+    "setup": "symlink_run_dir",
+    "lines": [
+      "#!/bin/bash",
+      "# aimip-generated v1",
+      "\"{PREFIX}/bin/aimip\" exec-fme \"{RUN_DIR}\""
+    ]
+  },
+  {
+    "name": "refuse_symlinked_slurm_jobid",
+    "accept": false,
+    "setup": "symlink_slurm_jobid",
+    "lines": [
+      "#!/bin/bash",
+      "# aimip-generated v1",
+      "\"{PREFIX}/bin/aimip\" exec-fme \"{RUN_DIR}\""
+    ]
+  },
+  {
+    "name": "refuse_world_writable_parent_without_sticky",
+    "accept": false,
+    "setup": "parent_0777_no_sticky",
+    "lines": [
+      "#!/bin/bash",
+      "# aimip-generated v1",
+      "\"{PREFIX}/bin/aimip\" exec-fme \"{RUN_DIR}\""
+    ]
+  },
+  {
+    "name": "refuse_caller_alias_into_world_writable_parent",
+    "accept": false,
+    "setup": "alias_into_0777_parent",
+    "lines": [
+      "#!/bin/bash",
+      "# aimip-generated v1",
+      "\"{PREFIX}/bin/aimip\" exec-fme \"{RUN_DIR}\""
+    ]
+  },
+  {
+    "name": "refuse_already_submitted_slurm_jobid",
+    "accept": false,
+    "setup": "preexisting_slurm_jobid",
+    "lines": [
+      "#!/bin/bash",
+      "# aimip-generated v1",
+      "\"{PREFIX}/bin/aimip\" exec-fme \"{RUN_DIR}\""
+    ]
+  },
+  {
+    "name": "refuse_already_submitted_local_pid",
+    "accept": false,
+    "setup": "preexisting_local_pid",
+    "lines": [
+      "#!/bin/bash",
+      "# aimip-generated v1",
+      "\"{PREFIX}/bin/aimip\" exec-fme \"{RUN_DIR}\""
+    ]
+  },
+  {
+    "name": "refuse_missing_job_sbatch",
+    "accept": false,
+    "setup": "missing_job_sbatch",
+    "lines": []
+  }
+]

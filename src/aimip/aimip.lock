@@ -1,0 +1,2889 @@
+{
+  "schema_version": 1,
+  "generated_by": "aimip setup --write-lock",
+  "files": {
+    "models/ace2-era5/ace2_era5_ckpt.tar": {
+      "size": 1823641450,
+      "sha256": "0e2522df5a8db087f18bcebea6e88277cea7c3b71892b868c427aca27673edc2",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2-ERA5",
+        "path": "ace2_era5_ckpt.tar",
+        "revision": "f25123c52d7faa8f3533816a311cf3353ee83daa"
+      }
+    },
+    "models/ace2-shield/ace2_shield_ckpt.tar": {
+      "size": 1823643243,
+      "sha256": "2debfee21a4cee81f34631c81539a7f312b9ea67a73cebd0f9b00cbe3cc23482",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2-SHiELD",
+        "path": "ace2_shield_ckpt.tar",
+        "revision": "13978196694ef4bb20d6f9ed94a83e697adda328"
+      }
+    },
+    "models/ace2s-shield-plus/ace2s_shield_plus_ckpt.tar": {
+      "size": 3201379295,
+      "sha256": "4d11bf3ceb714d2c0ca971a5a7c1304efeab01f70edfe8a318e7816af0fbab25",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2S-SHiELD-plus",
+        "path": "ace2s_shield_plus_ckpt.tar",
+        "revision": "85ac7b78b13cf166d3b86c23c0894f41c97dbddb"
+      }
+    },
+    "models/ace2-eamv3/ace2_EAMv3_ckpt.tar": {
+      "size": 1823619578,
+      "sha256": "99c0bc44966394aab2a7bc91241893a115c163b57965af1717c5ac0e9bbf0e06",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2-EAMv3",
+        "path": "ace2_EAMv3_ckpt.tar",
+        "revision": "5f00316f10c1435db21b2a1dade7620f9a6de51c"
+      }
+    },
+    "models/hiro-ace/ACE2S.ckpt": {
+      "size": 1826513119,
+      "sha256": "0b39d182074c02c92d6700088dfe5f6f1ae9488d50eb4a260564121ec2dcbf0e",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/HiRO-ACE",
+        "path": "ACE2S.ckpt",
+        "revision": "286264358ea097b794a776375eef992b08b98668"
+      }
+    },
+    "inputs/ace2-era5/ic/ic_1979.nc": {
+      "size": 118449852,
+      "sha256": "a4e8c13f281bcefd759a18fd5aac21b7af3524fa19ed9b5b53e22f32598e8793",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2-ERA5",
+        "path": "initial_conditions/ic_1979.nc",
+        "revision": "f25123c52d7faa8f3533816a311cf3353ee83daa"
+      }
+    },
+    "inputs/ace2-era5/ic/ic_2001.nc": {
+      "size": 118449852,
+      "sha256": "e80ba139af21ad77bf3e5818a6ae54088a5cdc1a09cd1c1d668dee9eed7636bf",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2-ERA5",
+        "path": "initial_conditions/ic_2001.nc",
+        "revision": "f25123c52d7faa8f3533816a311cf3353ee83daa"
+      }
+    },
+    "models/ace2s-shield-plus/ic.nc": {
+      "size": 7176773,
+      "sha256": "3263356a1ff67726a96a5c42e93dc0579d49dc48a35328ea231910b95ef70120",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2S-SHiELD-plus",
+        "path": "initial_conditions/AMIP/ic.nc",
+        "revision": "85ac7b78b13cf166d3b86c23c0894f41c97dbddb"
+      }
+    },
+    "inputs/ace2-era5/amip-hist/forcing_1979.nc": {
+      "size": 556408593,
+      "sha256": "e320c3f3a29b0def616975448911052a05234b00f64993610e27cb5365f58217",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2-ERA5",
+        "path": "forcing_data/forcing_1979.nc",
+        "revision": "f25123c52d7faa8f3533816a311cf3353ee83daa"
+      }
+    },
+    "inputs/ace2-era5/amip-hist/forcing_1980.nc": {
+      "size": 559117100,
+      "sha256": "19ba41249d612ecd87d5a57ede673ea1a8ae76ce35ea78ed6ae0e0e34ae870ce",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2-ERA5",
+        "path": "forcing_data/forcing_1980.nc",
+        "revision": "f25123c52d7faa8f3533816a311cf3353ee83daa"
+      }
+    },
+    "inputs/ace2-era5/amip-hist/forcing_1981.nc": {
+      "size": 558021915,
+      "sha256": "dac8ee82caac2808590f8a96e883036daf573943a75bb758269872fa78051cc4",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2-ERA5",
+        "path": "forcing_data/forcing_1981.nc",
+        "revision": "f25123c52d7faa8f3533816a311cf3353ee83daa"
+      }
+    },
+    "inputs/ace2-era5/amip-hist/forcing_1982.nc": {
+      "size": 558911050,
+      "sha256": "1991c7be4fb62c9a5385905679e0f23295ddf0b118cbecabd6242b82ebaccb9b",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2-ERA5",
+        "path": "forcing_data/forcing_1982.nc",
+        "revision": "f25123c52d7faa8f3533816a311cf3353ee83daa"
+      }
+    },
+    "inputs/ace2-era5/amip-hist/forcing_1983.nc": {
+      "size": 557810197,
+      "sha256": "1873a4a30f1d333dc0601c518d8057de37e62120bdd2e20f7af21d62a0d0f239",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2-ERA5",
+        "path": "forcing_data/forcing_1983.nc",
+        "revision": "f25123c52d7faa8f3533816a311cf3353ee83daa"
+      }
+    },
+    "inputs/ace2-era5/amip-hist/forcing_1984.nc": {
+      "size": 558092623,
+      "sha256": "9840a8eddfbb84b5b22b6b9ca460af1931780d0feff2e2291745254d48021b88",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2-ERA5",
+        "path": "forcing_data/forcing_1984.nc",
+        "revision": "f25123c52d7faa8f3533816a311cf3353ee83daa"
+      }
+    },
+    "inputs/ace2-era5/amip-hist/forcing_1985.nc": {
+      "size": 557589900,
+      "sha256": "b7bb738387d702ca59613b6f312ea51bdcf89f998babe0f08d7d94df63d8ff75",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2-ERA5",
+        "path": "forcing_data/forcing_1985.nc",
+        "revision": "f25123c52d7faa8f3533816a311cf3353ee83daa"
+      }
+    },
+    "inputs/ace2-era5/amip-hist/forcing_1986.nc": {
+      "size": 555311245,
+      "sha256": "4315592cb08e69ffcf751bf2bf4ceb0ecc566bf965ff058f4f37945b50cf4b14",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2-ERA5",
+        "path": "forcing_data/forcing_1986.nc",
+        "revision": "f25123c52d7faa8f3533816a311cf3353ee83daa"
+      }
+    },
+    "inputs/ace2-era5/amip-hist/forcing_1987.nc": {
+      "size": 557850789,
+      "sha256": "af67d51c0bba50026be9231e51a906beeb3cc6be8c6af2352bb88d9c6949994c",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2-ERA5",
+        "path": "forcing_data/forcing_1987.nc",
+        "revision": "f25123c52d7faa8f3533816a311cf3353ee83daa"
+      }
+    },
+    "inputs/ace2-era5/amip-hist/forcing_1988.nc": {
+      "size": 557956245,
+      "sha256": "115f1814392a8ab5db1c355c7ada40581bac4d205a775c3c024ffb57813f1e2d",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2-ERA5",
+        "path": "forcing_data/forcing_1988.nc",
+        "revision": "f25123c52d7faa8f3533816a311cf3353ee83daa"
+      }
+    },
+    "inputs/ace2-era5/amip-hist/forcing_1989.nc": {
+      "size": 556561696,
+      "sha256": "995b84a514cc626472571ec591deac00fb3a3d280cc148bd66933cf1c3e4a16e",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2-ERA5",
+        "path": "forcing_data/forcing_1989.nc",
+        "revision": "f25123c52d7faa8f3533816a311cf3353ee83daa"
+      }
+    },
+    "inputs/ace2-era5/amip-hist/forcing_1990.nc": {
+      "size": 556377444,
+      "sha256": "685d37cc0076b0d1bda58b221cfeb7381012dd9beabf287fe4ce05642d5068ea",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2-ERA5",
+        "path": "forcing_data/forcing_1990.nc",
+        "revision": "f25123c52d7faa8f3533816a311cf3353ee83daa"
+      }
+    },
+    "inputs/ace2-era5/amip-hist/forcing_1991.nc": {
+      "size": 556672739,
+      "sha256": "777d8f63170e3140271021178b395cb40a9ed2190f5114126d11ac0e84a83d6c",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2-ERA5",
+        "path": "forcing_data/forcing_1991.nc",
+        "revision": "f25123c52d7faa8f3533816a311cf3353ee83daa"
+      }
+    },
+    "inputs/ace2-era5/amip-hist/forcing_1992.nc": {
+      "size": 558432722,
+      "sha256": "e885b125287e5e393da686dae24c7782b3026d154b30eba03b6b4f46f100d163",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2-ERA5",
+        "path": "forcing_data/forcing_1992.nc",
+        "revision": "f25123c52d7faa8f3533816a311cf3353ee83daa"
+      }
+    },
+    "inputs/ace2-era5/amip-hist/forcing_1993.nc": {
+      "size": 551871964,
+      "sha256": "7fa751d4761b48164941ac8b3a4964752282fb7439e4c55bbc18fe070d9454f3",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2-ERA5",
+        "path": "forcing_data/forcing_1993.nc",
+        "revision": "f25123c52d7faa8f3533816a311cf3353ee83daa"
+      }
+    },
+    "inputs/ace2-era5/amip-hist/forcing_1994.nc": {
+      "size": 555829809,
+      "sha256": "12b371bc5aae5c00ed858a40baf0eada7c5c625b762a3264e8abe134e197ed67",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2-ERA5",
+        "path": "forcing_data/forcing_1994.nc",
+        "revision": "f25123c52d7faa8f3533816a311cf3353ee83daa"
+      }
+    },
+    "inputs/ace2-era5/amip-hist/forcing_1995.nc": {
+      "size": 554931078,
+      "sha256": "f599de3dab5ca43a724e2589c7e0402ce4884e838f7fa68e164b39b83be935fd",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2-ERA5",
+        "path": "forcing_data/forcing_1995.nc",
+        "revision": "f25123c52d7faa8f3533816a311cf3353ee83daa"
+      }
+    },
+    "inputs/ace2-era5/amip-hist/forcing_1996.nc": {
+      "size": 558530477,
+      "sha256": "d649d12b9b2bb14706cfadd623fe2e7b9607eddf18d5cced1503119827103cd3",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2-ERA5",
+        "path": "forcing_data/forcing_1996.nc",
+        "revision": "f25123c52d7faa8f3533816a311cf3353ee83daa"
+      }
+    },
+    "inputs/ace2-era5/amip-hist/forcing_1997.nc": {
+      "size": 555862346,
+      "sha256": "290a9005b597d17851fd40e596aa356569fed0457c7686f7ec3a543f9bbbd8c5",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2-ERA5",
+        "path": "forcing_data/forcing_1997.nc",
+        "revision": "f25123c52d7faa8f3533816a311cf3353ee83daa"
+      }
+    },
+    "inputs/ace2-era5/amip-hist/forcing_1998.nc": {
+      "size": 557400998,
+      "sha256": "a08ca31fe3363672a85d9a33c169eff07c783d5581b99cff66a736056dd17237",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2-ERA5",
+        "path": "forcing_data/forcing_1998.nc",
+        "revision": "f25123c52d7faa8f3533816a311cf3353ee83daa"
+      }
+    },
+    "inputs/ace2-era5/amip-hist/forcing_1999.nc": {
+      "size": 557175532,
+      "sha256": "a2dfeb4054789f15d25849370e9f754ff5710d9d6f6fe26158460d1ad7b8021c",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2-ERA5",
+        "path": "forcing_data/forcing_1999.nc",
+        "revision": "f25123c52d7faa8f3533816a311cf3353ee83daa"
+      }
+    },
+    "inputs/ace2-era5/amip-hist/forcing_2000.nc": {
+      "size": 558401247,
+      "sha256": "948184237899c89e38fafb5a7bd8075394571ee40f653115060dc2cf04616e68",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2-ERA5",
+        "path": "forcing_data/forcing_2000.nc",
+        "revision": "f25123c52d7faa8f3533816a311cf3353ee83daa"
+      }
+    },
+    "inputs/ace2-era5/amip-hist/forcing_2001.nc": {
+      "size": 556713207,
+      "sha256": "b5d02bcf17f455544933e065dead38c8e2b4803e0b0deca5897a9e3a59605b5e",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2-ERA5",
+        "path": "forcing_data/forcing_2001.nc",
+        "revision": "f25123c52d7faa8f3533816a311cf3353ee83daa"
+      }
+    },
+    "inputs/ace2-era5/amip-hist/forcing_2002.nc": {
+      "size": 555547540,
+      "sha256": "ff91e83574a6be5205067264fec8b70dc18826492cdbca74045918cb432b5b2a",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2-ERA5",
+        "path": "forcing_data/forcing_2002.nc",
+        "revision": "f25123c52d7faa8f3533816a311cf3353ee83daa"
+      }
+    },
+    "inputs/ace2-era5/amip-hist/forcing_2003.nc": {
+      "size": 555062111,
+      "sha256": "233d02a10b13dc2f2cc7d1b3c06650670ec2679b186e5589e05be7f1fa721481",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2-ERA5",
+        "path": "forcing_data/forcing_2003.nc",
+        "revision": "f25123c52d7faa8f3533816a311cf3353ee83daa"
+      }
+    },
+    "inputs/ace2-era5/amip-hist/forcing_2004.nc": {
+      "size": 556276242,
+      "sha256": "e81c8d003dda3d5700c36eb587c0dd007c8b3e20410884e868151d034acb101b",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2-ERA5",
+        "path": "forcing_data/forcing_2004.nc",
+        "revision": "f25123c52d7faa8f3533816a311cf3353ee83daa"
+      }
+    },
+    "inputs/ace2-era5/amip-hist/forcing_2005.nc": {
+      "size": 554489069,
+      "sha256": "9834543b2673dc010acac04d111483467f8cc7435184037e8799e96e714909f6",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2-ERA5",
+        "path": "forcing_data/forcing_2005.nc",
+        "revision": "f25123c52d7faa8f3533816a311cf3353ee83daa"
+      }
+    },
+    "inputs/ace2-era5/amip-hist/forcing_2006.nc": {
+      "size": 551340778,
+      "sha256": "2d3ca5499e2d1e5575063023f3d1ecd4312cc949e915947dbb5e104075430575",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2-ERA5",
+        "path": "forcing_data/forcing_2006.nc",
+        "revision": "f25123c52d7faa8f3533816a311cf3353ee83daa"
+      }
+    },
+    "inputs/ace2-era5/amip-hist/forcing_2007.nc": {
+      "size": 551015114,
+      "sha256": "92b22a5bf592a7d312bdc5eb4acc9b4e28377a6487f3a40c03bd54b8fa0c3a94",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2-ERA5",
+        "path": "forcing_data/forcing_2007.nc",
+        "revision": "f25123c52d7faa8f3533816a311cf3353ee83daa"
+      }
+    },
+    "inputs/ace2-era5/amip-hist/forcing_2008.nc": {
+      "size": 552380580,
+      "sha256": "b6a0059061d6829ef4128960b4d4272ad4888c3d9cca202f37f02fbe58671ef8",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2-ERA5",
+        "path": "forcing_data/forcing_2008.nc",
+        "revision": "f25123c52d7faa8f3533816a311cf3353ee83daa"
+      }
+    },
+    "inputs/ace2-era5/amip-hist/forcing_2009.nc": {
+      "size": 549750038,
+      "sha256": "e5e8fa239c1300d0bf09d27fcd5323c6f7468eac77aca496345d9fc5f5cb9996",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2-ERA5",
+        "path": "forcing_data/forcing_2009.nc",
+        "revision": "f25123c52d7faa8f3533816a311cf3353ee83daa"
+      }
+    },
+    "inputs/ace2-era5/amip-hist/forcing_2010.nc": {
+      "size": 546744470,
+      "sha256": "92ed0d7177745bbc96a37767e5e23b789594cbdbfdc67c15ecc77419729a4ec0",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2-ERA5",
+        "path": "forcing_data/forcing_2010.nc",
+        "revision": "f25123c52d7faa8f3533816a311cf3353ee83daa"
+      }
+    },
+    "inputs/ace2-era5/amip-hist/forcing_2011.nc": {
+      "size": 546940723,
+      "sha256": "639bc4ea6b6800f5f8c98f3fe98925fbc39b2f0c9da202f87e36edcd102779fb",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2-ERA5",
+        "path": "forcing_data/forcing_2011.nc",
+        "revision": "f25123c52d7faa8f3533816a311cf3353ee83daa"
+      }
+    },
+    "inputs/ace2-era5/amip-hist/forcing_2012.nc": {
+      "size": 549728539,
+      "sha256": "5fa1a59f8503efe7f70369d78f78f984e89e92d9d09dacf0cc248b52eeafa9d6",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2-ERA5",
+        "path": "forcing_data/forcing_2012.nc",
+        "revision": "f25123c52d7faa8f3533816a311cf3353ee83daa"
+      }
+    },
+    "inputs/ace2-era5/amip-hist/forcing_2013.nc": {
+      "size": 547392856,
+      "sha256": "8d8453a78e10f40a21f1fe83ce15d384d4a011539738b99849a38ade1aca90fd",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2-ERA5",
+        "path": "forcing_data/forcing_2013.nc",
+        "revision": "f25123c52d7faa8f3533816a311cf3353ee83daa"
+      }
+    },
+    "inputs/ace2-era5/amip-hist/forcing_2014.nc": {
+      "size": 545513006,
+      "sha256": "72487d5a3f48b5b750e32d150b24623e67dc25c96e34f9d515433bcb028a96a5",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2-ERA5",
+        "path": "forcing_data/forcing_2014.nc",
+        "revision": "f25123c52d7faa8f3533816a311cf3353ee83daa"
+      }
+    },
+    "inputs/shield/amip-hist/forcing_1979.nc": {
+      "size": 587322623,
+      "sha256": "39e4b31c6cd5f456dfb96eaaee42d437e07a5d18c121c44cd3f42a590ce07f55",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2S-SHiELD-plus",
+        "path": "forcing_data/AMIP/forcing_1979.nc",
+        "revision": "85ac7b78b13cf166d3b86c23c0894f41c97dbddb"
+      }
+    },
+    "inputs/shield/amip-hist/forcing_1980.nc": {
+      "size": 589227646,
+      "sha256": "24ed036b1b7c7f6f3dd1995f346a8b2fa356a531b9f65469d6d781573193e70f",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2S-SHiELD-plus",
+        "path": "forcing_data/AMIP/forcing_1980.nc",
+        "revision": "85ac7b78b13cf166d3b86c23c0894f41c97dbddb"
+      }
+    },
+    "inputs/shield/amip-hist/forcing_1981.nc": {
+      "size": 587315365,
+      "sha256": "c759de1dd63b2053b6ded88bb525c312e0e9dc8c999af06d965ceb4f97622485",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2S-SHiELD-plus",
+        "path": "forcing_data/AMIP/forcing_1981.nc",
+        "revision": "85ac7b78b13cf166d3b86c23c0894f41c97dbddb"
+      }
+    },
+    "inputs/shield/amip-hist/forcing_1982.nc": {
+      "size": 587300893,
+      "sha256": "45d4c8a722b054d6467754d67a77e326650cdb8f1960893bc939978082d31f26",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2S-SHiELD-plus",
+        "path": "forcing_data/AMIP/forcing_1982.nc",
+        "revision": "85ac7b78b13cf166d3b86c23c0894f41c97dbddb"
+      }
+    },
+    "inputs/shield/amip-hist/forcing_1983.nc": {
+      "size": 587336205,
+      "sha256": "39237e9925856e7943984d45ef720937382b7e8de35850798f8cb9a7f821257c",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2S-SHiELD-plus",
+        "path": "forcing_data/AMIP/forcing_1983.nc",
+        "revision": "85ac7b78b13cf166d3b86c23c0894f41c97dbddb"
+      }
+    },
+    "inputs/shield/amip-hist/forcing_1984.nc": {
+      "size": 589183582,
+      "sha256": "245847ced6b3ce79a540ba6bfc92f2dbb5a336aa4857bb5db462663391d266e1",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2S-SHiELD-plus",
+        "path": "forcing_data/AMIP/forcing_1984.nc",
+        "revision": "85ac7b78b13cf166d3b86c23c0894f41c97dbddb"
+      }
+    },
+    "inputs/shield/amip-hist/forcing_1985.nc": {
+      "size": 587557480,
+      "sha256": "d5881c2937ef6feb2ff1d41ca998206972ce46aac7d42c84aeda6baa0d03de2f",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2S-SHiELD-plus",
+        "path": "forcing_data/AMIP/forcing_1985.nc",
+        "revision": "85ac7b78b13cf166d3b86c23c0894f41c97dbddb"
+      }
+    },
+    "inputs/shield/amip-hist/forcing_1986.nc": {
+      "size": 587099228,
+      "sha256": "40998c3058a5576079ef1ac255f88e405d70f92fd87ec755b2666ed8a5fb6b5f",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2S-SHiELD-plus",
+        "path": "forcing_data/AMIP/forcing_1986.nc",
+        "revision": "85ac7b78b13cf166d3b86c23c0894f41c97dbddb"
+      }
+    },
+    "inputs/shield/amip-hist/forcing_1987.nc": {
+      "size": 587158568,
+      "sha256": "6409f23d2a470ba6aa553d226f0e06155631bed6d5c561b0001e530cdfcf8eec",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2S-SHiELD-plus",
+        "path": "forcing_data/AMIP/forcing_1987.nc",
+        "revision": "85ac7b78b13cf166d3b86c23c0894f41c97dbddb"
+      }
+    },
+    "inputs/shield/amip-hist/forcing_1988.nc": {
+      "size": 589078960,
+      "sha256": "7869523fbd20550c29c159fd0d5b4bc95ec0964204a7eef7e8925b9ed453242b",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2S-SHiELD-plus",
+        "path": "forcing_data/AMIP/forcing_1988.nc",
+        "revision": "85ac7b78b13cf166d3b86c23c0894f41c97dbddb"
+      }
+    },
+    "inputs/shield/amip-hist/forcing_1989.nc": {
+      "size": 587579968,
+      "sha256": "1e105c1e24a3a2148276f1be74713a827e249c2b911440b7ea5217514e01a729",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2S-SHiELD-plus",
+        "path": "forcing_data/AMIP/forcing_1989.nc",
+        "revision": "85ac7b78b13cf166d3b86c23c0894f41c97dbddb"
+      }
+    },
+    "inputs/shield/amip-hist/forcing_1990.nc": {
+      "size": 587665569,
+      "sha256": "36ace098d48de932b731555c1bad5ce9f29a350e8aa7f8ee30791fc767661a18",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2S-SHiELD-plus",
+        "path": "forcing_data/AMIP/forcing_1990.nc",
+        "revision": "85ac7b78b13cf166d3b86c23c0894f41c97dbddb"
+      }
+    },
+    "inputs/shield/amip-hist/forcing_1991.nc": {
+      "size": 587348805,
+      "sha256": "6735a8626060ec97daed1283280dd8208ae35293c4b291e8888e054f9746a9fd",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2S-SHiELD-plus",
+        "path": "forcing_data/AMIP/forcing_1991.nc",
+        "revision": "85ac7b78b13cf166d3b86c23c0894f41c97dbddb"
+      }
+    },
+    "inputs/shield/amip-hist/forcing_1992.nc": {
+      "size": 589265994,
+      "sha256": "ce6ea24e8a2425e41fc17179b3162c7d27b1beb2a846a4232141a01eae852f04",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2S-SHiELD-plus",
+        "path": "forcing_data/AMIP/forcing_1992.nc",
+        "revision": "85ac7b78b13cf166d3b86c23c0894f41c97dbddb"
+      }
+    },
+    "inputs/shield/amip-hist/forcing_1993.nc": {
+      "size": 587796324,
+      "sha256": "d3e8f961cebd8522301bb20308362f56e0c9098d685f84daa559702a045b61f7",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2S-SHiELD-plus",
+        "path": "forcing_data/AMIP/forcing_1993.nc",
+        "revision": "85ac7b78b13cf166d3b86c23c0894f41c97dbddb"
+      }
+    },
+    "inputs/shield/amip-hist/forcing_1994.nc": {
+      "size": 587414713,
+      "sha256": "890d10baae408e245046145ce42a01b5d129b9e034539681526817a0238545d3",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2S-SHiELD-plus",
+        "path": "forcing_data/AMIP/forcing_1994.nc",
+        "revision": "85ac7b78b13cf166d3b86c23c0894f41c97dbddb"
+      }
+    },
+    "inputs/shield/amip-hist/forcing_1995.nc": {
+      "size": 587775524,
+      "sha256": "602495a97d24930ef494f45795a2d9bb7ffcd255f32456f8a578929bf3d97494",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2S-SHiELD-plus",
+        "path": "forcing_data/AMIP/forcing_1995.nc",
+        "revision": "85ac7b78b13cf166d3b86c23c0894f41c97dbddb"
+      }
+    },
+    "inputs/shield/amip-hist/forcing_1996.nc": {
+      "size": 589166543,
+      "sha256": "846854420f36f34cd3d98be1f1495da7f01721ddfeb4cd180306b3300c80df88",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2S-SHiELD-plus",
+        "path": "forcing_data/AMIP/forcing_1996.nc",
+        "revision": "85ac7b78b13cf166d3b86c23c0894f41c97dbddb"
+      }
+    },
+    "inputs/shield/amip-hist/forcing_1997.nc": {
+      "size": 587281555,
+      "sha256": "1456415d4834f317d11334ae8d9c08d70bb0e43ddfaf0ec81bd998fb559e8527",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2S-SHiELD-plus",
+        "path": "forcing_data/AMIP/forcing_1997.nc",
+        "revision": "85ac7b78b13cf166d3b86c23c0894f41c97dbddb"
+      }
+    },
+    "inputs/shield/amip-hist/forcing_1998.nc": {
+      "size": 587353511,
+      "sha256": "0743b893f12406cd0aa47bce706f63f91d8cb9421c7f5ec2565f34525bf05dea",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2S-SHiELD-plus",
+        "path": "forcing_data/AMIP/forcing_1998.nc",
+        "revision": "85ac7b78b13cf166d3b86c23c0894f41c97dbddb"
+      }
+    },
+    "inputs/shield/amip-hist/forcing_1999.nc": {
+      "size": 587923425,
+      "sha256": "b615f9e472a03103e22afc0eb7ae635f057dbbd5d786f312ad6fe87bc8a2e1aa",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2S-SHiELD-plus",
+        "path": "forcing_data/AMIP/forcing_1999.nc",
+        "revision": "85ac7b78b13cf166d3b86c23c0894f41c97dbddb"
+      }
+    },
+    "inputs/shield/amip-hist/forcing_2000.nc": {
+      "size": 589160359,
+      "sha256": "6784b81dcbe618982341c4856d89a5bae0ef80d49f86f313bfa17bbe162be29c",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2S-SHiELD-plus",
+        "path": "forcing_data/AMIP/forcing_2000.nc",
+        "revision": "85ac7b78b13cf166d3b86c23c0894f41c97dbddb"
+      }
+    },
+    "inputs/shield/amip-hist/forcing_2001.nc": {
+      "size": 587493646,
+      "sha256": "8f3451e03536ba4f9432031044f7ee4d948d0421b17ad662371ee381253ae9f7",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2S-SHiELD-plus",
+        "path": "forcing_data/AMIP/forcing_2001.nc",
+        "revision": "85ac7b78b13cf166d3b86c23c0894f41c97dbddb"
+      }
+    },
+    "inputs/shield/amip-hist/forcing_2002.nc": {
+      "size": 587719803,
+      "sha256": "c10e614d14005d25b17d62a0b7b80d7f0fe98a67f5a772c6dcb43344b1d1a22c",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2S-SHiELD-plus",
+        "path": "forcing_data/AMIP/forcing_2002.nc",
+        "revision": "85ac7b78b13cf166d3b86c23c0894f41c97dbddb"
+      }
+    },
+    "inputs/shield/amip-hist/forcing_2003.nc": {
+      "size": 587605114,
+      "sha256": "875961623de68df6a11c8568faabe90357980d23fdd5569b54b8b5e171db9c92",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2S-SHiELD-plus",
+        "path": "forcing_data/AMIP/forcing_2003.nc",
+        "revision": "85ac7b78b13cf166d3b86c23c0894f41c97dbddb"
+      }
+    },
+    "inputs/shield/amip-hist/forcing_2004.nc": {
+      "size": 589417066,
+      "sha256": "b6edb405e12a1f9bf8b4506b26d95dbbe5542f3587867071c3e0b2bf42fb8498",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2S-SHiELD-plus",
+        "path": "forcing_data/AMIP/forcing_2004.nc",
+        "revision": "85ac7b78b13cf166d3b86c23c0894f41c97dbddb"
+      }
+    },
+    "inputs/shield/amip-hist/forcing_2005.nc": {
+      "size": 588534265,
+      "sha256": "ee8a35078ecebf697974254fdb40cb9654d1e5e616d3570d65a3bc0d16a9e948",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2S-SHiELD-plus",
+        "path": "forcing_data/AMIP/forcing_2005.nc",
+        "revision": "85ac7b78b13cf166d3b86c23c0894f41c97dbddb"
+      }
+    },
+    "inputs/shield/amip-hist/forcing_2006.nc": {
+      "size": 588685772,
+      "sha256": "866c2a67442cde75efa03c05a107bf831b567ca1db4e4e75251468109fa8ba3a",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2S-SHiELD-plus",
+        "path": "forcing_data/AMIP/forcing_2006.nc",
+        "revision": "85ac7b78b13cf166d3b86c23c0894f41c97dbddb"
+      }
+    },
+    "inputs/shield/amip-hist/forcing_2007.nc": {
+      "size": 589028356,
+      "sha256": "b8a89537f9a02558afda359672b2d4d0ccc4b656bb65a6c4e6ed3a29023f143b",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2S-SHiELD-plus",
+        "path": "forcing_data/AMIP/forcing_2007.nc",
+        "revision": "85ac7b78b13cf166d3b86c23c0894f41c97dbddb"
+      }
+    },
+    "inputs/shield/amip-hist/forcing_2008.nc": {
+      "size": 590382649,
+      "sha256": "e6a3d809b00d6bd229a9f67ff5abbdb274c8122513e4ff6c848972f27f77042f",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2S-SHiELD-plus",
+        "path": "forcing_data/AMIP/forcing_2008.nc",
+        "revision": "85ac7b78b13cf166d3b86c23c0894f41c97dbddb"
+      }
+    },
+    "inputs/shield/amip-hist/forcing_2009.nc": {
+      "size": 588294779,
+      "sha256": "c037492be14c1ed33311679582b6ca099dce010695151268596b1026d12117c0",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2S-SHiELD-plus",
+        "path": "forcing_data/AMIP/forcing_2009.nc",
+        "revision": "85ac7b78b13cf166d3b86c23c0894f41c97dbddb"
+      }
+    },
+    "inputs/shield/amip-hist/forcing_2010.nc": {
+      "size": 588261912,
+      "sha256": "5bf83a6a5133103b96c923d1cc71777733821a9c3bb4f3c2e63109f07836f342",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2S-SHiELD-plus",
+        "path": "forcing_data/AMIP/forcing_2010.nc",
+        "revision": "85ac7b78b13cf166d3b86c23c0894f41c97dbddb"
+      }
+    },
+    "inputs/shield/amip-hist/forcing_2011.nc": {
+      "size": 588746329,
+      "sha256": "3d9942ee2ac8a74fbcbc67cbaf0a7154386c23ffbc6a977b3c8174449234293c",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2S-SHiELD-plus",
+        "path": "forcing_data/AMIP/forcing_2011.nc",
+        "revision": "85ac7b78b13cf166d3b86c23c0894f41c97dbddb"
+      }
+    },
+    "inputs/shield/amip-hist/forcing_2012.nc": {
+      "size": 590710052,
+      "sha256": "07a3142e438d007b5a47698c4d3a52306670bed5631b31160a2a479686aa3469",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2S-SHiELD-plus",
+        "path": "forcing_data/AMIP/forcing_2012.nc",
+        "revision": "85ac7b78b13cf166d3b86c23c0894f41c97dbddb"
+      }
+    },
+    "inputs/shield/amip-hist/forcing_2013.nc": {
+      "size": 589005496,
+      "sha256": "200747f3dccac626946d5c3188e334bedcea734d504f1a0d3863ebf5aacd0549",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2S-SHiELD-plus",
+        "path": "forcing_data/AMIP/forcing_2013.nc",
+        "revision": "85ac7b78b13cf166d3b86c23c0894f41c97dbddb"
+      }
+    },
+    "inputs/shield/amip-hist/forcing_2014.nc": {
+      "size": 589196915,
+      "sha256": "68460f308a1456290fc3493192fc2a9374f61dbb2c73de1cbd175b32c5f419a2",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2S-SHiELD-plus",
+        "path": "forcing_data/AMIP/forcing_2014.nc",
+        "revision": "85ac7b78b13cf166d3b86c23c0894f41c97dbddb"
+      }
+    },
+    "raw/ace2-eamv3/initial_conditions/1971010100.nc": {
+      "size": 1608182568,
+      "sha256": "b8127c185782101775bd5dfe17cc65bd0941f1e27eaa2edc8f7d2c66a400642b",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2-EAMv3",
+        "path": "initial_conditions/1971010100.nc",
+        "revision": "5f00316f10c1435db21b2a1dade7620f9a6de51c"
+      }
+    },
+    "raw/ace2-eamv3/forcing_data/1971.nc": {
+      "size": 3027499406,
+      "sha256": "302d8645866c5e2728d0d0b7ac85ab2eb5900bbce30b7c899168ae1a09beab31",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2-EAMv3",
+        "path": "forcing_data/1971.nc",
+        "revision": "5f00316f10c1435db21b2a1dade7620f9a6de51c"
+      }
+    },
+    "raw/hiro-ace/initial_conditions/ic_2014.nc": {
+      "size": 118253505,
+      "sha256": "81633b64252b2bcf0b8101935ed01373af26e31f25bc7bc610cd16e12f4d5d9a",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/HiRO-ACE",
+        "path": "initial_conditions/ic_2014.nc",
+        "revision": "286264358ea097b794a776375eef992b08b98668"
+      }
+    },
+    "raw/hiro-ace/forcing_data/forcing_2014.nc": {
+      "size": 608500978,
+      "sha256": "27c6158a114acadc5e12935ffe077ec251ee7abe41ec536c608a03e628bd2f1c",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/HiRO-ACE",
+        "path": "forcing_data/forcing_2014.nc",
+        "revision": "286264358ea097b794a776375eef992b08b98668"
+      }
+    },
+    "raw/zenodo-17065758/ERA5-0.25deg-monthly-mean-forcing-1978-2024.nc": {
+      "size": 4622266486,
+      "sha256": "a52caf3722bc85a58075118fa06f0c6cce5ace279458edda0a2c9d68ec179fb7",
+      "source": {
+        "kind": "zenodo",
+        "record": "17065758",
+        "file": "ERA5-0.25deg-monthly-mean-forcing-1978-2024.nc",
+        "url": "https://zenodo.org/records/17065758/files/ERA5-0.25deg-monthly-mean-forcing-1978-2024.nc?download=1",
+        "md5": "11cf22013db1e1d3494e67216c8de268"
+      }
+    },
+    "raw/co2_global_mean.nc": {
+      "size": 815845,
+      "sha256": "e2c65b9edd216604a7ffada29fb4f3aa6cb24b2228f3428c1b0a0c29018b2896",
+      "source": {
+        "kind": "derived",
+        "builder": "build_co2_table",
+        "inputs": {
+          "inputs/ace2-era5/amip-hist/forcing_1979.nc": "e320c3f3a29b0def616975448911052a05234b00f64993610e27cb5365f58217",
+          "inputs/ace2-era5/amip-hist/forcing_1980.nc": "19ba41249d612ecd87d5a57ede673ea1a8ae76ce35ea78ed6ae0e0e34ae870ce",
+          "inputs/ace2-era5/amip-hist/forcing_1981.nc": "dac8ee82caac2808590f8a96e883036daf573943a75bb758269872fa78051cc4",
+          "inputs/ace2-era5/amip-hist/forcing_1982.nc": "1991c7be4fb62c9a5385905679e0f23295ddf0b118cbecabd6242b82ebaccb9b",
+          "inputs/ace2-era5/amip-hist/forcing_1983.nc": "1873a4a30f1d333dc0601c518d8057de37e62120bdd2e20f7af21d62a0d0f239",
+          "inputs/ace2-era5/amip-hist/forcing_1984.nc": "9840a8eddfbb84b5b22b6b9ca460af1931780d0feff2e2291745254d48021b88",
+          "inputs/ace2-era5/amip-hist/forcing_1985.nc": "b7bb738387d702ca59613b6f312ea51bdcf89f998babe0f08d7d94df63d8ff75",
+          "inputs/ace2-era5/amip-hist/forcing_1986.nc": "4315592cb08e69ffcf751bf2bf4ceb0ecc566bf965ff058f4f37945b50cf4b14",
+          "inputs/ace2-era5/amip-hist/forcing_1987.nc": "af67d51c0bba50026be9231e51a906beeb3cc6be8c6af2352bb88d9c6949994c",
+          "inputs/ace2-era5/amip-hist/forcing_1988.nc": "115f1814392a8ab5db1c355c7ada40581bac4d205a775c3c024ffb57813f1e2d",
+          "inputs/ace2-era5/amip-hist/forcing_1989.nc": "995b84a514cc626472571ec591deac00fb3a3d280cc148bd66933cf1c3e4a16e",
+          "inputs/ace2-era5/amip-hist/forcing_1990.nc": "685d37cc0076b0d1bda58b221cfeb7381012dd9beabf287fe4ce05642d5068ea",
+          "inputs/ace2-era5/amip-hist/forcing_1991.nc": "777d8f63170e3140271021178b395cb40a9ed2190f5114126d11ac0e84a83d6c",
+          "inputs/ace2-era5/amip-hist/forcing_1992.nc": "e885b125287e5e393da686dae24c7782b3026d154b30eba03b6b4f46f100d163",
+          "inputs/ace2-era5/amip-hist/forcing_1993.nc": "7fa751d4761b48164941ac8b3a4964752282fb7439e4c55bbc18fe070d9454f3",
+          "inputs/ace2-era5/amip-hist/forcing_1994.nc": "12b371bc5aae5c00ed858a40baf0eada7c5c625b762a3264e8abe134e197ed67",
+          "inputs/ace2-era5/amip-hist/forcing_1995.nc": "f599de3dab5ca43a724e2589c7e0402ce4884e838f7fa68e164b39b83be935fd",
+          "inputs/ace2-era5/amip-hist/forcing_1996.nc": "d649d12b9b2bb14706cfadd623fe2e7b9607eddf18d5cced1503119827103cd3",
+          "inputs/ace2-era5/amip-hist/forcing_1997.nc": "290a9005b597d17851fd40e596aa356569fed0457c7686f7ec3a543f9bbbd8c5",
+          "inputs/ace2-era5/amip-hist/forcing_1998.nc": "a08ca31fe3363672a85d9a33c169eff07c783d5581b99cff66a736056dd17237",
+          "inputs/ace2-era5/amip-hist/forcing_1999.nc": "a2dfeb4054789f15d25849370e9f754ff5710d9d6f6fe26158460d1ad7b8021c",
+          "inputs/ace2-era5/amip-hist/forcing_2000.nc": "948184237899c89e38fafb5a7bd8075394571ee40f653115060dc2cf04616e68",
+          "inputs/ace2-era5/amip-hist/forcing_2001.nc": "b5d02bcf17f455544933e065dead38c8e2b4803e0b0deca5897a9e3a59605b5e",
+          "inputs/ace2-era5/amip-hist/forcing_2002.nc": "ff91e83574a6be5205067264fec8b70dc18826492cdbca74045918cb432b5b2a",
+          "inputs/ace2-era5/amip-hist/forcing_2003.nc": "233d02a10b13dc2f2cc7d1b3c06650670ec2679b186e5589e05be7f1fa721481",
+          "inputs/ace2-era5/amip-hist/forcing_2004.nc": "e81c8d003dda3d5700c36eb587c0dd007c8b3e20410884e868151d034acb101b",
+          "inputs/ace2-era5/amip-hist/forcing_2005.nc": "9834543b2673dc010acac04d111483467f8cc7435184037e8799e96e714909f6",
+          "inputs/ace2-era5/amip-hist/forcing_2006.nc": "2d3ca5499e2d1e5575063023f3d1ecd4312cc949e915947dbb5e104075430575",
+          "inputs/ace2-era5/amip-hist/forcing_2007.nc": "92b22a5bf592a7d312bdc5eb4acc9b4e28377a6487f3a40c03bd54b8fa0c3a94",
+          "inputs/ace2-era5/amip-hist/forcing_2008.nc": "b6a0059061d6829ef4128960b4d4272ad4888c3d9cca202f37f02fbe58671ef8",
+          "inputs/ace2-era5/amip-hist/forcing_2009.nc": "e5e8fa239c1300d0bf09d27fcd5323c6f7468eac77aca496345d9fc5f5cb9996",
+          "inputs/ace2-era5/amip-hist/forcing_2010.nc": "92ed0d7177745bbc96a37767e5e23b789594cbdbfdc67c15ecc77419729a4ec0",
+          "inputs/ace2-era5/amip-hist/forcing_2011.nc": "639bc4ea6b6800f5f8c98f3fe98925fbc39b2f0c9da202f87e36edcd102779fb",
+          "inputs/ace2-era5/amip-hist/forcing_2012.nc": "5fa1a59f8503efe7f70369d78f78f984e89e92d9d09dacf0cc248b52eeafa9d6",
+          "inputs/ace2-era5/amip-hist/forcing_2013.nc": "8d8453a78e10f40a21f1fe83ce15d384d4a011539738b99849a38ade1aca90fd",
+          "inputs/ace2-era5/amip-hist/forcing_2014.nc": "72487d5a3f48b5b750e32d150b24623e67dc25c96e34f9d515433bcb028a96a5",
+          "allenai/ACE2-ERA5:forcing_data/forcing_2015.nc": "ccb3b6e44be2b8e0271e06f94828f028387022ced84568164a6e3d69f5e6e06f",
+          "allenai/ACE2-ERA5:forcing_data/forcing_2016.nc": "c9359354c8164695bb10ded8648767025bdaacca1fdd2992c50d6ac06e50cc45",
+          "allenai/ACE2-ERA5:forcing_data/forcing_2017.nc": "8ae92e53cc931bb09cd623231a5d95f889d81364c2333516ea353937837bcd14",
+          "allenai/ACE2-ERA5:forcing_data/forcing_2018.nc": "5197f64be5e56d1ad8ace0f9b3525be4d386db586d2724a8ccd6e1975cd9ab64",
+          "allenai/ACE2-ERA5:forcing_data/forcing_2019.nc": "8c133e5c7b880b0daffe5d74b2dd3bb09173d0261692a9c7d12deb88672e435b",
+          "allenai/ACE2-ERA5:forcing_data/forcing_2020.nc": "ed168a35c9e675fee073578f687c6a85bdd158f10dc7b641afa24f9e5eeee2ae",
+          "allenai/ACE2-ERA5:forcing_data/forcing_2021.nc": "6746f607de5d39de76d5c0e162cd0e5e78297fa3fe94ee0a656004a911777dff",
+          "allenai/ACE2-ERA5:forcing_data/forcing_2022.nc": "bcaefc6bdbbd01f5ebe16f2803a9f9a951629e76ad8cc93f5a9a43aa0a7ef518"
+        }
+      }
+    },
+    "inputs/ace2-eamv3/ic/ic_1994.nc": {
+      "size": null,
+      "sha256": "b4f7214a0069d911ed941c3c415b0931db72f22e47b316ea6e80846cff34c875",
+      "source": {
+        "kind": "derived",
+        "builder": "build_eamv3_ic",
+        "inputs": {
+          "raw/ace2-eamv3/initial_conditions/1971010100.nc": "b8127c185782101775bd5dfe17cc65bd0941f1e27eaa2edc8f7d2c66a400642b"
+        }
+      }
+    },
+    "inputs/ace2-eamv3/amip-hist/1994.nc": {
+      "size": null,
+      "sha256": "c89e545d4b177fb4f45258ec115f58caac6c011e6c5e3d7a1bf40e20846f266b",
+      "source": {
+        "kind": "derived",
+        "builder": "build_eamv3_forcing",
+        "inputs": {
+          "raw/ace2-eamv3/forcing_data/1971.nc": "302d8645866c5e2728d0d0b7ac85ab2eb5900bbce30b7c899168ae1a09beab31",
+          "inputs/ace2-era5/amip-hist/forcing_1994.nc": "12b371bc5aae5c00ed858a40baf0eada7c5c625b762a3264e8abe134e197ed67"
+        }
+      }
+    },
+    "inputs/ace2-eamv3/amip-hist/1995.nc": {
+      "size": null,
+      "sha256": "7b17ea28c050157abc89f437b5a18a0ea132161897d316d1e9068c462523f363",
+      "source": {
+        "kind": "derived",
+        "builder": "build_eamv3_forcing",
+        "inputs": {
+          "raw/ace2-eamv3/forcing_data/1971.nc": "302d8645866c5e2728d0d0b7ac85ab2eb5900bbce30b7c899168ae1a09beab31",
+          "inputs/ace2-era5/amip-hist/forcing_1995.nc": "f599de3dab5ca43a724e2589c7e0402ce4884e838f7fa68e164b39b83be935fd"
+        }
+      }
+    },
+    "inputs/ace2-eamv3/amip-hist/1996.nc": {
+      "size": null,
+      "sha256": "4708a0a577313b21d7acf56e6b75d86c86dcc800105997e536a961f7b6d770c9",
+      "source": {
+        "kind": "derived",
+        "builder": "build_eamv3_forcing",
+        "inputs": {
+          "raw/ace2-eamv3/forcing_data/1971.nc": "302d8645866c5e2728d0d0b7ac85ab2eb5900bbce30b7c899168ae1a09beab31",
+          "inputs/ace2-era5/amip-hist/forcing_1996.nc": "d649d12b9b2bb14706cfadd623fe2e7b9607eddf18d5cced1503119827103cd3"
+        }
+      }
+    },
+    "inputs/ace2-eamv3/amip-hist/1997.nc": {
+      "size": null,
+      "sha256": "9b39f647049d4ec4e53d8f71497cfe73daf19b99ad4125f29f9e22af75220748",
+      "source": {
+        "kind": "derived",
+        "builder": "build_eamv3_forcing",
+        "inputs": {
+          "raw/ace2-eamv3/forcing_data/1971.nc": "302d8645866c5e2728d0d0b7ac85ab2eb5900bbce30b7c899168ae1a09beab31",
+          "inputs/ace2-era5/amip-hist/forcing_1997.nc": "290a9005b597d17851fd40e596aa356569fed0457c7686f7ec3a543f9bbbd8c5"
+        }
+      }
+    },
+    "inputs/ace2-eamv3/amip-hist/1998.nc": {
+      "size": null,
+      "sha256": "6be39d67184275746d9b001f8bd6abcae3033114c60ee38bd2269f3b3a382309",
+      "source": {
+        "kind": "derived",
+        "builder": "build_eamv3_forcing",
+        "inputs": {
+          "raw/ace2-eamv3/forcing_data/1971.nc": "302d8645866c5e2728d0d0b7ac85ab2eb5900bbce30b7c899168ae1a09beab31",
+          "inputs/ace2-era5/amip-hist/forcing_1998.nc": "a08ca31fe3363672a85d9a33c169eff07c783d5581b99cff66a736056dd17237"
+        }
+      }
+    },
+    "inputs/ace2-eamv3/amip-hist/1999.nc": {
+      "size": null,
+      "sha256": "886695188b251df5f863dc05ee71ad59e42904fdcf6f2e9c4f19b73f2ec61009",
+      "source": {
+        "kind": "derived",
+        "builder": "build_eamv3_forcing",
+        "inputs": {
+          "raw/ace2-eamv3/forcing_data/1971.nc": "302d8645866c5e2728d0d0b7ac85ab2eb5900bbce30b7c899168ae1a09beab31",
+          "inputs/ace2-era5/amip-hist/forcing_1999.nc": "a2dfeb4054789f15d25849370e9f754ff5710d9d6f6fe26158460d1ad7b8021c"
+        }
+      }
+    },
+    "inputs/ace2-eamv3/amip-hist/2000.nc": {
+      "size": null,
+      "sha256": "b770bd98939a6f703d05961c4df74c6710ed6bbac62543386596650609ed8e5f",
+      "source": {
+        "kind": "derived",
+        "builder": "build_eamv3_forcing",
+        "inputs": {
+          "raw/ace2-eamv3/forcing_data/1971.nc": "302d8645866c5e2728d0d0b7ac85ab2eb5900bbce30b7c899168ae1a09beab31",
+          "inputs/ace2-era5/amip-hist/forcing_2000.nc": "948184237899c89e38fafb5a7bd8075394571ee40f653115060dc2cf04616e68"
+        }
+      }
+    },
+    "inputs/ace2-eamv3/amip-hist/2001.nc": {
+      "size": null,
+      "sha256": "5394a1c62b1f5e2f923f8a884e015847de444ba04e4ed8cb9a117c89d6acb6ca",
+      "source": {
+        "kind": "derived",
+        "builder": "build_eamv3_forcing",
+        "inputs": {
+          "raw/ace2-eamv3/forcing_data/1971.nc": "302d8645866c5e2728d0d0b7ac85ab2eb5900bbce30b7c899168ae1a09beab31",
+          "inputs/ace2-era5/amip-hist/forcing_2001.nc": "b5d02bcf17f455544933e065dead38c8e2b4803e0b0deca5897a9e3a59605b5e"
+        }
+      }
+    },
+    "inputs/ace2-eamv3/amip-hist/2002.nc": {
+      "size": null,
+      "sha256": "1952cc7c0af175273149be2204c648422a1c295492f265174481d0b2592940ad",
+      "source": {
+        "kind": "derived",
+        "builder": "build_eamv3_forcing",
+        "inputs": {
+          "raw/ace2-eamv3/forcing_data/1971.nc": "302d8645866c5e2728d0d0b7ac85ab2eb5900bbce30b7c899168ae1a09beab31",
+          "inputs/ace2-era5/amip-hist/forcing_2002.nc": "ff91e83574a6be5205067264fec8b70dc18826492cdbca74045918cb432b5b2a"
+        }
+      }
+    },
+    "inputs/ace2-eamv3/amip-hist/2003.nc": {
+      "size": null,
+      "sha256": "e55ef564365759d572fb51dbe24bd38568ecb64659f2e9f75e65ae5a9d16a210",
+      "source": {
+        "kind": "derived",
+        "builder": "build_eamv3_forcing",
+        "inputs": {
+          "raw/ace2-eamv3/forcing_data/1971.nc": "302d8645866c5e2728d0d0b7ac85ab2eb5900bbce30b7c899168ae1a09beab31",
+          "inputs/ace2-era5/amip-hist/forcing_2003.nc": "233d02a10b13dc2f2cc7d1b3c06650670ec2679b186e5589e05be7f1fa721481"
+        }
+      }
+    },
+    "inputs/ace2-eamv3/amip-hist/2004.nc": {
+      "size": null,
+      "sha256": "4132aed1f940a9edba0ceb51551f1bd278488f646355167cc56a9d7f6ad7de55",
+      "source": {
+        "kind": "derived",
+        "builder": "build_eamv3_forcing",
+        "inputs": {
+          "raw/ace2-eamv3/forcing_data/1971.nc": "302d8645866c5e2728d0d0b7ac85ab2eb5900bbce30b7c899168ae1a09beab31",
+          "inputs/ace2-era5/amip-hist/forcing_2004.nc": "e81c8d003dda3d5700c36eb587c0dd007c8b3e20410884e868151d034acb101b"
+        }
+      }
+    },
+    "inputs/ace2-eamv3/amip-hist/2005.nc": {
+      "size": null,
+      "sha256": "05079888e5a921a816ec38f7afddf92b0ef3f1340ff25e5858ae9fff3bc43ce9",
+      "source": {
+        "kind": "derived",
+        "builder": "build_eamv3_forcing",
+        "inputs": {
+          "raw/ace2-eamv3/forcing_data/1971.nc": "302d8645866c5e2728d0d0b7ac85ab2eb5900bbce30b7c899168ae1a09beab31",
+          "inputs/ace2-era5/amip-hist/forcing_2005.nc": "9834543b2673dc010acac04d111483467f8cc7435184037e8799e96e714909f6"
+        }
+      }
+    },
+    "inputs/ace2-eamv3/amip-hist/2006.nc": {
+      "size": null,
+      "sha256": "bb02ac06e7a76a347c3e078bda8f16cfd4c979f551bfc2b29ac88c2ad6107b92",
+      "source": {
+        "kind": "derived",
+        "builder": "build_eamv3_forcing",
+        "inputs": {
+          "raw/ace2-eamv3/forcing_data/1971.nc": "302d8645866c5e2728d0d0b7ac85ab2eb5900bbce30b7c899168ae1a09beab31",
+          "inputs/ace2-era5/amip-hist/forcing_2006.nc": "2d3ca5499e2d1e5575063023f3d1ecd4312cc949e915947dbb5e104075430575"
+        }
+      }
+    },
+    "inputs/ace2-eamv3/amip-hist/2007.nc": {
+      "size": null,
+      "sha256": "085860f07debee1d28d1e06580b0fcaa7562411f30e4d5cdc1824931d59f76b7",
+      "source": {
+        "kind": "derived",
+        "builder": "build_eamv3_forcing",
+        "inputs": {
+          "raw/ace2-eamv3/forcing_data/1971.nc": "302d8645866c5e2728d0d0b7ac85ab2eb5900bbce30b7c899168ae1a09beab31",
+          "inputs/ace2-era5/amip-hist/forcing_2007.nc": "92b22a5bf592a7d312bdc5eb4acc9b4e28377a6487f3a40c03bd54b8fa0c3a94"
+        }
+      }
+    },
+    "inputs/ace2-eamv3/amip-hist/2008.nc": {
+      "size": null,
+      "sha256": "36b39a6e7246ae17f249df7dfef97d281a5121b5c11fab0cf5ec6c8b6b4b95f5",
+      "source": {
+        "kind": "derived",
+        "builder": "build_eamv3_forcing",
+        "inputs": {
+          "raw/ace2-eamv3/forcing_data/1971.nc": "302d8645866c5e2728d0d0b7ac85ab2eb5900bbce30b7c899168ae1a09beab31",
+          "inputs/ace2-era5/amip-hist/forcing_2008.nc": "b6a0059061d6829ef4128960b4d4272ad4888c3d9cca202f37f02fbe58671ef8"
+        }
+      }
+    },
+    "inputs/ace2-eamv3/amip-hist/2009.nc": {
+      "size": null,
+      "sha256": "6f164c869c644d618308d589427a5055aff45ca16a18118e8ffe577033a17ee2",
+      "source": {
+        "kind": "derived",
+        "builder": "build_eamv3_forcing",
+        "inputs": {
+          "raw/ace2-eamv3/forcing_data/1971.nc": "302d8645866c5e2728d0d0b7ac85ab2eb5900bbce30b7c899168ae1a09beab31",
+          "inputs/ace2-era5/amip-hist/forcing_2009.nc": "e5e8fa239c1300d0bf09d27fcd5323c6f7468eac77aca496345d9fc5f5cb9996"
+        }
+      }
+    },
+    "inputs/ace2-eamv3/amip-hist/2010.nc": {
+      "size": null,
+      "sha256": "f7ce50f1133ab077250fcebb61cb477280a9a0373cb32a31a014ad150048b74b",
+      "source": {
+        "kind": "derived",
+        "builder": "build_eamv3_forcing",
+        "inputs": {
+          "raw/ace2-eamv3/forcing_data/1971.nc": "302d8645866c5e2728d0d0b7ac85ab2eb5900bbce30b7c899168ae1a09beab31",
+          "inputs/ace2-era5/amip-hist/forcing_2010.nc": "92ed0d7177745bbc96a37767e5e23b789594cbdbfdc67c15ecc77419729a4ec0"
+        }
+      }
+    },
+    "inputs/ace2-eamv3/amip-hist/2011.nc": {
+      "size": null,
+      "sha256": "36b21b9acf4ba24be9967fafb6ffb06ea256321e6c19b35c4fab0bd99eb9555e",
+      "source": {
+        "kind": "derived",
+        "builder": "build_eamv3_forcing",
+        "inputs": {
+          "raw/ace2-eamv3/forcing_data/1971.nc": "302d8645866c5e2728d0d0b7ac85ab2eb5900bbce30b7c899168ae1a09beab31",
+          "inputs/ace2-era5/amip-hist/forcing_2011.nc": "639bc4ea6b6800f5f8c98f3fe98925fbc39b2f0c9da202f87e36edcd102779fb"
+        }
+      }
+    },
+    "inputs/ace2-eamv3/amip-hist/2012.nc": {
+      "size": null,
+      "sha256": "6248b66c935a3634ecf66bc25f2d50703d02b52bef72688d881dc4a2344c4e21",
+      "source": {
+        "kind": "derived",
+        "builder": "build_eamv3_forcing",
+        "inputs": {
+          "raw/ace2-eamv3/forcing_data/1971.nc": "302d8645866c5e2728d0d0b7ac85ab2eb5900bbce30b7c899168ae1a09beab31",
+          "inputs/ace2-era5/amip-hist/forcing_2012.nc": "5fa1a59f8503efe7f70369d78f78f984e89e92d9d09dacf0cc248b52eeafa9d6"
+        }
+      }
+    },
+    "inputs/ace2-eamv3/amip-hist/2013.nc": {
+      "size": null,
+      "sha256": "d5fede320973de7df2ec38c6eff4f53c555f3cc049d25fb342955069eba7df0e",
+      "source": {
+        "kind": "derived",
+        "builder": "build_eamv3_forcing",
+        "inputs": {
+          "raw/ace2-eamv3/forcing_data/1971.nc": "302d8645866c5e2728d0d0b7ac85ab2eb5900bbce30b7c899168ae1a09beab31",
+          "inputs/ace2-era5/amip-hist/forcing_2013.nc": "8d8453a78e10f40a21f1fe83ce15d384d4a011539738b99849a38ade1aca90fd"
+        }
+      }
+    },
+    "inputs/ace2-eamv3/amip-hist/2014.nc": {
+      "size": null,
+      "sha256": "ec04a76c2a3377be3d676cf89523698a51d76d5441e4d356c48018b32d894d42",
+      "source": {
+        "kind": "derived",
+        "builder": "build_eamv3_forcing",
+        "inputs": {
+          "raw/ace2-eamv3/forcing_data/1971.nc": "302d8645866c5e2728d0d0b7ac85ab2eb5900bbce30b7c899168ae1a09beab31",
+          "inputs/ace2-era5/amip-hist/forcing_2014.nc": "72487d5a3f48b5b750e32d150b24623e67dc25c96e34f9d515433bcb028a96a5"
+        }
+      }
+    },
+    "inputs/hiro-ace/ic/ic_1994.nc": {
+      "size": null,
+      "sha256": "4ed27e044c0a7d9c653655853adce573b41dd45e09d6d68b544e573b9778a7be",
+      "source": {
+        "kind": "derived",
+        "builder": "build_hiro_ic",
+        "inputs": {
+          "raw/hiro-ace/initial_conditions/ic_2014.nc": "81633b64252b2bcf0b8101935ed01373af26e31f25bc7bc610cd16e12f4d5d9a"
+        }
+      }
+    },
+    "inputs/hiro-ace/amip-hist/forcing_1994.nc": {
+      "size": null,
+      "sha256": "5ac461513f1a0d5e0f2345d3d70844c5d17e3736df20ae03513030fc912187e9",
+      "source": {
+        "kind": "derived",
+        "builder": "build_hiro_forcing",
+        "inputs": {
+          "raw/hiro-ace/forcing_data/forcing_2014.nc": "27c6158a114acadc5e12935ffe077ec251ee7abe41ec536c608a03e628bd2f1c",
+          "inputs/shield/amip-hist/forcing_1994.nc": "890d10baae408e245046145ce42a01b5d129b9e034539681526817a0238545d3"
+        }
+      }
+    },
+    "inputs/hiro-ace/amip-hist/forcing_1995.nc": {
+      "size": null,
+      "sha256": "04de393f75badedf1742a18247b907959dd8805074f9eaf999064dad8b2aa348",
+      "source": {
+        "kind": "derived",
+        "builder": "build_hiro_forcing",
+        "inputs": {
+          "raw/hiro-ace/forcing_data/forcing_2014.nc": "27c6158a114acadc5e12935ffe077ec251ee7abe41ec536c608a03e628bd2f1c",
+          "inputs/shield/amip-hist/forcing_1994.nc": "890d10baae408e245046145ce42a01b5d129b9e034539681526817a0238545d3",
+          "inputs/shield/amip-hist/forcing_1995.nc": "602495a97d24930ef494f45795a2d9bb7ffcd255f32456f8a578929bf3d97494"
+        }
+      }
+    },
+    "inputs/hiro-ace/amip-hist/forcing_1996.nc": {
+      "size": null,
+      "sha256": "f248d8ea1e58737e1e835645c6ef5b4915fe2696b3fb7d7058b6c42c955efc9e",
+      "source": {
+        "kind": "derived",
+        "builder": "build_hiro_forcing",
+        "inputs": {
+          "raw/hiro-ace/forcing_data/forcing_2014.nc": "27c6158a114acadc5e12935ffe077ec251ee7abe41ec536c608a03e628bd2f1c",
+          "inputs/shield/amip-hist/forcing_1994.nc": "890d10baae408e245046145ce42a01b5d129b9e034539681526817a0238545d3",
+          "inputs/shield/amip-hist/forcing_1996.nc": "846854420f36f34cd3d98be1f1495da7f01721ddfeb4cd180306b3300c80df88"
+        }
+      }
+    },
+    "inputs/hiro-ace/amip-hist/forcing_1997.nc": {
+      "size": null,
+      "sha256": "f685f41ae0fe337f56bc0ffd40b7d8541e5ea21b54843a017cdcb1549dbc745d",
+      "source": {
+        "kind": "derived",
+        "builder": "build_hiro_forcing",
+        "inputs": {
+          "raw/hiro-ace/forcing_data/forcing_2014.nc": "27c6158a114acadc5e12935ffe077ec251ee7abe41ec536c608a03e628bd2f1c",
+          "inputs/shield/amip-hist/forcing_1994.nc": "890d10baae408e245046145ce42a01b5d129b9e034539681526817a0238545d3",
+          "inputs/shield/amip-hist/forcing_1997.nc": "1456415d4834f317d11334ae8d9c08d70bb0e43ddfaf0ec81bd998fb559e8527"
+        }
+      }
+    },
+    "inputs/hiro-ace/amip-hist/forcing_1998.nc": {
+      "size": null,
+      "sha256": "d073898425fb0695d4844c51ec888e2cb85ec700135c2cf23aea00603cf48c73",
+      "source": {
+        "kind": "derived",
+        "builder": "build_hiro_forcing",
+        "inputs": {
+          "raw/hiro-ace/forcing_data/forcing_2014.nc": "27c6158a114acadc5e12935ffe077ec251ee7abe41ec536c608a03e628bd2f1c",
+          "inputs/shield/amip-hist/forcing_1994.nc": "890d10baae408e245046145ce42a01b5d129b9e034539681526817a0238545d3",
+          "inputs/shield/amip-hist/forcing_1998.nc": "0743b893f12406cd0aa47bce706f63f91d8cb9421c7f5ec2565f34525bf05dea"
+        }
+      }
+    },
+    "inputs/hiro-ace/amip-hist/forcing_1999.nc": {
+      "size": null,
+      "sha256": "8548bbba7216803c47143c24a7b019b432d7a3d316cab1b86f16937735e05fa8",
+      "source": {
+        "kind": "derived",
+        "builder": "build_hiro_forcing",
+        "inputs": {
+          "raw/hiro-ace/forcing_data/forcing_2014.nc": "27c6158a114acadc5e12935ffe077ec251ee7abe41ec536c608a03e628bd2f1c",
+          "inputs/shield/amip-hist/forcing_1994.nc": "890d10baae408e245046145ce42a01b5d129b9e034539681526817a0238545d3",
+          "inputs/shield/amip-hist/forcing_1999.nc": "b615f9e472a03103e22afc0eb7ae635f057dbbd5d786f312ad6fe87bc8a2e1aa"
+        }
+      }
+    },
+    "inputs/hiro-ace/amip-hist/forcing_2000.nc": {
+      "size": null,
+      "sha256": "cf156f49c479ce046ef93bc5907442c1d87ec7c9f9dc2828b9ea7a74e082ce97",
+      "source": {
+        "kind": "derived",
+        "builder": "build_hiro_forcing",
+        "inputs": {
+          "raw/hiro-ace/forcing_data/forcing_2014.nc": "27c6158a114acadc5e12935ffe077ec251ee7abe41ec536c608a03e628bd2f1c",
+          "inputs/shield/amip-hist/forcing_1994.nc": "890d10baae408e245046145ce42a01b5d129b9e034539681526817a0238545d3",
+          "inputs/shield/amip-hist/forcing_2000.nc": "6784b81dcbe618982341c4856d89a5bae0ef80d49f86f313bfa17bbe162be29c"
+        }
+      }
+    },
+    "inputs/hiro-ace/amip-hist/forcing_2001.nc": {
+      "size": null,
+      "sha256": "360abdd5787f9804707843f50e8ecc932d84415180954ad20014fd9dba980636",
+      "source": {
+        "kind": "derived",
+        "builder": "build_hiro_forcing",
+        "inputs": {
+          "raw/hiro-ace/forcing_data/forcing_2014.nc": "27c6158a114acadc5e12935ffe077ec251ee7abe41ec536c608a03e628bd2f1c",
+          "inputs/shield/amip-hist/forcing_1994.nc": "890d10baae408e245046145ce42a01b5d129b9e034539681526817a0238545d3",
+          "inputs/shield/amip-hist/forcing_2001.nc": "8f3451e03536ba4f9432031044f7ee4d948d0421b17ad662371ee381253ae9f7"
+        }
+      }
+    },
+    "inputs/hiro-ace/amip-hist/forcing_2002.nc": {
+      "size": null,
+      "sha256": "f1f343f669e395ed1a59dacdc6733a65c0e09232834d9a84f7c031ddb4335b78",
+      "source": {
+        "kind": "derived",
+        "builder": "build_hiro_forcing",
+        "inputs": {
+          "raw/hiro-ace/forcing_data/forcing_2014.nc": "27c6158a114acadc5e12935ffe077ec251ee7abe41ec536c608a03e628bd2f1c",
+          "inputs/shield/amip-hist/forcing_1994.nc": "890d10baae408e245046145ce42a01b5d129b9e034539681526817a0238545d3",
+          "inputs/shield/amip-hist/forcing_2002.nc": "c10e614d14005d25b17d62a0b7b80d7f0fe98a67f5a772c6dcb43344b1d1a22c"
+        }
+      }
+    },
+    "inputs/hiro-ace/amip-hist/forcing_2003.nc": {
+      "size": null,
+      "sha256": "71f73cb9e8747b03be168b06a372a1949a764a013688d12128e6f33d8b1f2dd7",
+      "source": {
+        "kind": "derived",
+        "builder": "build_hiro_forcing",
+        "inputs": {
+          "raw/hiro-ace/forcing_data/forcing_2014.nc": "27c6158a114acadc5e12935ffe077ec251ee7abe41ec536c608a03e628bd2f1c",
+          "inputs/shield/amip-hist/forcing_1994.nc": "890d10baae408e245046145ce42a01b5d129b9e034539681526817a0238545d3",
+          "inputs/shield/amip-hist/forcing_2003.nc": "875961623de68df6a11c8568faabe90357980d23fdd5569b54b8b5e171db9c92"
+        }
+      }
+    },
+    "inputs/hiro-ace/amip-hist/forcing_2004.nc": {
+      "size": null,
+      "sha256": "7a42d32243130773301e7b9e96d7df9ebae88b6e40adef721791742f81ce88b7",
+      "source": {
+        "kind": "derived",
+        "builder": "build_hiro_forcing",
+        "inputs": {
+          "raw/hiro-ace/forcing_data/forcing_2014.nc": "27c6158a114acadc5e12935ffe077ec251ee7abe41ec536c608a03e628bd2f1c",
+          "inputs/shield/amip-hist/forcing_1994.nc": "890d10baae408e245046145ce42a01b5d129b9e034539681526817a0238545d3",
+          "inputs/shield/amip-hist/forcing_2004.nc": "b6edb405e12a1f9bf8b4506b26d95dbbe5542f3587867071c3e0b2bf42fb8498"
+        }
+      }
+    },
+    "inputs/hiro-ace/amip-hist/forcing_2005.nc": {
+      "size": null,
+      "sha256": "e62e751dcfb6cbdd7b7586b84504855fb5f2c661354522e409c716c852d90f6e",
+      "source": {
+        "kind": "derived",
+        "builder": "build_hiro_forcing",
+        "inputs": {
+          "raw/hiro-ace/forcing_data/forcing_2014.nc": "27c6158a114acadc5e12935ffe077ec251ee7abe41ec536c608a03e628bd2f1c",
+          "inputs/shield/amip-hist/forcing_1994.nc": "890d10baae408e245046145ce42a01b5d129b9e034539681526817a0238545d3",
+          "inputs/shield/amip-hist/forcing_2005.nc": "ee8a35078ecebf697974254fdb40cb9654d1e5e616d3570d65a3bc0d16a9e948"
+        }
+      }
+    },
+    "inputs/hiro-ace/amip-hist/forcing_2006.nc": {
+      "size": null,
+      "sha256": "768482ce00a0b48134f93a970157776596b0982d1a943703b45dd4cda2fa9602",
+      "source": {
+        "kind": "derived",
+        "builder": "build_hiro_forcing",
+        "inputs": {
+          "raw/hiro-ace/forcing_data/forcing_2014.nc": "27c6158a114acadc5e12935ffe077ec251ee7abe41ec536c608a03e628bd2f1c",
+          "inputs/shield/amip-hist/forcing_1994.nc": "890d10baae408e245046145ce42a01b5d129b9e034539681526817a0238545d3",
+          "inputs/shield/amip-hist/forcing_2006.nc": "866c2a67442cde75efa03c05a107bf831b567ca1db4e4e75251468109fa8ba3a"
+        }
+      }
+    },
+    "inputs/hiro-ace/amip-hist/forcing_2007.nc": {
+      "size": null,
+      "sha256": "2c58d2c00a8b1c5e580320aa36d6029f918cb765fbdbb0f95ec23865dfa1198a",
+      "source": {
+        "kind": "derived",
+        "builder": "build_hiro_forcing",
+        "inputs": {
+          "raw/hiro-ace/forcing_data/forcing_2014.nc": "27c6158a114acadc5e12935ffe077ec251ee7abe41ec536c608a03e628bd2f1c",
+          "inputs/shield/amip-hist/forcing_1994.nc": "890d10baae408e245046145ce42a01b5d129b9e034539681526817a0238545d3",
+          "inputs/shield/amip-hist/forcing_2007.nc": "b8a89537f9a02558afda359672b2d4d0ccc4b656bb65a6c4e6ed3a29023f143b"
+        }
+      }
+    },
+    "inputs/hiro-ace/amip-hist/forcing_2008.nc": {
+      "size": null,
+      "sha256": "4858cb193d27958cb4b4a4dabfe4c6292a36e0d67b833e05d176419cbe9e709a",
+      "source": {
+        "kind": "derived",
+        "builder": "build_hiro_forcing",
+        "inputs": {
+          "raw/hiro-ace/forcing_data/forcing_2014.nc": "27c6158a114acadc5e12935ffe077ec251ee7abe41ec536c608a03e628bd2f1c",
+          "inputs/shield/amip-hist/forcing_1994.nc": "890d10baae408e245046145ce42a01b5d129b9e034539681526817a0238545d3",
+          "inputs/shield/amip-hist/forcing_2008.nc": "e6a3d809b00d6bd229a9f67ff5abbdb274c8122513e4ff6c848972f27f77042f"
+        }
+      }
+    },
+    "inputs/hiro-ace/amip-hist/forcing_2009.nc": {
+      "size": null,
+      "sha256": "0135b23831f0b561655963606db677b26e109186045fb5db4a665e33f3e8d996",
+      "source": {
+        "kind": "derived",
+        "builder": "build_hiro_forcing",
+        "inputs": {
+          "raw/hiro-ace/forcing_data/forcing_2014.nc": "27c6158a114acadc5e12935ffe077ec251ee7abe41ec536c608a03e628bd2f1c",
+          "inputs/shield/amip-hist/forcing_1994.nc": "890d10baae408e245046145ce42a01b5d129b9e034539681526817a0238545d3",
+          "inputs/shield/amip-hist/forcing_2009.nc": "c037492be14c1ed33311679582b6ca099dce010695151268596b1026d12117c0"
+        }
+      }
+    },
+    "inputs/hiro-ace/amip-hist/forcing_2010.nc": {
+      "size": null,
+      "sha256": "d141e82e01b303575e709990d4dac3e3a0b04a5bdb48109a38758e1791b6a3f6",
+      "source": {
+        "kind": "derived",
+        "builder": "build_hiro_forcing",
+        "inputs": {
+          "raw/hiro-ace/forcing_data/forcing_2014.nc": "27c6158a114acadc5e12935ffe077ec251ee7abe41ec536c608a03e628bd2f1c",
+          "inputs/shield/amip-hist/forcing_1994.nc": "890d10baae408e245046145ce42a01b5d129b9e034539681526817a0238545d3",
+          "inputs/shield/amip-hist/forcing_2010.nc": "5bf83a6a5133103b96c923d1cc71777733821a9c3bb4f3c2e63109f07836f342"
+        }
+      }
+    },
+    "inputs/hiro-ace/amip-hist/forcing_2011.nc": {
+      "size": null,
+      "sha256": "82c1b7b12ea287f707f16bfe8209548e7b60da52f69e624d999ede1ff8ac78a3",
+      "source": {
+        "kind": "derived",
+        "builder": "build_hiro_forcing",
+        "inputs": {
+          "raw/hiro-ace/forcing_data/forcing_2014.nc": "27c6158a114acadc5e12935ffe077ec251ee7abe41ec536c608a03e628bd2f1c",
+          "inputs/shield/amip-hist/forcing_1994.nc": "890d10baae408e245046145ce42a01b5d129b9e034539681526817a0238545d3",
+          "inputs/shield/amip-hist/forcing_2011.nc": "3d9942ee2ac8a74fbcbc67cbaf0a7154386c23ffbc6a977b3c8174449234293c"
+        }
+      }
+    },
+    "inputs/hiro-ace/amip-hist/forcing_2012.nc": {
+      "size": null,
+      "sha256": "3a35c3d491302b833fb0a3f2fd7c35da61cdf5bb2088357499ef718bd2a72d63",
+      "source": {
+        "kind": "derived",
+        "builder": "build_hiro_forcing",
+        "inputs": {
+          "raw/hiro-ace/forcing_data/forcing_2014.nc": "27c6158a114acadc5e12935ffe077ec251ee7abe41ec536c608a03e628bd2f1c",
+          "inputs/shield/amip-hist/forcing_1994.nc": "890d10baae408e245046145ce42a01b5d129b9e034539681526817a0238545d3",
+          "inputs/shield/amip-hist/forcing_2012.nc": "07a3142e438d007b5a47698c4d3a52306670bed5631b31160a2a479686aa3469"
+        }
+      }
+    },
+    "inputs/hiro-ace/amip-hist/forcing_2013.nc": {
+      "size": null,
+      "sha256": "a56a6e4e0fd5e3c5991d5c6ad38d83e7c66e10897082008d18e980b0d13dadd3",
+      "source": {
+        "kind": "derived",
+        "builder": "build_hiro_forcing",
+        "inputs": {
+          "raw/hiro-ace/forcing_data/forcing_2014.nc": "27c6158a114acadc5e12935ffe077ec251ee7abe41ec536c608a03e628bd2f1c",
+          "inputs/shield/amip-hist/forcing_1994.nc": "890d10baae408e245046145ce42a01b5d129b9e034539681526817a0238545d3",
+          "inputs/shield/amip-hist/forcing_2013.nc": "200747f3dccac626946d5c3188e334bedcea734d504f1a0d3863ebf5aacd0549"
+        }
+      }
+    },
+    "inputs/hiro-ace/amip-hist/forcing_2014.nc": {
+      "size": null,
+      "sha256": "406622c672106428993e039343e705a133c1701f274a990939f001825cb056e2",
+      "source": {
+        "kind": "derived",
+        "builder": "build_hiro_forcing",
+        "inputs": {
+          "raw/hiro-ace/forcing_data/forcing_2014.nc": "27c6158a114acadc5e12935ffe077ec251ee7abe41ec536c608a03e628bd2f1c",
+          "inputs/shield/amip-hist/forcing_1994.nc": "890d10baae408e245046145ce42a01b5d129b9e034539681526817a0238545d3",
+          "inputs/shield/amip-hist/forcing_2014.nc": "68460f308a1456290fc3493192fc2a9374f61dbb2c73de1cbd175b32c5f419a2"
+        }
+      }
+    },
+    "inputs/shield/amip-oos/forcing_2014.nc": {
+      "size": 589196915,
+      "sha256": "68460f308a1456290fc3493192fc2a9374f61dbb2c73de1cbd175b32c5f419a2",
+      "source": {
+        "kind": "derived",
+        "builder": "build_oos_forcing:shieldplus:bridge",
+        "inputs": {
+          "inputs/shield/amip-hist/forcing_2014.nc": "68460f308a1456290fc3493192fc2a9374f61dbb2c73de1cbd175b32c5f419a2"
+        }
+      }
+    },
+    "inputs/shield/amip-oos/forcing_2015.nc": {
+      "size": null,
+      "sha256": "afb95b85d43143dbd9f9dd2f264b1d75c3f80be4a931f8b500c46788e19fc322",
+      "source": {
+        "kind": "derived",
+        "builder": "build_oos_forcing:shieldplus",
+        "inputs": {
+          "inputs/shield/amip-hist/forcing_2014.nc": "68460f308a1456290fc3493192fc2a9374f61dbb2c73de1cbd175b32c5f419a2",
+          "raw/zenodo-17065758/ERA5-0.25deg-monthly-mean-forcing-1978-2024.nc": "a52caf3722bc85a58075118fa06f0c6cce5ace279458edda0a2c9d68ec179fb7",
+          "raw/co2_global_mean.nc": "e2c65b9edd216604a7ffada29fb4f3aa6cb24b2228f3428c1b0a0c29018b2896"
+        }
+      }
+    },
+    "inputs/shield/amip-oos/forcing_2016.nc": {
+      "size": null,
+      "sha256": "bd3e82bd054a9c227b6a805f8a0c5d459f6ddc2dc0402b61b1a1dd3d6798f676",
+      "source": {
+        "kind": "derived",
+        "builder": "build_oos_forcing:shieldplus",
+        "inputs": {
+          "inputs/shield/amip-hist/forcing_2014.nc": "68460f308a1456290fc3493192fc2a9374f61dbb2c73de1cbd175b32c5f419a2",
+          "inputs/shield/amip-hist/forcing_2012.nc": "07a3142e438d007b5a47698c4d3a52306670bed5631b31160a2a479686aa3469",
+          "raw/zenodo-17065758/ERA5-0.25deg-monthly-mean-forcing-1978-2024.nc": "a52caf3722bc85a58075118fa06f0c6cce5ace279458edda0a2c9d68ec179fb7",
+          "raw/co2_global_mean.nc": "e2c65b9edd216604a7ffada29fb4f3aa6cb24b2228f3428c1b0a0c29018b2896"
+        }
+      }
+    },
+    "inputs/shield/amip-oos/forcing_2017.nc": {
+      "size": null,
+      "sha256": "ee8c9c1864b89cc3f96a6627e0c23166b551e7844c09cb04e9c92984f372e80b",
+      "source": {
+        "kind": "derived",
+        "builder": "build_oos_forcing:shieldplus",
+        "inputs": {
+          "inputs/shield/amip-hist/forcing_2014.nc": "68460f308a1456290fc3493192fc2a9374f61dbb2c73de1cbd175b32c5f419a2",
+          "raw/zenodo-17065758/ERA5-0.25deg-monthly-mean-forcing-1978-2024.nc": "a52caf3722bc85a58075118fa06f0c6cce5ace279458edda0a2c9d68ec179fb7",
+          "raw/co2_global_mean.nc": "e2c65b9edd216604a7ffada29fb4f3aa6cb24b2228f3428c1b0a0c29018b2896"
+        }
+      }
+    },
+    "inputs/shield/amip-oos/forcing_2018.nc": {
+      "size": null,
+      "sha256": "060f86b3f9f54ce4a0aa853e06cdcc59f090050555fe22fb9bad71c277a39d92",
+      "source": {
+        "kind": "derived",
+        "builder": "build_oos_forcing:shieldplus",
+        "inputs": {
+          "inputs/shield/amip-hist/forcing_2014.nc": "68460f308a1456290fc3493192fc2a9374f61dbb2c73de1cbd175b32c5f419a2",
+          "raw/zenodo-17065758/ERA5-0.25deg-monthly-mean-forcing-1978-2024.nc": "a52caf3722bc85a58075118fa06f0c6cce5ace279458edda0a2c9d68ec179fb7",
+          "raw/co2_global_mean.nc": "e2c65b9edd216604a7ffada29fb4f3aa6cb24b2228f3428c1b0a0c29018b2896"
+        }
+      }
+    },
+    "inputs/shield/amip-oos/forcing_2019.nc": {
+      "size": null,
+      "sha256": "38e5c815c335eed76b7a3870e6deda78cd1eb5069c685bef50cf8791c4deb580",
+      "source": {
+        "kind": "derived",
+        "builder": "build_oos_forcing:shieldplus",
+        "inputs": {
+          "inputs/shield/amip-hist/forcing_2014.nc": "68460f308a1456290fc3493192fc2a9374f61dbb2c73de1cbd175b32c5f419a2",
+          "raw/zenodo-17065758/ERA5-0.25deg-monthly-mean-forcing-1978-2024.nc": "a52caf3722bc85a58075118fa06f0c6cce5ace279458edda0a2c9d68ec179fb7",
+          "raw/co2_global_mean.nc": "e2c65b9edd216604a7ffada29fb4f3aa6cb24b2228f3428c1b0a0c29018b2896"
+        }
+      }
+    },
+    "inputs/shield/amip-oos/forcing_2020.nc": {
+      "size": null,
+      "sha256": "21edfc2d9f3bfa6f39c301997b6e8df866f8b42b58c2d823a8578120d9ce799a",
+      "source": {
+        "kind": "derived",
+        "builder": "build_oos_forcing:shieldplus",
+        "inputs": {
+          "inputs/shield/amip-hist/forcing_2014.nc": "68460f308a1456290fc3493192fc2a9374f61dbb2c73de1cbd175b32c5f419a2",
+          "inputs/shield/amip-hist/forcing_2012.nc": "07a3142e438d007b5a47698c4d3a52306670bed5631b31160a2a479686aa3469",
+          "raw/zenodo-17065758/ERA5-0.25deg-monthly-mean-forcing-1978-2024.nc": "a52caf3722bc85a58075118fa06f0c6cce5ace279458edda0a2c9d68ec179fb7",
+          "raw/co2_global_mean.nc": "e2c65b9edd216604a7ffada29fb4f3aa6cb24b2228f3428c1b0a0c29018b2896"
+        }
+      }
+    },
+    "inputs/shield/amip-oos/forcing_2021.nc": {
+      "size": null,
+      "sha256": "5ac6d69b67e4a0f92e1cad719053ad529c3af01702ff26d58a1da976f009de95",
+      "source": {
+        "kind": "derived",
+        "builder": "build_oos_forcing:shieldplus",
+        "inputs": {
+          "inputs/shield/amip-hist/forcing_2014.nc": "68460f308a1456290fc3493192fc2a9374f61dbb2c73de1cbd175b32c5f419a2",
+          "raw/zenodo-17065758/ERA5-0.25deg-monthly-mean-forcing-1978-2024.nc": "a52caf3722bc85a58075118fa06f0c6cce5ace279458edda0a2c9d68ec179fb7",
+          "raw/co2_global_mean.nc": "e2c65b9edd216604a7ffada29fb4f3aa6cb24b2228f3428c1b0a0c29018b2896"
+        }
+      }
+    },
+    "inputs/shield/amip-oos/forcing_2022.nc": {
+      "size": null,
+      "sha256": "623018b730836a2aa2b8f25d40a8f22605ace3faab75ee78793cb3f1d681b74c",
+      "source": {
+        "kind": "derived",
+        "builder": "build_oos_forcing:shieldplus",
+        "inputs": {
+          "inputs/shield/amip-hist/forcing_2014.nc": "68460f308a1456290fc3493192fc2a9374f61dbb2c73de1cbd175b32c5f419a2",
+          "raw/zenodo-17065758/ERA5-0.25deg-monthly-mean-forcing-1978-2024.nc": "a52caf3722bc85a58075118fa06f0c6cce5ace279458edda0a2c9d68ec179fb7",
+          "raw/co2_global_mean.nc": "e2c65b9edd216604a7ffada29fb4f3aa6cb24b2228f3428c1b0a0c29018b2896"
+        }
+      }
+    },
+    "inputs/shield/amip-oos/forcing_2023.nc": {
+      "size": null,
+      "sha256": "6d3e0e97f536f1e5e6c1e9d4f0281b41c1936a162255e67af3b21109e159075e",
+      "source": {
+        "kind": "derived",
+        "builder": "build_oos_forcing:shieldplus",
+        "inputs": {
+          "inputs/shield/amip-hist/forcing_2014.nc": "68460f308a1456290fc3493192fc2a9374f61dbb2c73de1cbd175b32c5f419a2",
+          "raw/zenodo-17065758/ERA5-0.25deg-monthly-mean-forcing-1978-2024.nc": "a52caf3722bc85a58075118fa06f0c6cce5ace279458edda0a2c9d68ec179fb7",
+          "raw/co2_global_mean.nc": "e2c65b9edd216604a7ffada29fb4f3aa6cb24b2228f3428c1b0a0c29018b2896"
+        }
+      }
+    },
+    "inputs/shield/amip-oos/forcing_2024.nc": {
+      "size": null,
+      "sha256": "6bd31f3ddc42744d6130dc1874ca337baad16511c4ae1de4030ca09a419404ac",
+      "source": {
+        "kind": "derived",
+        "builder": "build_oos_forcing:shieldplus",
+        "inputs": {
+          "inputs/shield/amip-hist/forcing_2014.nc": "68460f308a1456290fc3493192fc2a9374f61dbb2c73de1cbd175b32c5f419a2",
+          "inputs/shield/amip-hist/forcing_2012.nc": "07a3142e438d007b5a47698c4d3a52306670bed5631b31160a2a479686aa3469",
+          "raw/zenodo-17065758/ERA5-0.25deg-monthly-mean-forcing-1978-2024.nc": "a52caf3722bc85a58075118fa06f0c6cce5ace279458edda0a2c9d68ec179fb7",
+          "raw/co2_global_mean.nc": "e2c65b9edd216604a7ffada29fb4f3aa6cb24b2228f3428c1b0a0c29018b2896"
+        }
+      }
+    },
+    "inputs/hiro-ace/amip-oos/forcing_2014.nc": {
+      "size": null,
+      "sha256": "406622c672106428993e039343e705a133c1701f274a990939f001825cb056e2",
+      "source": {
+        "kind": "derived",
+        "builder": "build_oos_forcing:hiro:bridge",
+        "inputs": {
+          "inputs/hiro-ace/amip-hist/forcing_2014.nc": "406622c672106428993e039343e705a133c1701f274a990939f001825cb056e2"
+        }
+      }
+    },
+    "inputs/hiro-ace/amip-oos/forcing_2015.nc": {
+      "size": null,
+      "sha256": "382f40eb846a0d2ab373a5afbca55f32df29c7f0849b3bf8585539c66c49db76",
+      "source": {
+        "kind": "derived",
+        "builder": "build_oos_forcing:hiro",
+        "inputs": {
+          "inputs/hiro-ace/amip-hist/forcing_2014.nc": "406622c672106428993e039343e705a133c1701f274a990939f001825cb056e2",
+          "raw/zenodo-17065758/ERA5-0.25deg-monthly-mean-forcing-1978-2024.nc": "a52caf3722bc85a58075118fa06f0c6cce5ace279458edda0a2c9d68ec179fb7",
+          "raw/co2_global_mean.nc": "e2c65b9edd216604a7ffada29fb4f3aa6cb24b2228f3428c1b0a0c29018b2896"
+        }
+      }
+    },
+    "inputs/hiro-ace/amip-oos/forcing_2016.nc": {
+      "size": null,
+      "sha256": "eb1931ee1757222dfd52ca1cb720be8e054f1ccaee82d6e0b9c7fc5fa6d2b645",
+      "source": {
+        "kind": "derived",
+        "builder": "build_oos_forcing:hiro",
+        "inputs": {
+          "inputs/hiro-ace/amip-hist/forcing_2014.nc": "406622c672106428993e039343e705a133c1701f274a990939f001825cb056e2",
+          "inputs/hiro-ace/amip-hist/forcing_2012.nc": "3a35c3d491302b833fb0a3f2fd7c35da61cdf5bb2088357499ef718bd2a72d63",
+          "raw/zenodo-17065758/ERA5-0.25deg-monthly-mean-forcing-1978-2024.nc": "a52caf3722bc85a58075118fa06f0c6cce5ace279458edda0a2c9d68ec179fb7",
+          "raw/co2_global_mean.nc": "e2c65b9edd216604a7ffada29fb4f3aa6cb24b2228f3428c1b0a0c29018b2896"
+        }
+      }
+    },
+    "inputs/hiro-ace/amip-oos/forcing_2017.nc": {
+      "size": null,
+      "sha256": "7dd20d0a5a3c1101ead35ad7b014d0111e16babdfd275aa9aa9f35591cba24d4",
+      "source": {
+        "kind": "derived",
+        "builder": "build_oos_forcing:hiro",
+        "inputs": {
+          "inputs/hiro-ace/amip-hist/forcing_2014.nc": "406622c672106428993e039343e705a133c1701f274a990939f001825cb056e2",
+          "raw/zenodo-17065758/ERA5-0.25deg-monthly-mean-forcing-1978-2024.nc": "a52caf3722bc85a58075118fa06f0c6cce5ace279458edda0a2c9d68ec179fb7",
+          "raw/co2_global_mean.nc": "e2c65b9edd216604a7ffada29fb4f3aa6cb24b2228f3428c1b0a0c29018b2896"
+        }
+      }
+    },
+    "inputs/hiro-ace/amip-oos/forcing_2018.nc": {
+      "size": null,
+      "sha256": "20d6937ac6470d4aaa2f573b02082635a659ebfd6689d381810f0f4861dfa2dc",
+      "source": {
+        "kind": "derived",
+        "builder": "build_oos_forcing:hiro",
+        "inputs": {
+          "inputs/hiro-ace/amip-hist/forcing_2014.nc": "406622c672106428993e039343e705a133c1701f274a990939f001825cb056e2",
+          "raw/zenodo-17065758/ERA5-0.25deg-monthly-mean-forcing-1978-2024.nc": "a52caf3722bc85a58075118fa06f0c6cce5ace279458edda0a2c9d68ec179fb7",
+          "raw/co2_global_mean.nc": "e2c65b9edd216604a7ffada29fb4f3aa6cb24b2228f3428c1b0a0c29018b2896"
+        }
+      }
+    },
+    "inputs/hiro-ace/amip-oos/forcing_2019.nc": {
+      "size": null,
+      "sha256": "6413410e81e96b128ff701435556e4e39f21cd2bbfe2319f36d3a76daebe7294",
+      "source": {
+        "kind": "derived",
+        "builder": "build_oos_forcing:hiro",
+        "inputs": {
+          "inputs/hiro-ace/amip-hist/forcing_2014.nc": "406622c672106428993e039343e705a133c1701f274a990939f001825cb056e2",
+          "raw/zenodo-17065758/ERA5-0.25deg-monthly-mean-forcing-1978-2024.nc": "a52caf3722bc85a58075118fa06f0c6cce5ace279458edda0a2c9d68ec179fb7",
+          "raw/co2_global_mean.nc": "e2c65b9edd216604a7ffada29fb4f3aa6cb24b2228f3428c1b0a0c29018b2896"
+        }
+      }
+    },
+    "inputs/hiro-ace/amip-oos/forcing_2020.nc": {
+      "size": null,
+      "sha256": "61f3077afb2c7036e7461b1585867ee6704eb6e6d824c3c9c87c268330567a0e",
+      "source": {
+        "kind": "derived",
+        "builder": "build_oos_forcing:hiro",
+        "inputs": {
+          "inputs/hiro-ace/amip-hist/forcing_2014.nc": "406622c672106428993e039343e705a133c1701f274a990939f001825cb056e2",
+          "inputs/hiro-ace/amip-hist/forcing_2012.nc": "3a35c3d491302b833fb0a3f2fd7c35da61cdf5bb2088357499ef718bd2a72d63",
+          "raw/zenodo-17065758/ERA5-0.25deg-monthly-mean-forcing-1978-2024.nc": "a52caf3722bc85a58075118fa06f0c6cce5ace279458edda0a2c9d68ec179fb7",
+          "raw/co2_global_mean.nc": "e2c65b9edd216604a7ffada29fb4f3aa6cb24b2228f3428c1b0a0c29018b2896"
+        }
+      }
+    },
+    "inputs/hiro-ace/amip-oos/forcing_2021.nc": {
+      "size": null,
+      "sha256": "a16895fa162ec6d415f6b234223d062d995ec84d77a9109cf42f236f82dcc16f",
+      "source": {
+        "kind": "derived",
+        "builder": "build_oos_forcing:hiro",
+        "inputs": {
+          "inputs/hiro-ace/amip-hist/forcing_2014.nc": "406622c672106428993e039343e705a133c1701f274a990939f001825cb056e2",
+          "raw/zenodo-17065758/ERA5-0.25deg-monthly-mean-forcing-1978-2024.nc": "a52caf3722bc85a58075118fa06f0c6cce5ace279458edda0a2c9d68ec179fb7",
+          "raw/co2_global_mean.nc": "e2c65b9edd216604a7ffada29fb4f3aa6cb24b2228f3428c1b0a0c29018b2896"
+        }
+      }
+    },
+    "inputs/hiro-ace/amip-oos/forcing_2022.nc": {
+      "size": null,
+      "sha256": "0242b66b862ff2707eb5cc5e652ddccd9f6c982d27ae5233fc688aa2ea11ecad",
+      "source": {
+        "kind": "derived",
+        "builder": "build_oos_forcing:hiro",
+        "inputs": {
+          "inputs/hiro-ace/amip-hist/forcing_2014.nc": "406622c672106428993e039343e705a133c1701f274a990939f001825cb056e2",
+          "raw/zenodo-17065758/ERA5-0.25deg-monthly-mean-forcing-1978-2024.nc": "a52caf3722bc85a58075118fa06f0c6cce5ace279458edda0a2c9d68ec179fb7",
+          "raw/co2_global_mean.nc": "e2c65b9edd216604a7ffada29fb4f3aa6cb24b2228f3428c1b0a0c29018b2896"
+        }
+      }
+    },
+    "inputs/hiro-ace/amip-oos/forcing_2023.nc": {
+      "size": null,
+      "sha256": "404422c9636b17479e40df0e01db300681a356cd59b48f01d9716ddc36c9b41f",
+      "source": {
+        "kind": "derived",
+        "builder": "build_oos_forcing:hiro",
+        "inputs": {
+          "inputs/hiro-ace/amip-hist/forcing_2014.nc": "406622c672106428993e039343e705a133c1701f274a990939f001825cb056e2",
+          "raw/zenodo-17065758/ERA5-0.25deg-monthly-mean-forcing-1978-2024.nc": "a52caf3722bc85a58075118fa06f0c6cce5ace279458edda0a2c9d68ec179fb7",
+          "raw/co2_global_mean.nc": "e2c65b9edd216604a7ffada29fb4f3aa6cb24b2228f3428c1b0a0c29018b2896"
+        }
+      }
+    },
+    "inputs/hiro-ace/amip-oos/forcing_2024.nc": {
+      "size": null,
+      "sha256": "910f547e7c60cba7b44400acaa966be849d4ee2c8da1e9081dfd220eec689c7b",
+      "source": {
+        "kind": "derived",
+        "builder": "build_oos_forcing:hiro",
+        "inputs": {
+          "inputs/hiro-ace/amip-hist/forcing_2014.nc": "406622c672106428993e039343e705a133c1701f274a990939f001825cb056e2",
+          "inputs/hiro-ace/amip-hist/forcing_2012.nc": "3a35c3d491302b833fb0a3f2fd7c35da61cdf5bb2088357499ef718bd2a72d63",
+          "raw/zenodo-17065758/ERA5-0.25deg-monthly-mean-forcing-1978-2024.nc": "a52caf3722bc85a58075118fa06f0c6cce5ace279458edda0a2c9d68ec179fb7",
+          "raw/co2_global_mean.nc": "e2c65b9edd216604a7ffada29fb4f3aa6cb24b2228f3428c1b0a0c29018b2896"
+        }
+      }
+    },
+    "models/ace2-som/ace2_som_ckpt.tar": {
+      "size": 1823641466,
+      "sha256": "b191174e45ac16d86f3a5ccfa99b8952866ec6482b19e08edbd0f05114f5f9ab",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2-SOM",
+        "path": "ace2_som_ckpt.tar",
+        "revision": "47c5b54424093d8607b6b5014699a1fc9b30f6b0"
+      }
+    },
+    "models/hiro-acev2/ACE2S-X-SHiELD.ckpt": {
+      "size": 3201380831,
+      "sha256": "121bcce0d03de915c7964aff6619e11e32fd6d0780fc9ca0b654f88c6535729f",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/HiRO-ACEv2",
+        "path": "ACE2S-X-SHiELD.ckpt",
+        "revision": "16bd51b8da79d85c138cc166c93196501616c3bf"
+      }
+    },
+    "models/samudrace-cm4/samudrACE_CM4_piControl_ckpt.tar": {
+      "size": 2364444043,
+      "sha256": "cc20dcc8ec4254729f42acad7c2d55efc1b61a118f4370f730e537cdae8c2b79",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/SamudrACE-CM4-piControl",
+        "path": "samudrACE_CM4_piControl_ckpt.tar",
+        "revision": "48567c80676de7db51d270c8c0c5dd61f08c9f39"
+      }
+    },
+    "models/samudrace-e3smv3/SamudrACE-E3SMv3.tar": {
+      "size": 2169125071,
+      "sha256": "dd5f9245e7d05f8e220ea7ed74b7a4ebd5621a9bfe5f540ddb136fc4625f0be4",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/SamudrACE-E3SMv3",
+        "path": "SamudrACE-E3SMv3.tar",
+        "revision": "b9abeb489154a9f7a4f776180122d64fdcf66cb5"
+      }
+    },
+    "models/ace2-som/inference_config.yaml": {
+      "size": 614,
+      "sha256": "56ac529da0c87c1ec1b0fda40d800e4e71e24ea09520f52dc481e8c0be674773",
+      "pin_after_first_fetch": false,
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2-SOM",
+        "path": "inference_config.yaml",
+        "revision": "47c5b54424093d8607b6b5014699a1fc9b30f6b0"
+      }
+    },
+    "models/hiro-acev2/ace2s_inference_config_global.yaml": {
+      "size": 648,
+      "sha256": "eba09be7f605085281b45258c694e220cc823707e04bd0822b8c4464c2c5661b",
+      "pin_after_first_fetch": false,
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/HiRO-ACEv2",
+        "path": "ace2s_inference_config_global.yaml",
+        "revision": "16bd51b8da79d85c138cc166c93196501616c3bf"
+      }
+    },
+    "models/samudrace-cm4/inference_config.yaml": {
+      "size": 775,
+      "sha256": "8a2de987e971fb71b1553054e09eab139fa7f296cb9eeed9a69c546499c8c58c",
+      "pin_after_first_fetch": false,
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/SamudrACE-CM4-piControl",
+        "path": "inference_config.yaml",
+        "revision": "48567c80676de7db51d270c8c0c5dd61f08c9f39"
+      }
+    },
+    "models/samudrace-e3smv3/inference-config.yaml": {
+      "size": 958,
+      "sha256": "61807b125c906558ae54348b0e476b3efc1856134867c1c622d64b0cda78d374",
+      "pin_after_first_fetch": false,
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/SamudrACE-E3SMv3",
+        "path": "inference-config.yaml",
+        "revision": "b9abeb489154a9f7a4f776180122d64fdcf66cb5"
+      }
+    },
+    "inputs/ace2-som/ic/1xCO2/ic.nc": {
+      "size": 9959599,
+      "sha256": "f481537cc80e4dd4c41f4e629563b2f62b4c3b1d9ede3db67f429ed3669fab13",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2-SOM",
+        "path": "initial_conditions/1xCO2/ic.nc",
+        "revision": "47c5b54424093d8607b6b5014699a1fc9b30f6b0"
+      }
+    },
+    "inputs/ace2-som/1xCO2/forcing_2032.nc": {
+      "size": 945235410,
+      "sha256": "a5617718ced22f19f7a37a82f33c51cedd7b4a7b56f65766333cc8f3e33c8cd6",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2-SOM",
+        "path": "forcing_data/1xCO2/forcing_2032.nc",
+        "revision": "47c5b54424093d8607b6b5014699a1fc9b30f6b0"
+      }
+    },
+    "inputs/ace2-som/1xCO2/forcing_2033.nc": {
+      "size": 942674557,
+      "sha256": "5c4890f3abb099b85ffdab952a7bf3d70507894d0f63c6f23e5d0c5b0c4fb232",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2-SOM",
+        "path": "forcing_data/1xCO2/forcing_2033.nc",
+        "revision": "47c5b54424093d8607b6b5014699a1fc9b30f6b0"
+      }
+    },
+    "inputs/ace2-som/1xCO2/forcing_2034.nc": {
+      "size": 942687017,
+      "sha256": "c17aec8be4941cbbe1479731e18efd9a4ed47906b274ff25596109603e9733bb",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2-SOM",
+        "path": "forcing_data/1xCO2/forcing_2034.nc",
+        "revision": "47c5b54424093d8607b6b5014699a1fc9b30f6b0"
+      }
+    },
+    "inputs/ace2-som/1xCO2/forcing_2035.nc": {
+      "size": 942672153,
+      "sha256": "e6dfd8bc61d45dcea8e82c69b374546d0b6df7fb536453ce024c3a56c47e4fe1",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2-SOM",
+        "path": "forcing_data/1xCO2/forcing_2035.nc",
+        "revision": "47c5b54424093d8607b6b5014699a1fc9b30f6b0"
+      }
+    },
+    "inputs/ace2-som/ic/3xCO2/ic.nc": {
+      "size": 9959599,
+      "sha256": "449b50d6b97d360d70bb52f90ee604e933a84d1168cab7658c2fba20774ef751",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2-SOM",
+        "path": "initial_conditions/3xCO2/ic.nc",
+        "revision": "47c5b54424093d8607b6b5014699a1fc9b30f6b0"
+      }
+    },
+    "inputs/ace2-som/3xCO2/forcing_2032.nc": {
+      "size": 945257461,
+      "sha256": "81aafd1b94c738d7593840a78d477ebcc16c73636784c713c237136bc557d3fe",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2-SOM",
+        "path": "forcing_data/3xCO2/forcing_2032.nc",
+        "revision": "47c5b54424093d8607b6b5014699a1fc9b30f6b0"
+      }
+    },
+    "inputs/ace2-som/3xCO2/forcing_2033.nc": {
+      "size": 942659253,
+      "sha256": "7fbc16f828522b654e1a15e5cd81d6f8f594254b288b4a97c27cfa01ca8ccdfa",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2-SOM",
+        "path": "forcing_data/3xCO2/forcing_2033.nc",
+        "revision": "47c5b54424093d8607b6b5014699a1fc9b30f6b0"
+      }
+    },
+    "inputs/ace2-som/3xCO2/forcing_2034.nc": {
+      "size": 942658976,
+      "sha256": "8871101e46a22b55c99163700cb99831df96b70a9f8a3a61ca3887a35cc294f7",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2-SOM",
+        "path": "forcing_data/3xCO2/forcing_2034.nc",
+        "revision": "47c5b54424093d8607b6b5014699a1fc9b30f6b0"
+      }
+    },
+    "inputs/ace2-som/3xCO2/forcing_2035.nc": {
+      "size": 942675350,
+      "sha256": "202ef54198f0e380d06894ccf5c8147dfe9f24f62dab7133268c457a65ef54ec",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/ACE2-SOM",
+        "path": "forcing_data/3xCO2/forcing_2035.nc",
+        "revision": "47c5b54424093d8607b6b5014699a1fc9b30f6b0"
+      }
+    },
+    "inputs/ace2s/ic/ic_2014.nc": {
+      "size": 118253505,
+      "sha256": "81633b64252b2bcf0b8101935ed01373af26e31f25bc7bc610cd16e12f4d5d9a",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/HiRO-ACE",
+        "path": "initial_conditions/ic_2014.nc",
+        "revision": "286264358ea097b794a776375eef992b08b98668"
+      }
+    },
+    "inputs/ace2s/ic/ic_2023.nc": {
+      "size": 118253505,
+      "sha256": "55d199efe0d9979a2daf378d2bd53790f539fa1a44ce3815104b77ac3adb2d78",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/HiRO-ACE",
+        "path": "initial_conditions/ic_2023.nc",
+        "revision": "286264358ea097b794a776375eef992b08b98668"
+      }
+    },
+    "inputs/ace2s/amip-2014-2023/forcing_2014.nc": {
+      "size": 608500978,
+      "sha256": "27c6158a114acadc5e12935ffe077ec251ee7abe41ec536c608a03e628bd2f1c",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/HiRO-ACE",
+        "path": "forcing_data/forcing_2014.nc",
+        "revision": "286264358ea097b794a776375eef992b08b98668"
+      }
+    },
+    "inputs/ace2s/amip-2014-2023/forcing_2015.nc": {
+      "size": 608385655,
+      "sha256": "ccf9fce85bb11d59955da67b99156fd2da02568358e55779f3fd260e572365a8",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/HiRO-ACE",
+        "path": "forcing_data/forcing_2015.nc",
+        "revision": "286264358ea097b794a776375eef992b08b98668"
+      }
+    },
+    "inputs/ace2s/amip-2014-2023/forcing_2016.nc": {
+      "size": 612006434,
+      "sha256": "7fc494a774cea8b457d7c3fe8dd10d3b0d573f1f7a02bb2db86177a641740fd4",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/HiRO-ACE",
+        "path": "forcing_data/forcing_2016.nc",
+        "revision": "286264358ea097b794a776375eef992b08b98668"
+      }
+    },
+    "inputs/ace2s/amip-2014-2023/forcing_2017.nc": {
+      "size": 609011251,
+      "sha256": "95b7c740e41a0f28a1e5d7554a0ef3f7312a060e59a6b7ec897cf7c44cf902b4",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/HiRO-ACE",
+        "path": "forcing_data/forcing_2017.nc",
+        "revision": "286264358ea097b794a776375eef992b08b98668"
+      }
+    },
+    "inputs/ace2s/amip-2014-2023/forcing_2018.nc": {
+      "size": 609405145,
+      "sha256": "5a203d5ccb64f9eddf9f066e03891cac7d72efdc625a673602f72990f6297453",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/HiRO-ACE",
+        "path": "forcing_data/forcing_2018.nc",
+        "revision": "286264358ea097b794a776375eef992b08b98668"
+      }
+    },
+    "inputs/ace2s/amip-2014-2023/forcing_2019.nc": {
+      "size": 609168683,
+      "sha256": "013e930cd390ed895cad3c0904312f85fee3d7c45cb025d02ef68d405bcfca3c",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/HiRO-ACE",
+        "path": "forcing_data/forcing_2019.nc",
+        "revision": "286264358ea097b794a776375eef992b08b98668"
+      }
+    },
+    "inputs/ace2s/amip-2014-2023/forcing_2020.nc": {
+      "size": 610902852,
+      "sha256": "004217c6d9e9e718fd1cb866f8419db474dcb7ee453b7991fb018b043b809d8c",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/HiRO-ACE",
+        "path": "forcing_data/forcing_2020.nc",
+        "revision": "286264358ea097b794a776375eef992b08b98668"
+      }
+    },
+    "inputs/ace2s/amip-2014-2023/forcing_2021.nc": {
+      "size": 609579207,
+      "sha256": "2e436a3da3b7e67f31f5442c8c2d4d5f1de45115d31d6d917397693cb04939ed",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/HiRO-ACE",
+        "path": "forcing_data/forcing_2021.nc",
+        "revision": "286264358ea097b794a776375eef992b08b98668"
+      }
+    },
+    "inputs/ace2s/amip-2014-2023/forcing_2022.nc": {
+      "size": 609125505,
+      "sha256": "c47e03729e1865b4f82d0c995fcf75b2442828948a17d432ad2e196e9ce510e4",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/HiRO-ACE",
+        "path": "forcing_data/forcing_2022.nc",
+        "revision": "286264358ea097b794a776375eef992b08b98668"
+      }
+    },
+    "inputs/ace2s/amip-2014-2023/forcing_2023.nc": {
+      "size": 607812478,
+      "sha256": "099bb7e20cf8eac9f9678e2de77de9984a56c9aaaff2b900dc18b38a808f5cab",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/HiRO-ACE",
+        "path": "forcing_data/forcing_2023.nc",
+        "revision": "286264358ea097b794a776375eef992b08b98668"
+      }
+    },
+    "inputs/hiro-acev2/ic/ic_2014.nc": {
+      "size": 118253505,
+      "sha256": "81633b64252b2bcf0b8101935ed01373af26e31f25bc7bc610cd16e12f4d5d9a",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/HiRO-ACEv2",
+        "path": "initial_conditions/ic_2014.nc",
+        "revision": "16bd51b8da79d85c138cc166c93196501616c3bf"
+      }
+    },
+    "inputs/hiro-acev2/ic/ic_2023.nc": {
+      "size": 118253505,
+      "sha256": "55d199efe0d9979a2daf378d2bd53790f539fa1a44ce3815104b77ac3adb2d78",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/HiRO-ACEv2",
+        "path": "initial_conditions/ic_2023.nc",
+        "revision": "16bd51b8da79d85c138cc166c93196501616c3bf"
+      }
+    },
+    "inputs/hiro-acev2/amip-2014-2023/forcing_2014.nc": {
+      "size": 608500978,
+      "sha256": "27c6158a114acadc5e12935ffe077ec251ee7abe41ec536c608a03e628bd2f1c",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/HiRO-ACEv2",
+        "path": "forcing_data/forcing_2014.nc",
+        "revision": "16bd51b8da79d85c138cc166c93196501616c3bf"
+      }
+    },
+    "inputs/hiro-acev2/amip-2014-2023/forcing_2015.nc": {
+      "size": 608385655,
+      "sha256": "ccf9fce85bb11d59955da67b99156fd2da02568358e55779f3fd260e572365a8",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/HiRO-ACEv2",
+        "path": "forcing_data/forcing_2015.nc",
+        "revision": "16bd51b8da79d85c138cc166c93196501616c3bf"
+      }
+    },
+    "inputs/hiro-acev2/amip-2014-2023/forcing_2016.nc": {
+      "size": 612006434,
+      "sha256": "7fc494a774cea8b457d7c3fe8dd10d3b0d573f1f7a02bb2db86177a641740fd4",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/HiRO-ACEv2",
+        "path": "forcing_data/forcing_2016.nc",
+        "revision": "16bd51b8da79d85c138cc166c93196501616c3bf"
+      }
+    },
+    "inputs/hiro-acev2/amip-2014-2023/forcing_2017.nc": {
+      "size": 609011251,
+      "sha256": "95b7c740e41a0f28a1e5d7554a0ef3f7312a060e59a6b7ec897cf7c44cf902b4",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/HiRO-ACEv2",
+        "path": "forcing_data/forcing_2017.nc",
+        "revision": "16bd51b8da79d85c138cc166c93196501616c3bf"
+      }
+    },
+    "inputs/hiro-acev2/amip-2014-2023/forcing_2018.nc": {
+      "size": 609405145,
+      "sha256": "5a203d5ccb64f9eddf9f066e03891cac7d72efdc625a673602f72990f6297453",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/HiRO-ACEv2",
+        "path": "forcing_data/forcing_2018.nc",
+        "revision": "16bd51b8da79d85c138cc166c93196501616c3bf"
+      }
+    },
+    "inputs/hiro-acev2/amip-2014-2023/forcing_2019.nc": {
+      "size": 609168683,
+      "sha256": "013e930cd390ed895cad3c0904312f85fee3d7c45cb025d02ef68d405bcfca3c",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/HiRO-ACEv2",
+        "path": "forcing_data/forcing_2019.nc",
+        "revision": "16bd51b8da79d85c138cc166c93196501616c3bf"
+      }
+    },
+    "inputs/hiro-acev2/amip-2014-2023/forcing_2020.nc": {
+      "size": 610902852,
+      "sha256": "004217c6d9e9e718fd1cb866f8419db474dcb7ee453b7991fb018b043b809d8c",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/HiRO-ACEv2",
+        "path": "forcing_data/forcing_2020.nc",
+        "revision": "16bd51b8da79d85c138cc166c93196501616c3bf"
+      }
+    },
+    "inputs/hiro-acev2/amip-2014-2023/forcing_2021.nc": {
+      "size": 609579207,
+      "sha256": "2e436a3da3b7e67f31f5442c8c2d4d5f1de45115d31d6d917397693cb04939ed",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/HiRO-ACEv2",
+        "path": "forcing_data/forcing_2021.nc",
+        "revision": "16bd51b8da79d85c138cc166c93196501616c3bf"
+      }
+    },
+    "inputs/hiro-acev2/amip-2014-2023/forcing_2022.nc": {
+      "size": 609125505,
+      "sha256": "c47e03729e1865b4f82d0c995fcf75b2442828948a17d432ad2e196e9ce510e4",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/HiRO-ACEv2",
+        "path": "forcing_data/forcing_2022.nc",
+        "revision": "16bd51b8da79d85c138cc166c93196501616c3bf"
+      }
+    },
+    "inputs/hiro-acev2/amip-2014-2023/forcing_2023.nc": {
+      "size": 607812478,
+      "sha256": "099bb7e20cf8eac9f9678e2de77de9984a56c9aaaff2b900dc18b38a808f5cab",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/HiRO-ACEv2",
+        "path": "forcing_data/forcing_2023.nc",
+        "revision": "16bd51b8da79d85c138cc166c93196501616c3bf"
+      }
+    },
+    "inputs/samudrace-cm4/forcing/forcing_0151.nc": {
+      "size": 380029574,
+      "sha256": "ba2429d07ab059703bdca98804b85f89b50fb393ab1b13ef3b28dd97159f3590",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/SamudrACE-CM4-piControl",
+        "path": "forcing_data/forcing_0151.nc",
+        "revision": "48567c80676de7db51d270c8c0c5dd61f08c9f39"
+      }
+    },
+    "inputs/samudrace-cm4/forcing/forcing_0311.nc": {
+      "size": 380029574,
+      "sha256": "21feae9e64869d583492a585d96224b1bff6b502a82016431815af5307a48dd3",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/SamudrACE-CM4-piControl",
+        "path": "forcing_data/forcing_0311.nc",
+        "revision": "48567c80676de7db51d270c8c0c5dd61f08c9f39"
+      }
+    },
+    "inputs/samudrace-cm4/ic/0311-01-01T000000/atmosphere/initial_condition.nc": {
+      "size": 9896348,
+      "sha256": "48401621295aa4dbe168c3c4c636657a68ec3363dfb0f7e0bfbd5bff0210c264",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/SamudrACE-CM4-piControl",
+        "path": "initial_conditions/0311-01-01T00:00:00/atmosphere/initial_condition.nc",
+        "revision": "48567c80676de7db51d270c8c0c5dd61f08c9f39"
+      }
+    },
+    "inputs/samudrace-cm4/ic/0311-01-01T000000/ocean/initial_condition.nc": {
+      "size": 20841620,
+      "sha256": "6a84dbfae2da51a6de2dd3f55a5b1218f167e2631d6c7a3011639ccd2a3b200e",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/SamudrACE-CM4-piControl",
+        "path": "initial_conditions/0311-01-01T00:00:00/ocean/initial_condition.nc",
+        "revision": "48567c80676de7db51d270c8c0c5dd61f08c9f39"
+      }
+    },
+    "inputs/samudrace-cm4/ic/0313-01-01T000000/atmosphere/initial_condition.nc": {
+      "size": 9896204,
+      "sha256": "061a82f8c101a46f073ea5c9588b005b07e32ff34ebc6cc69030ccff423eab50",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/SamudrACE-CM4-piControl",
+        "path": "initial_conditions/0313-01-01T00:00:00/atmosphere/initial_condition.nc",
+        "revision": "48567c80676de7db51d270c8c0c5dd61f08c9f39"
+      }
+    },
+    "inputs/samudrace-cm4/ic/0313-01-01T000000/ocean/initial_condition.nc": {
+      "size": 20838250,
+      "sha256": "f6f2876c73b4e53d561c3da55c4842bb8012c8b894fb67e5689b04515894d2ff",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/SamudrACE-CM4-piControl",
+        "path": "initial_conditions/0313-01-01T00:00:00/ocean/initial_condition.nc",
+        "revision": "48567c80676de7db51d270c8c0c5dd61f08c9f39"
+      }
+    },
+    "inputs/samudrace-cm4/ic/0315-01-01T000000/atmosphere/initial_condition.nc": {
+      "size": 9896061,
+      "sha256": "1b60da411a6b1644fa7ff456a704874a495a5ea087716aaafa58a42f42fec4e2",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/SamudrACE-CM4-piControl",
+        "path": "initial_conditions/0315-01-01T00:00:00/atmosphere/initial_condition.nc",
+        "revision": "48567c80676de7db51d270c8c0c5dd61f08c9f39"
+      }
+    },
+    "inputs/samudrace-cm4/ic/0315-01-01T000000/ocean/initial_condition.nc": {
+      "size": 20842264,
+      "sha256": "a8179b6331e27b66a4e3b679afbad1c60a8332615ed2dc2e12ce36f039e0c95b",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/SamudrACE-CM4-piControl",
+        "path": "initial_conditions/0315-01-01T00:00:00/ocean/initial_condition.nc",
+        "revision": "48567c80676de7db51d270c8c0c5dd61f08c9f39"
+      }
+    },
+    "inputs/samudrace-cm4/ic/0317-01-01T000000/atmosphere/initial_condition.nc": {
+      "size": 9895880,
+      "sha256": "2d05e0e73238862dea46cb70baa82ec03f27f2a3129f940705b85cdcce5c457e",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/SamudrACE-CM4-piControl",
+        "path": "initial_conditions/0317-01-01T00:00:00/atmosphere/initial_condition.nc",
+        "revision": "48567c80676de7db51d270c8c0c5dd61f08c9f39"
+      }
+    },
+    "inputs/samudrace-cm4/ic/0317-01-01T000000/ocean/initial_condition.nc": {
+      "size": 20838289,
+      "sha256": "c8923fd85e9f0068f656f6ec0611b8f6113e5e23619d21671339c6faf32fee09",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/SamudrACE-CM4-piControl",
+        "path": "initial_conditions/0317-01-01T00:00:00/ocean/initial_condition.nc",
+        "revision": "48567c80676de7db51d270c8c0c5dd61f08c9f39"
+      }
+    },
+    "inputs/samudrace-cm4/ic/0319-01-01T000000/atmosphere/initial_condition.nc": {
+      "size": 9896618,
+      "sha256": "bdd50e6dbae686022e4a13b87b8843a0b77f9cbe112c8ea5953d2ddedbefa649",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/SamudrACE-CM4-piControl",
+        "path": "initial_conditions/0319-01-01T00:00:00/atmosphere/initial_condition.nc",
+        "revision": "48567c80676de7db51d270c8c0c5dd61f08c9f39"
+      }
+    },
+    "inputs/samudrace-cm4/ic/0319-01-01T000000/ocean/initial_condition.nc": {
+      "size": 20842158,
+      "sha256": "be4bd002e6a5416296114fa849cb22524a6500b276145fde5ae96746e7cb7f85",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/SamudrACE-CM4-piControl",
+        "path": "initial_conditions/0319-01-01T00:00:00/ocean/initial_condition.nc",
+        "revision": "48567c80676de7db51d270c8c0c5dd61f08c9f39"
+      }
+    },
+    "inputs/samudrace-cm4/ic/0151-01-06T000000/atmosphere/initial_condition.nc": {
+      "size": 9896308,
+      "sha256": "5552c031c74c14d3a82e985ab5ab3de9d00157d716db576cb431b800909487af",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/SamudrACE-CM4-piControl",
+        "path": "initial_conditions/0151-01-06T00:00:00/atmosphere/initial_condition.nc",
+        "revision": "48567c80676de7db51d270c8c0c5dd61f08c9f39"
+      }
+    },
+    "inputs/samudrace-cm4/ic/0151-01-06T000000/ocean/initial_condition.nc": {
+      "size": 20841274,
+      "sha256": "19e993bd1138a59464acbd704af1cc3ac05ac60cdd8e857b837226339bf0b4f3",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/SamudrACE-CM4-piControl",
+        "path": "initial_conditions/0151-01-06T00:00:00/ocean/initial_condition.nc",
+        "revision": "48567c80676de7db51d270c8c0c5dd61f08c9f39"
+      }
+    },
+    "inputs/samudrace-e3smv3/ic/SamudrACE-E3SMv3-ICx3-train_atmosphere_ic.nc": {
+      "size": 48313836,
+      "sha256": "9f97310b98bfa29a4c21c8a316014ede221d20b9b37d9e5cfda39a4e3bed0161",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/SamudrACE-E3SMv3",
+        "path": "initial_conditions/SamudrACE-E3SMv3-ICx3-train_atmosphere_ic.nc",
+        "revision": "b9abeb489154a9f7a4f776180122d64fdcf66cb5"
+      }
+    },
+    "inputs/samudrace-e3smv3/ic/SamudrACE-E3SMv3-ICx3-train_ocean_ic.nc": {
+      "size": 102550393,
+      "sha256": "b21bf023757ad5d80c387dfaf3d71a8bc50b168258cfc555e9e195759d582609",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/SamudrACE-E3SMv3",
+        "path": "initial_conditions/SamudrACE-E3SMv3-ICx3-train_ocean_ic.nc",
+        "revision": "b9abeb489154a9f7a4f776180122d64fdcf66cb5"
+      }
+    },
+    "inputs/samudrace-e3smv3/forcing/atmosphere-forcing-1yr.nc": {
+      "size": 378995139,
+      "sha256": "b7a322f6413c6df84b9ed9dc2c045c3736281fcdacfeea78be3f55f42eeed676",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/SamudrACE-E3SMv3",
+        "path": "forcing_data/atmosphere-forcing-1yr.nc",
+        "revision": "b9abeb489154a9f7a4f776180122d64fdcf66cb5"
+      }
+    },
+    "inputs/samudrace-e3smv3/forcing/ocean-forcing-1yr.nc": {
+      "size": 7853825,
+      "sha256": "5c77a871e6a3d99b44dec30729e67cc7f4267ba772935b8c889fa726ad783a59",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/SamudrACE-E3SMv3",
+        "path": "forcing_data/ocean-forcing-1yr.nc",
+        "revision": "b9abeb489154a9f7a4f776180122d64fdcf66cb5"
+      }
+    },
+    "models/samudrace-e3smv3/SamudrACE-E3SMv3-atmosphere.tar": {
+      "size": 1826548413,
+      "sha256": "166c7dee86bf03801445ae3cb5ed8e875aa5605ff8d80596f5154c1d8bdf2f59",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/SamudrACE-E3SMv3",
+        "path": "SamudrACE-E3SMv3-atmosphere.tar",
+        "revision": "b9abeb489154a9f7a4f776180122d64fdcf66cb5"
+      }
+    },
+    "models/samudrace-e3smv3/SamudrACE-E3SMv3-ocean.tar": {
+      "size": 342550013,
+      "sha256": "4a28ffa0f16e08632a642121c1c647fef2df1839a2704dc174af14cd72350e02",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/SamudrACE-E3SMv3",
+        "path": "SamudrACE-E3SMv3-ocean.tar",
+        "revision": "b9abeb489154a9f7a4f776180122d64fdcf66cb5"
+      }
+    },
+    "models/hiro-acev2/HiROv2.ckpt": {
+      "size": 1376737727,
+      "sha256": "1b99f84b31f43151b306d32dc7d0dca68cc6bb131050938ec70172b6cfa140b2",
+      "source": {
+        "kind": "hf",
+        "repo": "allenai/HiRO-ACEv2",
+        "path": "HiROv2.ckpt",
+        "revision": "16bd51b8da79d85c138cc166c93196501616c3bf"
+      }
+    },
+    "models/dlesym-v1/checkpoints/v1.0/atmos/atmos_model_0.mdlus": {
+      "size": 39393280,
+      "sha256": "e2b4064f202997eafcf751754466e19475a3900f03fb3647d3163721f64d6cf0",
+      "source": {
+        "kind": "hf",
+        "repo": "nvidia/dlesym-v1-era5",
+        "path": "checkpoints/v1.0/atmos/atmos_model_0.mdlus",
+        "revision": "b88155cfc2c988a2a9058d5e35a41220e2b01941"
+      }
+    },
+    "models/dlesym-v1/checkpoints/v1.0/atmos/atmos_model_1.mdlus": {
+      "size": 39393280,
+      "sha256": "c85ae4367c0bbdd869ede7724291e718d30edb4b7c0ab82870f82d08af710c1c",
+      "source": {
+        "kind": "hf",
+        "repo": "nvidia/dlesym-v1-era5",
+        "path": "checkpoints/v1.0/atmos/atmos_model_1.mdlus",
+        "revision": "b88155cfc2c988a2a9058d5e35a41220e2b01941"
+      }
+    },
+    "models/dlesym-v1/checkpoints/v1.0/atmos/atmos_model_2.mdlus": {
+      "size": 39393280,
+      "sha256": "e700a370d2626cee5f5b3f8fdaa3d8f74d173b968e8894fa8eaca94913fb4c15",
+      "source": {
+        "kind": "hf",
+        "repo": "nvidia/dlesym-v1-era5",
+        "path": "checkpoints/v1.0/atmos/atmos_model_2.mdlus",
+        "revision": "b88155cfc2c988a2a9058d5e35a41220e2b01941"
+      }
+    },
+    "models/dlesym-v1/checkpoints/v1.0/atmos/atmos_model_3.mdlus": {
+      "size": 39393280,
+      "sha256": "10386d365fd79ed3a84a09afe9bf983486763ae19886afee5f62d3be9bac2915",
+      "source": {
+        "kind": "hf",
+        "repo": "nvidia/dlesym-v1-era5",
+        "path": "checkpoints/v1.0/atmos/atmos_model_3.mdlus",
+        "revision": "b88155cfc2c988a2a9058d5e35a41220e2b01941"
+      }
+    },
+    "models/dlesym-v1/checkpoints/v1.0/config.yaml": {
+      "size": 1477,
+      "sha256": "a1041d4345a8f93d36d5cb587ad0c8b03ef24c930b6b327c1dfd0fb2c2ed59b2",
+      "source": {
+        "kind": "hf",
+        "repo": "nvidia/dlesym-v1-era5",
+        "path": "checkpoints/v1.0/config.yaml",
+        "revision": "b88155cfc2c988a2a9058d5e35a41220e2b01941"
+      }
+    },
+    "models/dlesym-v1/checkpoints/v1.0/ocean/ocean_model_0.mdlus": {
+      "size": 3112960,
+      "sha256": "42ef6740811ef75246c712dc2532caade55b865aace0f5139fd4f508e55b4e0b",
+      "source": {
+        "kind": "hf",
+        "repo": "nvidia/dlesym-v1-era5",
+        "path": "checkpoints/v1.0/ocean/ocean_model_0.mdlus",
+        "revision": "b88155cfc2c988a2a9058d5e35a41220e2b01941"
+      }
+    },
+    "models/dlesym-v1/checkpoints/v1.0/ocean/ocean_model_1.mdlus": {
+      "size": 3112960,
+      "sha256": "7db0ec70a70f58c1d3a39b71df6613d1db8081958ddb4837864ceafd5dc3b807",
+      "source": {
+        "kind": "hf",
+        "repo": "nvidia/dlesym-v1-era5",
+        "path": "checkpoints/v1.0/ocean/ocean_model_1.mdlus",
+        "revision": "b88155cfc2c988a2a9058d5e35a41220e2b01941"
+      }
+    },
+    "models/dlesym-v1/checkpoints/v1.0/ocean/ocean_model_2.mdlus": {
+      "size": 3112960,
+      "sha256": "472f42408f5f0c6f37b6472a27c15778b8e0ae010a0ee7436b2200d321b31cbc",
+      "source": {
+        "kind": "hf",
+        "repo": "nvidia/dlesym-v1-era5",
+        "path": "checkpoints/v1.0/ocean/ocean_model_2.mdlus",
+        "revision": "b88155cfc2c988a2a9058d5e35a41220e2b01941"
+      }
+    },
+    "models/dlesym-v1/checkpoints/v1.0/ocean/ocean_model_3.mdlus": {
+      "size": 3112960,
+      "sha256": "3b605790051e87caf1a9c6a9a71bea54ff368a9c8ac741c96bbd4dbf5fde3582",
+      "source": {
+        "kind": "hf",
+        "repo": "nvidia/dlesym-v1-era5",
+        "path": "checkpoints/v1.0/ocean/ocean_model_3.mdlus",
+        "revision": "b88155cfc2c988a2a9058d5e35a41220e2b01941"
+      }
+    },
+    "models/dlesym-v1/checkpoints/v1.1/atmos/atmos_model_0.mdlus": {
+      "size": 20650834,
+      "sha256": "d3752ccd163c0157263f1dcdb722824cb4a2cca7368b07050172a8ba632a0950",
+      "source": {
+        "kind": "hf",
+        "repo": "nvidia/dlesym-v1-era5",
+        "path": "checkpoints/v1.1/atmos/atmos_model_0.mdlus",
+        "revision": "b88155cfc2c988a2a9058d5e35a41220e2b01941"
+      }
+    },
+    "models/dlesym-v1/checkpoints/v1.1/config.yaml": {
+      "size": 1534,
+      "sha256": "ad28fa14e9236d35392b46c9b52f84c0670bd40abf66ce543b8ff4456319e88c",
+      "source": {
+        "kind": "hf",
+        "repo": "nvidia/dlesym-v1-era5",
+        "path": "checkpoints/v1.1/config.yaml",
+        "revision": "b88155cfc2c988a2a9058d5e35a41220e2b01941"
+      }
+    },
+    "models/dlesym-v1/checkpoints/v1.1/ocean/ocean_model_0.mdlus": {
+      "size": 19555332,
+      "sha256": "0f88299adef56d7fbfba500c2656ebba3bc13da70b150a6dbb00fed82f8715e4",
+      "source": {
+        "kind": "hf",
+        "repo": "nvidia/dlesym-v1-era5",
+        "path": "checkpoints/v1.1/ocean/ocean_model_0.mdlus",
+        "revision": "b88155cfc2c988a2a9058d5e35a41220e2b01941"
+      }
+    },
+    "models/dlesym-v1/config.yaml": {
+      "size": 955,
+      "sha256": "1696ba349ff8cf2f13c95e30f28729af4f03349eba52db6b7ed675d94fe27fe3",
+      "source": {
+        "kind": "hf",
+        "repo": "nvidia/dlesym-v1-era5",
+        "path": "config.yaml",
+        "revision": "b88155cfc2c988a2a9058d5e35a41220e2b01941"
+      }
+    },
+    "models/dlesym-v1/hpx_lat.npy": {
+      "size": 393344,
+      "sha256": "028da9e8eb2809abacfe95389af6bcf7b817709fa3d8202caf52cb5b448b90ee",
+      "source": {
+        "kind": "hf",
+        "repo": "nvidia/dlesym-v1-era5",
+        "path": "hpx_lat.npy",
+        "revision": "b88155cfc2c988a2a9058d5e35a41220e2b01941"
+      }
+    },
+    "models/dlesym-v1/hpx_lon.npy": {
+      "size": 393344,
+      "sha256": "c9016566f0a94cf0694d584438ebddff1f76f1451c290a0051bf1b4beab5e1aa",
+      "source": {
+        "kind": "hf",
+        "repo": "nvidia/dlesym-v1-era5",
+        "path": "hpx_lon.npy",
+        "revision": "b88155cfc2c988a2a9058d5e35a41220e2b01941"
+      }
+    },
+    "models/dlesym-v1/land_sea_mask.npy": {
+      "size": 196736,
+      "sha256": "655824a374267ce81d4d0b33a22ef7815f5c9de4a577de6ceeb59d8b55537951",
+      "source": {
+        "kind": "hf",
+        "repo": "nvidia/dlesym-v1-era5",
+        "path": "land_sea_mask.npy",
+        "revision": "b88155cfc2c988a2a9058d5e35a41220e2b01941"
+      }
+    },
+    "models/dlesym-v1/topography.npy": {
+      "size": 196736,
+      "sha256": "7f243068055673b7abb954c2b00b1aed4d5013eb62ce6740ebc6981b865bb9dc",
+      "source": {
+        "kind": "hf",
+        "repo": "nvidia/dlesym-v1-era5",
+        "path": "topography.npy",
+        "revision": "b88155cfc2c988a2a9058d5e35a41220e2b01941"
+      }
+    },
+    "models/dlesym-v0-isccp/atmos_model_0.mdlus": {
+      "size": 14087358,
+      "sha256": "a930bbfbcbe6a1e0c7d76b493bdff33b564d734f40a1f735b1709c0603ad0f5f",
+      "source": {
+        "kind": "hf",
+        "repo": "nvidia/dlesym-v0-isccp-era5",
+        "path": "atmos_model_0.mdlus",
+        "revision": "924b2d62644ef61289dd960e018f60d6e067bfca"
+      }
+    },
+    "models/dlesym-v0-isccp/config.yaml": {
+      "size": 2477,
+      "sha256": "91b21a157f3508b4a50b217080c79c0385fe2d6f3aec65ed61d93f8af1ae3a1f",
+      "source": {
+        "kind": "hf",
+        "repo": "nvidia/dlesym-v0-isccp-era5",
+        "path": "config.yaml",
+        "revision": "924b2d62644ef61289dd960e018f60d6e067bfca"
+      }
+    },
+    "models/dlesym-v0-isccp/era5_ttr_doy_stats_hpx64.nc": {
+      "size": 143930776,
+      "sha256": "09ddca91d632dca28b450d90328dbf8f265acc66e255afa785cb1ccf451a1b06",
+      "source": {
+        "kind": "hf",
+        "repo": "nvidia/dlesym-v0-isccp-era5",
+        "path": "era5_ttr_doy_stats_hpx64.nc",
+        "revision": "924b2d62644ef61289dd960e018f60d6e067bfca"
+      }
+    },
+    "models/dlesym-v0-isccp/hpx_lat.npy": {
+      "size": 393344,
+      "sha256": "19d262a26c5d4c7f28fd10b7cd41637955850ed0cc8572bc5b73fca1482244f1",
+      "source": {
+        "kind": "hf",
+        "repo": "nvidia/dlesym-v0-isccp-era5",
+        "path": "hpx_lat.npy",
+        "revision": "924b2d62644ef61289dd960e018f60d6e067bfca"
+      }
+    },
+    "models/dlesym-v0-isccp/hpx_lon.npy": {
+      "size": 393344,
+      "sha256": "c9016566f0a94cf0694d584438ebddff1f76f1451c290a0051bf1b4beab5e1aa",
+      "source": {
+        "kind": "hf",
+        "repo": "nvidia/dlesym-v0-isccp-era5",
+        "path": "hpx_lon.npy",
+        "revision": "924b2d62644ef61289dd960e018f60d6e067bfca"
+      }
+    },
+    "models/dlesym-v0-isccp/isccp_olr_doy_stats_hpx64.nc": {
+      "size": 143931314,
+      "sha256": "3be221d8ec15f0172b801bcfa5224c0f6af880ede01981756e3c3ad4393ecd7e",
+      "source": {
+        "kind": "hf",
+        "repo": "nvidia/dlesym-v0-isccp-era5",
+        "path": "isccp_olr_doy_stats_hpx64.nc",
+        "revision": "924b2d62644ef61289dd960e018f60d6e067bfca"
+      }
+    },
+    "models/dlesym-v0-isccp/land_sea_mask.npy": {
+      "size": 196736,
+      "sha256": "cd39f2987740456a3898d41cd408edcd71b7c64216a93468e409e22b55cd9b7b",
+      "source": {
+        "kind": "hf",
+        "repo": "nvidia/dlesym-v0-isccp-era5",
+        "path": "land_sea_mask.npy",
+        "revision": "924b2d62644ef61289dd960e018f60d6e067bfca"
+      }
+    },
+    "models/dlesym-v0-isccp/ocean_model_0.mdlus": {
+      "size": 3112241,
+      "sha256": "57340a519ecf760cac70c32be42c6fb44b01b3f82f3139d1e6b2f97b36f84363",
+      "source": {
+        "kind": "hf",
+        "repo": "nvidia/dlesym-v0-isccp-era5",
+        "path": "ocean_model_0.mdlus",
+        "revision": "924b2d62644ef61289dd960e018f60d6e067bfca"
+      }
+    },
+    "models/dlesym-v0-isccp/precip_model_0.mdlus": {
+      "size": 5717964,
+      "sha256": "8f2d7d2c78f51678d17bea74fe113af5b8642fed96edd3b9d63306bc78cf9c45",
+      "source": {
+        "kind": "hf",
+        "repo": "nvidia/dlesym-v0-isccp-era5",
+        "path": "precip_model_0.mdlus",
+        "revision": "924b2d62644ef61289dd960e018f60d6e067bfca"
+      }
+    },
+    "models/dlesym-v0-isccp/topography.npy": {
+      "size": 196736,
+      "sha256": "c0104b4cc89a6ad5e2c2f4ea1dc1a2b6c0c67c584dfd523f39aada4e69d6a0db",
+      "source": {
+        "kind": "hf",
+        "repo": "nvidia/dlesym-v0-isccp-era5",
+        "path": "topography.npy",
+        "revision": "924b2d62644ef61289dd960e018f60d6e067bfca"
+      }
+    },
+    "models/archesclimate-ssp/archesclimate-ssp-deterministic/config.yaml": {
+      "size": 6556,
+      "sha256": "bd1e38b1f5d73633d06cc7e7bacc2dd01e197fcc7bac2e52642cf077684475c0",
+      "source": {
+        "kind": "hf",
+        "repo": "gclyne/ArchesClimate",
+        "path": "archesclimate-ssp-deterministic/config.yaml",
+        "revision": "06a914dd67b41df9ad4f52fa7b811ab65c63e34f"
+      }
+    },
+    "models/archesclimate-ssp/archesclimate-ssp-deterministic/model.ckpt": {
+      "size": 3751553041,
+      "sha256": "e0742f4d4deef466f2a628ac6b80bb8cb5f890d0bd3a6fd3ec8c0ca29257d4b9",
+      "source": {
+        "kind": "hf",
+        "repo": "gclyne/ArchesClimate",
+        "path": "archesclimate-ssp-deterministic/model.ckpt",
+        "revision": "06a914dd67b41df9ad4f52fa7b811ab65c63e34f"
+      }
+    },
+    "inputs/archesclimate-ssp/memmap_filled_in/r1i1p1f1_ssp434_interpolation.memmap/lev.memmap": {
+      "size": 855982080,
+      "sha256": "41cff44e103ab29bac5c9537c10334dbb00a0a18f028e628bec27450c285aaff",
+      "source": {
+        "kind": "hf",
+        "repo": "gclyne/ArchesClimate-data",
+        "path": "ipsl_scenarios/r1i1p1f1_ssp434_interpolation.memmap/lev.memmap",
+        "revision": "b9f54586468b132fbc98f6c0664f9370e54d9a98",
+        "repo_type": "dataset"
+      }
+    },
+    "inputs/archesclimate-ssp/memmap_filled_in/r1i1p1f1_ssp434_interpolation.memmap/level.memmap": {
+      "size": 7275847680,
+      "sha256": "5c3f685a9010cfd88b2579156bec4bdc75e61bb4e0df7d569b5fc0d69280bc60",
+      "source": {
+        "kind": "hf",
+        "repo": "gclyne/ArchesClimate-data",
+        "path": "ipsl_scenarios/r1i1p1f1_ssp434_interpolation.memmap/level.memmap",
+        "revision": "b9f54586468b132fbc98f6c0664f9370e54d9a98",
+        "repo_type": "dataset"
+      }
+    },
+    "inputs/archesclimate-ssp/memmap_filled_in/r1i1p1f1_ssp434_interpolation.memmap/meta.json": {
+      "size": 683,
+      "sha256": "50f47934f1196533378624095a950202f93da75f0a65ec03fac1ecd02d0434c7",
+      "source": {
+        "kind": "hf",
+        "repo": "gclyne/ArchesClimate-data",
+        "path": "ipsl_scenarios/r1i1p1f1_ssp434_interpolation.memmap/meta.json",
+        "revision": "b9f54586468b132fbc98f6c0664f9370e54d9a98",
+        "repo_type": "dataset"
+      }
+    },
+    "inputs/archesclimate-ssp/memmap_filled_in/r1i1p1f1_ssp434_interpolation.memmap/non_spatial_forcings.memmap": {
+      "size": 24768,
+      "sha256": "0f21b8547d1bd290db98b2018a04fe5ba8ff07d8b44226fbe1d53449ac8b5a62",
+      "source": {
+        "kind": "hf",
+        "repo": "gclyne/ArchesClimate-data",
+        "path": "ipsl_scenarios/r1i1p1f1_ssp434_interpolation.memmap/non_spatial_forcings.memmap",
+        "revision": "b9f54586468b132fbc98f6c0664f9370e54d9a98",
+        "repo_type": "dataset"
+      }
+    },
+    "inputs/archesclimate-ssp/memmap_filled_in/r1i1p1f1_ssp434_interpolation.memmap/ozone.memmap": {
+      "size": 5649481728,
+      "sha256": "68e16aee49460f2f0a0ea089789f5a3ef5b2a7c38152b735dc90f8be25d0b58e",
+      "source": {
+        "kind": "hf",
+        "repo": "gclyne/ArchesClimate-data",
+        "path": "ipsl_scenarios/r1i1p1f1_ssp434_interpolation.memmap/ozone.memmap",
+        "revision": "b9f54586468b132fbc98f6c0664f9370e54d9a98",
+        "repo_type": "dataset"
+      }
+    },
+    "inputs/archesclimate-ssp/memmap_filled_in/r1i1p1f1_ssp434_interpolation.memmap/spatial_forcings.memmap": {
+      "size": 1626365952,
+      "sha256": "931969e70675dc0016cbcef40446bc17ada3fb773e7b40d6085be7712f587561",
+      "source": {
+        "kind": "hf",
+        "repo": "gclyne/ArchesClimate-data",
+        "path": "ipsl_scenarios/r1i1p1f1_ssp434_interpolation.memmap/spatial_forcings.memmap",
+        "revision": "b9f54586468b132fbc98f6c0664f9370e54d9a98",
+        "repo_type": "dataset"
+      }
+    },
+    "inputs/archesclimate-ssp/memmap_filled_in/r1i1p1f1_ssp434_interpolation.memmap/surface.memmap": {
+      "size": 684785664,
+      "sha256": "de9b84bc7818f8d444dd1d201b45bfc916ad3810a19bf9fa809d7db5321b92f7",
+      "source": {
+        "kind": "hf",
+        "repo": "gclyne/ArchesClimate-data",
+        "path": "ipsl_scenarios/r1i1p1f1_ssp434_interpolation.memmap/surface.memmap",
+        "revision": "b9f54586468b132fbc98f6c0664f9370e54d9a98",
+        "repo_type": "dataset"
+      }
+    },
+    "inputs/archesclimate-ssp/memmap_filled_in/r1i1p1f1_ssp434_interpolation.memmap/time/meta.json": {
+      "size": 97,
+      "sha256": "6c5a94e563b389a31d5db77a3f24460cc2d6cf6f5436a13d360aecc149de2797",
+      "source": {
+        "kind": "hf",
+        "repo": "gclyne/ArchesClimate-data",
+        "path": "ipsl_scenarios/r1i1p1f1_ssp434_interpolation.memmap/time/meta.json",
+        "revision": "b9f54586468b132fbc98f6c0664f9370e54d9a98",
+        "repo_type": "dataset"
+      }
+    },
+    "inputs/archesclimate-ssp/memmap_filled_in/r1i1p1f1_ssp434_interpolation.memmap/time/other.pickle": {
+      "size": 8436,
+      "sha256": "15dec87e4d3275aa19ea449ce121301e008d23c55cd725e84acd2025fbfdf3d5",
+      "source": {
+        "kind": "hf",
+        "repo": "gclyne/ArchesClimate-data",
+        "path": "ipsl_scenarios/r1i1p1f1_ssp434_interpolation.memmap/time/other.pickle",
+        "revision": "b9f54586468b132fbc98f6c0664f9370e54d9a98",
+        "repo_type": "dataset"
+      }
+    },
+    "inputs/archesclimate-ssp/memmap_filled_in/r1i1p1f1_ssp585_interpolation.memmap/lev.memmap": {
+      "size": 855982080,
+      "sha256": "1830fcb0a24322332e74a74fc13e40aab46618b35dc5d17869517eb205c8b6f0",
+      "source": {
+        "kind": "hf",
+        "repo": "gclyne/ArchesClimate-data",
+        "path": "ipsl_scenarios/r1i1p1f1_ssp585_interpolation.memmap/lev.memmap",
+        "revision": "b9f54586468b132fbc98f6c0664f9370e54d9a98",
+        "repo_type": "dataset"
+      }
+    },
+    "inputs/archesclimate-ssp/memmap_filled_in/r1i1p1f1_ssp585_interpolation.memmap/level.memmap": {
+      "size": 7275847680,
+      "sha256": "f0ee940107b69a1866c0e7fd133419603a962640a8d55c16c063a2d981b1e184",
+      "source": {
+        "kind": "hf",
+        "repo": "gclyne/ArchesClimate-data",
+        "path": "ipsl_scenarios/r1i1p1f1_ssp585_interpolation.memmap/level.memmap",
+        "revision": "b9f54586468b132fbc98f6c0664f9370e54d9a98",
+        "repo_type": "dataset"
+      }
+    },
+    "inputs/archesclimate-ssp/memmap_filled_in/r1i1p1f1_ssp585_interpolation.memmap/meta.json": {
+      "size": 683,
+      "sha256": "50f47934f1196533378624095a950202f93da75f0a65ec03fac1ecd02d0434c7",
+      "source": {
+        "kind": "hf",
+        "repo": "gclyne/ArchesClimate-data",
+        "path": "ipsl_scenarios/r1i1p1f1_ssp585_interpolation.memmap/meta.json",
+        "revision": "b9f54586468b132fbc98f6c0664f9370e54d9a98",
+        "repo_type": "dataset"
+      }
+    },
+    "inputs/archesclimate-ssp/memmap_filled_in/r1i1p1f1_ssp585_interpolation.memmap/non_spatial_forcings.memmap": {
+      "size": 24768,
+      "sha256": "0f21b8547d1bd290db98b2018a04fe5ba8ff07d8b44226fbe1d53449ac8b5a62",
+      "source": {
+        "kind": "hf",
+        "repo": "gclyne/ArchesClimate-data",
+        "path": "ipsl_scenarios/r1i1p1f1_ssp585_interpolation.memmap/non_spatial_forcings.memmap",
+        "revision": "b9f54586468b132fbc98f6c0664f9370e54d9a98",
+        "repo_type": "dataset"
+      }
+    },
+    "inputs/archesclimate-ssp/memmap_filled_in/r1i1p1f1_ssp585_interpolation.memmap/ozone.memmap": {
+      "size": 5649481728,
+      "sha256": "b51224457c859b656624b3ea7856e1a6e75b3c71cf25768f6803597ed280a8ed",
+      "source": {
+        "kind": "hf",
+        "repo": "gclyne/ArchesClimate-data",
+        "path": "ipsl_scenarios/r1i1p1f1_ssp585_interpolation.memmap/ozone.memmap",
+        "revision": "b9f54586468b132fbc98f6c0664f9370e54d9a98",
+        "repo_type": "dataset"
+      }
+    },
+    "inputs/archesclimate-ssp/memmap_filled_in/r1i1p1f1_ssp585_interpolation.memmap/spatial_forcings.memmap": {
+      "size": 1626365952,
+      "sha256": "0aed0895f594edee1c8fa1279f3f51499416f8e13152fedd6c985b633339afb0",
+      "source": {
+        "kind": "hf",
+        "repo": "gclyne/ArchesClimate-data",
+        "path": "ipsl_scenarios/r1i1p1f1_ssp585_interpolation.memmap/spatial_forcings.memmap",
+        "revision": "b9f54586468b132fbc98f6c0664f9370e54d9a98",
+        "repo_type": "dataset"
+      }
+    },
+    "inputs/archesclimate-ssp/memmap_filled_in/r1i1p1f1_ssp585_interpolation.memmap/surface.memmap": {
+      "size": 684785664,
+      "sha256": "d0924bc82a81da2ef0ce5f064722e72d9d313f340ed57ca360168d5c96c6f4ba",
+      "source": {
+        "kind": "hf",
+        "repo": "gclyne/ArchesClimate-data",
+        "path": "ipsl_scenarios/r1i1p1f1_ssp585_interpolation.memmap/surface.memmap",
+        "revision": "b9f54586468b132fbc98f6c0664f9370e54d9a98",
+        "repo_type": "dataset"
+      }
+    },
+    "inputs/archesclimate-ssp/memmap_filled_in/r1i1p1f1_ssp585_interpolation.memmap/time/meta.json": {
+      "size": 97,
+      "sha256": "6c5a94e563b389a31d5db77a3f24460cc2d6cf6f5436a13d360aecc149de2797",
+      "source": {
+        "kind": "hf",
+        "repo": "gclyne/ArchesClimate-data",
+        "path": "ipsl_scenarios/r1i1p1f1_ssp585_interpolation.memmap/time/meta.json",
+        "revision": "b9f54586468b132fbc98f6c0664f9370e54d9a98",
+        "repo_type": "dataset"
+      }
+    },
+    "inputs/archesclimate-ssp/memmap_filled_in/r1i1p1f1_ssp585_interpolation.memmap/time/other.pickle": {
+      "size": 8436,
+      "sha256": "15dec87e4d3275aa19ea449ce121301e008d23c55cd725e84acd2025fbfdf3d5",
+      "source": {
+        "kind": "hf",
+        "repo": "gclyne/ArchesClimate-data",
+        "path": "ipsl_scenarios/r1i1p1f1_ssp585_interpolation.memmap/time/other.pickle",
+        "revision": "b9f54586468b132fbc98f6c0664f9370e54d9a98",
+        "repo_type": "dataset"
+      }
+    },
+    "models/archesclimate-ssp/reference_data/orography.pt": {
+      "size": 84134,
+      "sha256": "5d67e92e0798414862a025acbec09b2b41b277e1d7592411c30e00f1dbf5bbde",
+      "source": {
+        "kind": "hf",
+        "repo": "gclyne/ArchesClimate-data",
+        "path": "reference_data/orography.pt",
+        "revision": "b9f54586468b132fbc98f6c0664f9370e54d9a98",
+        "repo_type": "dataset"
+      }
+    },
+    "models/archesclimate-ssp/stats/cmip_stats_new_ozone.pt": {
+      "size": 20408414,
+      "sha256": "e7650045d71532ba84bfe7c17d6008a4f7d101eb2b19e8c8ff7a69283ef38019",
+      "source": {
+        "kind": "hf",
+        "repo": "gclyne/ArchesClimate-data",
+        "path": "stats/cmip_stats_new_ozone.pt",
+        "revision": "b9f54586468b132fbc98f6c0664f9370e54d9a98",
+        "repo_type": "dataset"
+      }
+    }
+  }
+}

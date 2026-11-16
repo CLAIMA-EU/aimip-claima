@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aimip"
+version = "1.3.0"
+description = "Run AI climate emulators as climate experiments on a GPU machine or an HPC cluster"
+license = { text = "MIT" }
+requires-python = ">=3.12"
+dependencies = [
+    "pyyaml>=6.0",
+    "numpy>=1.26",
+    "cftime>=1.6",
+    "netCDF4>=1.6",
+    "h5netcdf>=1.3",
+    "xarray>=2024.1",
+    "scipy>=1.11",
+    "pandas>=2.0",
+    "huggingface_hub>=0.24",
+]
+
+[project.optional-dependencies]
+# Required on GPU hosts / containers for fme model execution and `aimip lora` inspection/scaling.
+torch = ["torch>=2.2"]
+# Optional `aimip chat` planning assistant (`container/requirements-agent.txt` pins exact versions).
+agent = [
+    "langgraph>=1.0",
+    "langchain-core>=1.0",
+    "langchain-google-genai>=4.0",
+]
+# Offline test suite (`pytest -q`).
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+aimip = "aimip.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["aimip*"]
+
+[tool.setuptools.package-data]
+aimip = ["*.json", "*.lock"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

@@ -1,0 +1,1 @@
+{"name": "local", "scheduler": "none", "sbatch": {}, "run_root": "${HOME}/aimip-runs", "extra_ro_binds": [], "gpu_check": "nvidia-smi"}
