@@ -13,6 +13,8 @@ IMAGE=@IMAGE@                # SIF path or immutable docker/podman image ID
 SCHEDULER=@SCHEDULER@        # slurm | none
 RUN_ROOT_TEMPLATE='@RUN_ROOT@'
 EXTRA_RO="@EXTRA_RO@"
+UNSQUASH="@UNSQUASH@"        # 1: Apptainer/Singularity unpack the SIF for each call (--unsquash; aarch64 default)
+US=(); [ "$UNSQUASH" = 1 ] && US=(--unsquash)
 DATA=$PREFIX/data
 U=$(id -un); U1=${U:0:1}
 RUN_ROOT=${RUN_ROOT_TEMPLATE//'${USER}'/$U}; RUN_ROOT=${RUN_ROOT//'${U1}'/$U1}; RUN_ROOT=${RUN_ROOT//'${HOME}'/$HOME}
@@ -275,7 +277,7 @@ verify_submit_in_container() {  # verify_submit_in_container <run_dir> <priv_dir
     apptainer|singularity)
       for m in ${vmounts[@]+"${vmounts[@]}"}; do vb+=(-B "$m"); done
       for v in ${venvs[@]+"${venvs[@]}"}; do ve+=(--env "$v"); done
-      "$RUNTIME_BIN" -s exec --containall --cleanenv --no-home --pwd /tmp ${vb[@]+"${vb[@]}"} ${ve[@]+"${ve[@]}"} "$IMAGE" python -B -m aimip "${vcmd[@]}";;
+      "$RUNTIME_BIN" -s exec ${US[@]+"${US[@]}"} --containall --cleanenv --no-home --pwd /tmp ${vb[@]+"${vb[@]}"} ${ve[@]+"${ve[@]}"} "$IMAGE" python -B -m aimip "${vcmd[@]}";;
     docker|podman)
       for m in ${vmounts[@]+"${vmounts[@]}"}; do vb+=(-v "$m"); done
       for v in ${venvs[@]+"${venvs[@]}"}; do ve+=(-e "$v"); done
@@ -798,10 +800,10 @@ run_main_container() {
       E=(); for v in ${ENVS[@]+"${ENVS[@]}"}; do E+=(--env "${v//,/;}" ); done
       NV=(); [ $GPU = 1 ] && NV=(--nv)
       if [ -n "$REFRESH_BG_PID" ]; then
-        "$RUNTIME_BIN" -s exec ${NV[@]+"${NV[@]}"} --containall --cleanenv --no-home --pwd /tmp ${B[@]+"${B[@]}"} ${E[@]+"${E[@]}"} "$IMAGE" python -B -m aimip "$@"
+        "$RUNTIME_BIN" -s exec ${US[@]+"${US[@]}"} ${NV[@]+"${NV[@]}"} --containall --cleanenv --no-home --pwd /tmp ${B[@]+"${B[@]}"} ${E[@]+"${E[@]}"} "$IMAGE" python -B -m aimip "$@"
         exit $?
       fi
-      exec "$RUNTIME_BIN" -s exec ${NV[@]+"${NV[@]}"} --containall --cleanenv --no-home --pwd /tmp ${B[@]+"${B[@]}"} ${E[@]+"${E[@]}"} "$IMAGE" python -B -m aimip "$@";;
+      exec "$RUNTIME_BIN" -s exec ${US[@]+"${US[@]}"} ${NV[@]+"${NV[@]}"} --containall --cleanenv --no-home --pwd /tmp ${B[@]+"${B[@]}"} ${E[@]+"${E[@]}"} "$IMAGE" python -B -m aimip "$@";;
     docker|podman)
       B=(); for m in ${MOUNTS[@]+"${MOUNTS[@]}"}; do B+=(-v "$m"); done
       E=(); for v in ${ENVS[@]+"${ENVS[@]}"}; do E+=(-e "$v"); done

@@ -20,4 +20,5 @@
 | `State: failed` | read the end of `slurm-<jobid>.err` (or `local-run.log` with the `local` preset) and `inference_out.log` in the run directory |
 | exit code 5, `unstable_from` in the manifest (DLESyM) | the rollout became unstable; the months before it are kept ([models](models.md)) |
 | every container command takes minutes | Apptainer unpacks the image on a slow file system: `export APPTAINER_TMPDIR=/tmp` |
+| `cuFFT error: CUFFT_INTERNAL_ERROR` at the first step (aarch64, GH200) | the image is read from a FUSE-mounted SIF: reinstall with this version (the `aimip` command then unpacks the image for each call), or `export APPTAINER_UNSQUASH=1` ([aarch64 and GH200](installation.md#aarch64-and-gh200)) |
 | image build stops at `mksquashfs` | too many threads on a shared login node; `AIMIP_BUILD_THREADS=2` before the installer |

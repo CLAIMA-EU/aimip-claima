@@ -3,7 +3,7 @@
 # `aimip` command.
 #   ./install/install-container.sh --prefix DIR [--site levante|generic-slurm|local]
 #       [--runtime auto|apptainer|singularity|docker|podman] [--image REF | --build]
-#       [--partition P] [--account A|none] [--gres G|none] [--run-root R]
+#       [--partition P] [--account A|none] [--gres G|none] [--run-root R] [--unsquash auto|yes|no]
 # Afterwards:  DIR/bin/aimip setup --models all     (downloads models + data, verifies aimip.lock)
 set -u
 umask 022
@@ -11,7 +11,7 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 REPO=$(cd "$HERE/.." && pwd)
 VERSION=$(tr -d '[:space:]' < "$REPO/container/VERSION")
 PREFIX=""; SITE=generic-slurm; RT=auto; PART=""; ACC=""; GRES=""; RUNROOT=""
-IMAGE_REF="ghcr.io/clidyn/aimip-claima:$VERSION"; BUILD=0; USER_SET_IMAGE=0
+IMAGE_REF="ghcr.io/clidyn/aimip-claima:$VERSION"; BUILD=0; USER_SET_IMAGE=0; UNSQ_OPT=auto
 die() { echo "install-container: $*" >&2; exit 2; }
 need_val() { [ "$1" -ge 2 ] && [ -n "${2:-}" ] || die "option $3 requires a value"; }
 while [ $# -gt 0 ]; do
@@ -25,11 +25,13 @@ while [ $# -gt 0 ]; do
     --run-root) need_val $# "${2:-}" "$1"; RUNROOT=$2; shift 2;;
     --image) need_val $# "${2:-}" "$1"; IMAGE_REF=$2; USER_SET_IMAGE=1; shift 2;;
     --build) BUILD=1; shift;;
+    --unsquash) need_val $# "${2:-}" "$1"; UNSQ_OPT=$2; shift 2;;
     -h|--help) sed -n 2,7p "$0"; exit 0;;
     *) die "unknown option $1";;
   esac
 done
 [ -n "$PREFIX" ] || die "--prefix is required"
+case "$UNSQ_OPT" in auto|yes|no) ;; *) die "--unsquash takes auto, yes or no";; esac
 case "$PREFIX" in /*) ;; *) PREFIX=$(pwd)/$PREFIX;; esac
 case "$PREFIX" in *[!A-Za-z0-9._/+-]*|*..*) die "prefix must be a plain absolute path";; esac
 case "$IMAGE_REF" in
@@ -82,6 +84,16 @@ if [ "$ARCH" = aarch64 ] || [ "$ARCH" = arm64 ]; then
   fi
 fi
 
+# On aarch64 hosts the wrapper runs the image with `apptainer exec --unsquash`: each call unpacks the SIF into
+# $APPTAINER_TMPDIR (default /tmp) and Apptainer removes the copy afterwards. On GH200 nodes with a non-setuid Apptainer,
+# which serves the SIF through a FUSE squashfs mount, every cuFFT call failed (CUFFT_INTERNAL_ERROR) while the
+# byte-identical libcufft from a normal file system worked. The SIF stays the verified image (image.sha256).
+UNSQ=0
+case "$UNSQ_OPT" in
+  yes) case "$RT" in apptainer|singularity) UNSQ=1;; *) die "--unsquash applies to apptainer and singularity only";; esac;;
+  auto) case "$RT" in apptainer|singularity) case "$ARCH" in aarch64|arm64) UNSQ=1;; esac;; esac;;
+esac
+[ "$UNSQ" = 1 ] && echo "install-container: the aimip command will unpack the image for each call (--unsquash; about 9 s and 15 GB in \$APPTAINER_TMPDIR, default /tmp, on GH200): on GH200 nodes cuFFT fails when its library is read from the mounted SIF. --unsquash no turns this off"
 mkdir -p "$PREFIX"/{bin,images,data,build} || die "cannot create $PREFIX"
 rm -f "$PREFIX/bin/aimip" "$PREFIX/bin/aimip.new" "$PREFIX/VERSION"
 [ -e "$PREFIX/images/aimip-$VERSION.sif" ] && echo "install-container: an image for $VERSION already exists in $PREFIX — verifying and reusing it (delete $PREFIX/images to rebuild)"
@@ -186,7 +198,7 @@ esac
 
 # ---- the command
 sed -e "s#@PREFIX@#$PREFIX#" -e "s#@RUNTIME@#$RT#" -e "s#@RUNTIME_BIN@#$RTB#" -e "s#@IMAGE@#$IMAGE#" \
-    -e "s#@SCHEDULER@#$SCHED#" -e "s#@RUN_ROOT@#$RROOT#" -e "s#@EXTRA_RO@#$EXTRA#" "$REPO/container/aimip-wrapper.in" > "$PREFIX/bin/aimip.new" \
+    -e "s#@SCHEDULER@#$SCHED#" -e "s#@RUN_ROOT@#$RROOT#" -e "s#@EXTRA_RO@#$EXTRA#" -e "s#@UNSQUASH@#$UNSQ#" "$REPO/container/aimip-wrapper.in" > "$PREFIX/bin/aimip.new" \
   && chmod 755 "$PREFIX/bin/aimip.new" \
   && mv "$PREFIX/bin/aimip.new" "$PREFIX/bin/aimip" \
   && cp "$REPO/container/VERSION" "$PREFIX/VERSION" \

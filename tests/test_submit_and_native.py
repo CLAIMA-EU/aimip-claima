@@ -1217,6 +1217,7 @@ def test_install_container_version_checks_aarch64_autobuild_image_ref_and_error_
     assert f"{pfx_ok_app}/images/aimip-{real_version}.sif.incoming" in app_calls
     assert (pfx_ok_app / "image.ref").read_text(encoding="utf-8").strip() == f"docker://registry.example.org/team/aimip:{real_version}"
     assert (pfx_ok_app / "bin" / "aimip").is_file()
+    assert 'UNSQUASH="0"' in (pfx_ok_app / "bin" / "aimip").read_text(encoding="utf-8")
 
     # 6. Docker wrong-version fails on both pull and `--build` before `bin/aimip`; valid pull uses `python -I` and records RepoDigest in `image.ref`.
     for mode_args, sub_name in (([], "bad_doc_pull"), (["--build"], "bad_doc_build")):
@@ -1253,6 +1254,31 @@ def test_install_container_version_checks_aarch64_autobuild_image_ref_and_error_
     assert "DOCKER build" in arm_calls
     assert "DOCKER pull" not in arm_calls
     assert "BASE_IMAGE=python:3.12.11-bookworm" in arm_calls
+    assert 'UNSQUASH="0"' in (pfx_arm / "bin" / "aimip").read_text(encoding="utf-8")
+
+    # 8. aarch64 host with Apptainer: the wrapper unpacks the SIF for each call (--unsquash) unless `--unsquash no`.
+    rt_log.write_text("", encoding="utf-8")
+    pfx_arm_app = safe_gate_root / "arm64_apptainer"
+    r_arm_app = _run_cnt(pfx_arm_app, ["--runtime", "apptainer"], {"FAKE_UNAME_ARCH": "aarch64", "FAKE_IMAGE_VER": real_version})
+    assert r_arm_app.returncode == 0, r_arm_app.stderr + r_arm_app.stdout
+    assert "--unsquash no turns this off" in r_arm_app.stdout
+    assert 'UNSQUASH="1"' in (pfx_arm_app / "bin" / "aimip").read_text(encoding="utf-8")
+    assert "APPTAINER -s exec --unsquash" in rt_log.read_text(encoding="utf-8")  # the installer's `aimip --version` check
+
+    pfx_arm_off = safe_gate_root / "arm64_apptainer_off"
+    r_arm_off = _run_cnt(
+        pfx_arm_off, ["--runtime", "apptainer", "--unsquash", "no"], {"FAKE_UNAME_ARCH": "aarch64", "FAKE_IMAGE_VER": real_version}
+    )
+    assert r_arm_off.returncode == 0, r_arm_off.stderr + r_arm_off.stdout
+    assert 'UNSQUASH="0"' in (pfx_arm_off / "bin" / "aimip").read_text(encoding="utf-8")
+
+    # 9. `--unsquash yes` is refused for Docker/Podman, and only auto|yes|no are accepted.
+    r_unsq_doc = _run_cnt(safe_gate_root / "unsq_docker", ["--runtime", "docker", "--unsquash", "yes"], {"FAKE_IMAGE_VER": real_version})
+    assert r_unsq_doc.returncode == 2
+    assert "apptainer and singularity only" in r_unsq_doc.stderr
+    r_unsq_bad = _run_cnt(safe_gate_root / "unsq_bad", ["--runtime", "apptainer", "--unsquash", "maybe"], {"FAKE_IMAGE_VER": real_version})
+    assert r_unsq_bad.returncode == 2
+    assert "auto, yes or no" in r_unsq_bad.stderr
 
 
 def test_apptainer_def_umask_and_dockerfile_chmod_fix_umask_000_exec_fme_failures(

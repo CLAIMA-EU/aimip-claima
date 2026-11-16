@@ -5,8 +5,8 @@ the site settings at `<prefix>/site.json` and the model data at `<prefix>/data/`
 
 ## What the machine needs
 
-- Linux x86_64 with an NVIDIA GPU (A100, H100 or newer for every model; see "GPUs" below). aarch64 (GH200) builds
-  from the same recipes but has not been tested.
+- Linux x86_64 with an NVIDIA GPU (A100, H100 or newer for every model; see "GPUs" below). On aarch64 (GH200) the
+  container mode builds its own image; see [aarch64 and GH200](#aarch64-and-gh200).
 - Internet access on the machine where you install and where you prepare runs (model downloads, the DLESyM initial
   state). Compute nodes need no internet.
 - `bash`, `python3` (3.8+ for the installers themselves), `tar`, `sha256sum` or `shasum`.
@@ -131,6 +131,23 @@ All models run on one GPU. The DLESyM HEALPix padding kernel is compiled for com
 H100, GH200). On older GPUs `dlesym-v1.1` needs the kernel built for them: add their compute capability to `TORCH_CUDA_ARCH_LIST`
 in `container/Dockerfile` (then `--build`) or in `install/install-native.sh`.
 
+## aarch64 and GH200
+
+The published image is x86_64 only, so on aarch64 hosts the installer builds the image itself (it switches to
+`--build`). The build needs internet access and a temporary directory on a local disk (`TMPDIR=/tmp`); on the GH200 node
+we tested, with a 215 GB in-memory `/tmp`, it took 10 minutes. The image runs only on the architecture it was built for:
+where the login nodes are x86_64 and the GPU nodes aarch64, install and run `aimip` on a GPU node (in
+a batch job or an interactive allocation) and use `--local` instead of `--submit`.
+
+With Apptainer or Singularity, the `aimip` command on aarch64 unpacks the image for each call
+(`apptainer exec --unsquash`) into `APPTAINER_TMPDIR` (default `/tmp`; about 15 GB free space needed) and Apptainer
+removes the copy when the call ends; on the GH200 nodes we tested this adds about 9 seconds per call. The reason:
+on those nodes Apptainer runs without setuid and serves the image through a FUSE squashfs mount, and there every cuFFT
+call failed with `cuFFT error: CUFFT_INTERNAL_ERROR`, so every `fme` model stopped at its first step. The same
+`libcufft` file read from a normal file system worked. `install-container.sh --unsquash no` turns this off, for example
+where Apptainer mounts images with the kernel's squashfs driver; `--unsquash yes` turns it on elsewhere. For an install
+made before this option existed, `export APPTAINER_UNSQUASH=1` has the same effect.
+
 ## Check the install
 
 ```bash
@@ -171,8 +188,13 @@ and `archesclimate-ssp` (24 months).
   `TMP2m 285.1578 K` in every install we made, and container and native outputs were bit-identical for
   `ace2-era5` and `hiro-acev2`. This is what we observed, not a guarantee: the same setting made the coupled
   runs vary. With autotuning off, `ace2-era5` gave 285.1581 K.
-- Not tested in 1.3.x: the other nine models were not compared between the two modes; Docker/Podman; aarch64
-  builds; local mode without a scheduler; schedulers other than Slurm.
+- aarch64: the container mode was built and run on GH200 nodes of one Slurm cluster (Apptainer 1.5.3 without setuid, image built
+  on the node). With this version `ace2-era5` (8 steps) gives `TMP2m 285.1577 K`; with 1.3.0, `ace2s`, `ace2-som` and
+  `samudrace-cm4` also ran. Results on GH200 are close to the A100 results but not bit-identical (`ace2-era5`:
+  285.1577 K against 285.1578 K with autotuning on, 285.1577 K against 285.1581 K with it off), so compare GH200 runs
+  with GH200 runs. Not tested on aarch64: native mode, Docker/Podman, the other ten models.
+- Not tested in 1.3.x: the other nine models were not compared between the two modes; Docker/Podman; local mode
+  without a scheduler; schedulers other than Slurm.
 
 ## Uninstall
 
