@@ -51,10 +51,9 @@ install/install-container.sh --prefix /big/disk/aimip --site generic-slurm --par
 ```
 
 With `--build` the image is built on your machine from this checkout (30–40 minutes; Apptainer needs no root).
-Without `--build` the installer fetches the ready image `ghcr.io/clidyn/aimip-claima:<version>` (x86_64), which
-works only for a release version whose image is published and readable to you; if the image cannot be fetched, the
-installer stops and tells you to add `--build`. The published image is not yet readable without a GitHub login;
-until it is, use `--build` or the native installer.
+Without `--build` the installer fetches the ready image `ghcr.io/clidyn/aimip-claima:<version>` (x86_64, public, no
+login needed). Only release versions have an image: check out a release tag (`git checkout v1.3.1`) to use it; on
+`main` or if the image cannot be fetched, the installer stops and tells you to add `--build`.
 
 ### Native (no container)
 
