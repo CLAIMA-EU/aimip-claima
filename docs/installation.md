@@ -36,7 +36,9 @@ the site settings at `<prefix>/site.json` and the model data at `<prefix>/data/`
 | `levante` | Slurm (DKRZ Levante) | partition `gpu`, one A100-80GB, run root `/scratch/<first letter>/<user>/aimip-runs`; you give `--account` |
 
 Every option can be changed later per run (`--partition`, `--account`, `--gres`, `--cpus-per-task`, `--mem`,
-`--time`). The run root (where run directories go) can be set with `--run-root`.
+`--time`). The run root (where run directories go) is set with `--run-root`. With `generic-slurm` and `local` it
+defaults to `$HOME/aimip-runs`; on a cluster your home directory usually has a small quota, so pass a directory on a
+large disk (a ten-year run writes tens of gigabytes).
 
 ## Container mode
 

@@ -45,7 +45,8 @@ compared gave bit-identical results in both modes, and since 1.3.1 so does the c
 
 ```bash
 git clone https://github.com/CliDyn/aimip-claima.git && cd aimip-claima
-install/install-container.sh --prefix /big/disk/aimip --site generic-slurm --partition gpu --account myproject --build
+install/install-container.sh --prefix /big/disk/aimip --site generic-slurm --partition gpu --account myproject \
+    --run-root /big/disk/aimip-runs --build
 /big/disk/aimip/bin/aimip models
 ```
 
@@ -63,7 +64,7 @@ docker run --rm ghcr.io/clidyn/aimip-claima:<version> models   # e.g. 1.3.1, see
 
 ```bash
 git clone https://github.com/CliDyn/aimip-claima.git && cd aimip-claima
-install/install-native.sh --prefix /big/disk/aimip --site local            # a workstation; add --with-emu for DLESyM/ArchesClimate
+install/install-native.sh --prefix /big/disk/aimip --site local --run-root /big/disk/aimip-runs   # add --with-emu for DLESyM/ArchesClimate
 /big/disk/aimip/bin/aimip models
 ```
 
