@@ -26,6 +26,7 @@ Model facts:
 from __future__ import annotations
 
 import datetime
+import io
 import json
 import os
 import shutil
@@ -271,7 +272,32 @@ def _stage_dlesym_ic(out_dir: str) -> str:
     print(f"aimip: fetching the ERA5 initial state from ARCO-ERA5 (public Google Cloud bucket) into {out_dir}", file=sys.stderr)
     t0 = time.monotonic()
     try:
-        res = subprocess.run([py, "-I", "-m", EMU_JOB_MODULE, "stage", out_dir], env=_job_env(out_dir, py), check=False)
+        # Redirect child stdout to stderr so `--json` and `aimip mcp` stdio streams remain pure protocol/JSON.
+        try:
+            sys.stderr.fileno()
+            has_stderr_fd = True
+        except (AttributeError, OSError, io.UnsupportedOperation):
+            has_stderr_fd = False
+        if has_stderr_fd:
+            res = subprocess.run(
+                [py, "-I", "-m", EMU_JOB_MODULE, "stage", out_dir],
+                env=_job_env(out_dir, py),
+                stdout=sys.stderr,
+                stderr=sys.stderr,
+                check=False,
+            )
+        else:
+            res = subprocess.run(
+                [py, "-I", "-m", EMU_JOB_MODULE, "stage", out_dir],
+                env=_job_env(out_dir, py),
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if res.stdout:
+                sys.stderr.write(res.stdout)
+            if res.stderr:
+                sys.stderr.write(res.stderr)
     finally:
         shutil.rmtree(os.path.join(out_dir, ".aimip-tmp"), ignore_errors=True)
     print(f"aimip: ERA5 state staged in {time.monotonic() - t0:.0f} s", file=sys.stderr)
@@ -286,7 +312,10 @@ def _stage_dlesym_ic(out_dir: str) -> str:
 
 
 def _job_env(out_dir: str, py_exe: str | None = None) -> dict[str, str]:
-    env = {k: v for k, v in os.environ.items() if k.startswith(("AIMIP_", "SLURM_", "CUDA_", "NVIDIA_"))}
+    from .submit import sanitized_subprocess_env
+
+    clean_parent = sanitized_subprocess_env()
+    env = {k: v for k, v in clean_parent.items() if k.startswith(("AIMIP_", "SLURM_", "CUDA_", "NVIDIA_"))}
     if os.environ.get("LD_LIBRARY_PATH"):
         # Apptainer --nv and HPC CUDA modules expose host driver libraries via LD_LIBRARY_PATH.
         env["LD_LIBRARY_PATH"] = os.environ["LD_LIBRARY_PATH"]

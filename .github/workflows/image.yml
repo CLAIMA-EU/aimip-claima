@@ -36,14 +36,19 @@ jobs:
         id: meta
         run: |
           version=$(tr -d '[:space:]' < container/VERSION)
-          if ! printf '%s\n' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-            echo "container/VERSION must match X.Y.Z, got: ${version}" >&2; exit 1
+          if ! printf '%s\n' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(\.dev[0-9]+)?$'; then
+            echo "container/VERSION must match X.Y.Z or X.Y.Z.devN, got: ${version}" >&2; exit 1
           fi
           owner=$(printf '%s' "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')
           if ! printf '%s\n' "$owner" | grep -Eq '^[a-z0-9._-]+$'; then
             echo "invalid repository owner: ${owner}" >&2; exit 1
           fi
           if [ "${GITHUB_EVENT_NAME:-}" = "push" ] && [ "${GITHUB_REF_TYPE:-}" = "tag" ]; then
+            case "$version" in
+              *.dev*)
+                echo "refusing release tag push ${GITHUB_REF_NAME} while container/VERSION is a dev version (${version})" >&2
+                exit 1;;
+            esac
             if [ "${GITHUB_REF_NAME}" != "v${version}" ]; then
               echo "tag ${GITHUB_REF_NAME} does not match container/VERSION ${version}" >&2; exit 1
             fi

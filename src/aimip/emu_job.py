@@ -208,7 +208,11 @@ def stage_dlesym(out_dir: str, job: dict) -> None:
     torch.save({"x": x, "coords": {k: np.asarray(v) for k, v in coords.items()}, "start": job["start"],
                 "model": job["model"]}, target + ".part")
     os.replace(target + ".part", target)
-    _log(f"STAGED {job['model']} {tuple(x.shape)} variables={len(ic['variable'])} -> {target}")
+    print(
+        f"[aimip.emu_job] STAGED {job['model']} {tuple(x.shape)} variables={len(ic['variable'])} -> {target}",
+        file=sys.stderr,
+        flush=True,
+    )
 
 
 def run_dlesym(out_dir: str, job: dict) -> dict:

@@ -534,7 +534,9 @@ def test_site_init_presets_overrides_and_sbatch_rendering(
         )
         == 0
     )
-    init_res = json.loads(capsys.readouterr().out)
+    from conftest import parse_cli_json
+
+    init_res = parse_cli_json(capsys.readouterr().out)
     assert init_res["path"] == str(aimip_home / "site.json")
     assert init_res["site"]["sbatch"] == {
         "partition": "a100_short",
@@ -1136,7 +1138,9 @@ def test_cli_setup_ace2_era5_only_download_write_lock_and_verify(
         )
         == 0
     )
-    wl_out = json.loads(capsys.readouterr().out)
+    from conftest import parse_cli_json
+
+    wl_out = parse_cli_json(capsys.readouterr().out)
     assert wl_out["hashed_files"] == 39
 
     # Install into a brand-new `$AIMIP_DATA` directory via `aimip setup --models ace2-era5`!
@@ -1157,7 +1161,7 @@ def test_cli_setup_ace2_era5_only_download_write_lock_and_verify(
         )
         == 0
     )
-    install_out = json.loads(capsys.readouterr().out)
+    install_out = parse_cli_json(capsys.readouterr().out)
     assert install_out["downloaded_files"] == 39
     assert install_out["verified_files"] == 39
 

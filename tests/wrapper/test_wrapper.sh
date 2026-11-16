@@ -110,6 +110,18 @@ grep -q SYNTHETIC_SECRET_123 "$FAKE_LOG.argv" && bad "key in argv (chat)" || ok 
 grep -q "^APPTAINERENV_GEMINI_API_KEY=SYNTHETIC_SECRET_123" "$FAKE_LOG.env" && ok "chat gets the key via APPTAINERENV_" || bad "chat did not get the key"
 # Empty arrays under set -u (bash 3.2)
 "$P/bin/aimip" --version >/dev/null 2>&1 && ok "--version with no arrays filled" || bad "--version failed under $BASH_VERSION"
+# Apptainer --env values must never contain commas (apptainer splits --env KEY=VAL on commas)
+mkdir -p "$W/docbin"; : > "$P/img.sif"
+for ucmd in id mkdir head tr cut dirname ls awk; do
+  upath=$(command -v "$ucmd" 2>/dev/null || true)
+  [ -n "$upath" ] && ln -s "$upath" "$W/docbin/$ucmd"
+done
+printf '#!/bin/bash\nexit 0\n' > "$W/docbin/sbatch"
+printf '#!/bin/bash\necho "GPU 0: NVIDIA A100-SXM4-80GB, UUID: GPU-1234"\n' > "$W/docbin/nvidia-smi"
+chmod +x "$W/docbin/sbatch" "$W/docbin/nvidia-smi"
+PATH="$W/docbin" OMP_NUM_THREADS="8,16" "$P/bin/aimip" doctor >/dev/null 2>&1
+grep -q "^AIMIP_HOST_SLURM_MISSING=squeue; sacct; scancel$" "$FAKE_LOG.argv" && ok "doctor missing slurm tools separated by '; '" || bad "unexpected AIMIP_HOST_SLURM_MISSING in argv"
+awk 'prev=="--env" && index($0,",")>0 {found=1} {prev=$0} END {exit found}' "$FAKE_LOG.argv" && ok "no commas in any apptainer --env argument" || bad "comma leaked into apptainer --env argument"
 # Installer: choice of the self-test directory (install-container.sh selftest_dir_ok / expand_run_root)
 if [ -f "$H/install/install-container.sh" ]; then
   sed -n -e '/^selftest_dir_ok() {/,/^}/p' -e '/^expand_run_root() {/,/^}/p' "$H/install/install-container.sh" > "$W/selftest_fns.sh"
@@ -123,6 +135,28 @@ if [ -f "$H/install/install-container.sh" ]; then
   [ "$(expand_run_root '/scratch/${U1}/${USER}/aimip-runs')" = "/scratch/${u:0:1}/$u/aimip-runs" ] && [ "$(expand_run_root '${HOME}/aimip-runs')" = "$HOME/aimip-runs" ] \
     && ok "self-test dir: run-root templates expanded like the wrapper" || bad "self-test dir: run-root template not expanded"
 fi
+# Wrapper `ui` and `ls` refresh `sacct.txt` in one batched `sacct` call for active runs and skip finished/terminal runs
+mkdir -p "$W/uiruns/ui_1_to" "$W/uiruns/ui_2_can" "$W/uiruns/ui_3_done"
+sed -e "s#@PREFIX@#$P#" -e "s#@RUNTIME@#apptainer#" -e "s#@RUNTIME_BIN@#$W/fakebin/fakert#" -e "s#@IMAGE@#$P/img.sif#" \
+    -e "s#@SCHEDULER@#slurm#" -e "s#@RUN_ROOT@#$W/uiruns#" -e "s#@EXTRA_RO@##" "$H/container/aimip-wrapper.in" > "$P/bin/aimip-ui"
+chmod +x "$P/bin/aimip-ui"
+echo 9101 > "$W/uiruns/ui_1_to/slurm.jobid"; echo "9101|RUNNING|00:01:00|0:0" > "$W/uiruns/ui_1_to/sacct.txt"
+echo 9102 > "$W/uiruns/ui_2_can/slurm.jobid"
+echo 9103 > "$W/uiruns/ui_3_done/slurm.jobid"; printf '{"finished":"2026-11-16T00:00:00Z","rc":0}\n' > "$W/uiruns/ui_3_done/aimip-manifest.json"
+cat > "$W/fakebin/sacct" <<'S'
+#!/bin/bash
+printf '%s\n' "$*" >> "$FAKE_LOG.sacct"
+printf '9101|TIMEOUT|04:00:00|0:15\n9102|CANCELLED by 1000|00:02:10|0:15\n9103|COMPLETED|00:01:00|0:0\n'
+S
+chmod +x "$W/fakebin/sacct"
+rm -f "$FAKE_LOG.sacct"
+AIMIP_WRAPPER_SACCT_INTERVAL=0 "$P/bin/aimip-ui" ui >/dev/null 2>&1
+[ -f "$FAKE_LOG.sacct" ] && [ "$(wc -l < "$FAKE_LOG.sacct" | tr -d ' ')" = "1" ] && ok "ui refreshes active runs in a single batched sacct call" || bad "ui sacct call count unexpected"
+grep -q -- "-j 9101,9102 " "$FAKE_LOG.sacct" && ! grep -q "9103" "$FAKE_LOG.sacct" && ok "ui sacct batch queries active job IDs and skips finished manifest runs" || bad "unexpected job list in ui sacct batch"
+grep -q "^9101|TIMEOUT|" "$W/uiruns/ui_1_to/sacct.txt" && ok "ui updates sacct.txt from RUNNING to TIMEOUT" || bad "ui did not update ui_1_to/sacct.txt"
+grep -q "^9102|CANCELLED" "$W/uiruns/ui_2_can/sacct.txt" && ok "ui writes CANCELLED state to sacct.txt" || bad "ui did not write ui_2_can/sacct.txt"
+"$P/bin/aimip-ui" ls >/dev/null 2>&1
+[ "$(wc -l < "$FAKE_LOG.sacct" | tr -d ' ')" = "1" ] && ok "ls skips sacct once all runs are finished or terminal" || bad "ls queried sacct for terminal runs"
 echo "WRAPPER_TESTS pass=$pass fail=$fail bash=$BASH_VERSION"
 case "$W" in */aimip-wtest.*) rm -rf "$W";; esac
 [ $fail = 0 ]

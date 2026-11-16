@@ -177,7 +177,9 @@ def test_default_out_dir_uses_default_out_root_and_passes_safe_path(
         )
         == 0
     )
-    manifest = json.loads(capsys.readouterr().out)
+    from conftest import parse_cli_json
+
+    manifest = parse_cli_json(capsys.readouterr().out)
     out_dir = manifest["out_dir"]
     default_root = str(playground_env["default_out_root"])
     assert out_dir.startswith(f"{default_root}/ace2-era5-1979-01-01T000000-")
@@ -449,9 +451,11 @@ def test_exec_fme_status_submitted_txt_and_summary_custom_dims(
     capsys.readouterr()
 
     # Before execution and without `sacct`, status state is "unknown".
+    from conftest import parse_cli_json
+
     monkeypatch.setenv("PATH", "")
     assert main(["status", str(out_dir), "--json"]) == 0
-    pre_status = json.loads(capsys.readouterr().out)
+    pre_status = parse_cli_json(capsys.readouterr().out)
     assert pre_status["state"] == "unknown"
 
     # Build a tiny fake `fme` package in tmp_path to exercise `exec-fme`.
@@ -547,7 +551,7 @@ def test_exec_fme_status_submitted_txt_and_summary_custom_dims(
     )
 
     assert main(["summary", str(out_dir), "--json"]) == 0
-    summary = json.loads(capsys.readouterr().out)
+    summary = parse_cli_json(capsys.readouterr().out)
     assert summary["spatial_dims"] == ["grid_yt", "grid_xt"]
     series = summary["variables"]["TMP2m"]["series"]
     assert math.isclose(series[0]["ensemble_mean"], 860.0 / 3.0, rel_tol=1e-6)
@@ -573,7 +577,7 @@ def test_python_dash_m_aimip_submitted_txt_sacct_and_failed_exec(
         check=False,
     )
     assert proc.returncode == 0
-    assert "aimip 1.3.1" in proc.stdout
+    assert f"aimip {aimip.__version__}" in proc.stdout
 
     # Verify `status` parses `submitted.txt` (`job=424242 submitted=... user=...`).
     runs_dir: pathlib.Path = playground_env["runs_dir"]
@@ -613,8 +617,10 @@ def test_python_dash_m_aimip_submitted_txt_sacct_and_failed_exec(
     sacct_script.chmod(0o755)
     monkeypatch.setenv("PATH", str(fake_bin))
 
+    from conftest import parse_cli_json
+
     assert main(["status", str(pending_dir), "--json"]) == 0
-    st = json.loads(capsys.readouterr().out)
+    st = parse_cli_json(capsys.readouterr().out)
     assert st["state"] == "running"
     assert st["slurm_job_id"] == "424242"
     assert st["submitted"]["user"] == "user_x"
@@ -765,8 +771,10 @@ def test_status_sacct_txt_sacct_json_and_local_pid_without_container_sacct(
         encoding="utf-8",
     )
 
+    from conftest import parse_cli_json
+
     assert main(["status", str(dir_txt), "--json"]) == 0
-    st_txt = json.loads(capsys.readouterr().out)
+    st_txt = parse_cli_json(capsys.readouterr().out)
     assert st_txt["state"] == "completed"
     assert st_txt["slurm_job_id"] == "777001"
     assert st_txt["sacct_available"] is True
@@ -794,7 +802,7 @@ def test_status_sacct_txt_sacct_json_and_local_pid_without_container_sacct(
         encoding="utf-8",
     )
     assert main(["status", str(dir_txt), "--sacct-json", str(sacct_json_file), "--json"]) == 0
-    st_json = json.loads(capsys.readouterr().out)
+    st_json = parse_cli_json(capsys.readouterr().out)
     assert st_json["state"] == "failed"
     assert st_json["sacct_source"] == "sacct-json"
     assert st_json["sacct"]["elapsed"] == "00:02:05"
@@ -822,7 +830,7 @@ def test_status_sacct_txt_sacct_json_and_local_pid_without_container_sacct(
     capsys.readouterr()
     (dir_local / "local.pid").write_text(f"{os.getpid()}\n", encoding="utf-8")
     assert main(["status", str(dir_local), "--json"]) == 0
-    st_loc = json.loads(capsys.readouterr().out)
+    st_loc = parse_cli_json(capsys.readouterr().out)
     assert st_loc["state"] == "running"
     assert st_loc["local_pid"] == os.getpid()
 
@@ -1055,8 +1063,10 @@ def test_summary_supports_eamv3_trefht_and_ts_variables(
         },
     )
 
+    from conftest import parse_cli_json
+
     assert main(["summary", str(eam_out), "--json"]) == 0
-    summary = json.loads(capsys.readouterr().out)
+    summary = parse_cli_json(capsys.readouterr().out)
     assert list(summary["variables"].keys()) == ["TREFHT", "TS"]
     assert math.isclose(summary["variables"]["TREFHT"]["series"][0]["ensemble_mean"], 287.25, rel_tol=1e-6)
     assert math.isclose(summary["variables"]["TS"]["series"][0]["ensemble_mean"], 289.75, rel_tol=1e-6)
@@ -1193,8 +1203,10 @@ def test_manifest_version_lock_sha_walltime_capped_account_none_and_help(
     cap = capsys.readouterr()
     assert "exceeds site max_time (12:00:00) and was clamped to 12:00:00" in cap.err
 
+    import aimip
+
     manifest = json.loads((capped_dir / "aimip-manifest.json").read_text(encoding="utf-8"))
-    assert manifest["aimip_version"] == "1.3.1"
+    assert manifest["aimip_version"] == aimip.__version__
     assert isinstance(manifest["aimip_lock_sha256"], str) and len(manifest["aimip_lock_sha256"]) == 64
     assert isinstance(manifest["ic_provenance"], str) and len(manifest["ic_provenance"]) > 0
     assert manifest["slurm"]["walltime_capped"] is True

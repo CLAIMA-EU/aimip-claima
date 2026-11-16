@@ -101,10 +101,10 @@ mkdir -p "$RUN_ROOT" 2>/dev/null || true
 DATA_MODE=ro
 case "${1:-}" in
   setup|fetch) mkdir -p "$DATA" 2>/dev/null; [ -w "$DATA" ] || die "$DATA is not writable by you: ask the install owner to run this"; DATA_MODE=rw;;
-  run|ic) mkdir -p "$DATA" 2>/dev/null || true; [ -w "$DATA" ] && DATA_MODE=rw;;
+  run|ic|chat|mcp|ui) mkdir -p "$DATA" 2>/dev/null || true; [ -w "$DATA" ] && DATA_MODE=rw;;
 esac
 
-if [ "${1:-}" = "chat" ]; then
+if [ "${1:-}" = "chat" ] || [ "${1:-}" = "ui" ]; then
   if [ -n "${AIMIP_GEMINI_KEY_FILE:-}" ]; then safe_path "$AIMIP_GEMINI_KEY_FILE"
     [ -f "$AIMIP_GEMINI_KEY_FILE" ] && [ ! -L "$AIMIP_GEMINI_KEY_FILE" ] && [ -O "$AIMIP_GEMINI_KEY_FILE" ] \
       || die "AIMIP_GEMINI_KEY_FILE must be an existing regular file owned by you: $AIMIP_GEMINI_KEY_FILE"
@@ -114,7 +114,7 @@ if [ "${1:-}" = "chat" ]; then
     [ -f "${!f}" ] && [ ! -L "${!f}" ] && [ -O "${!f}" ] || die "$f must be an existing regular file owned by you: ${!f}"
   done
 else
-  unset GEMINI_API_KEY GOOGLE_API_KEY AIMIP_GEMINI_KEY_FILE AIMIP_GEMINI_VERTEX_TOKEN_FILE GOOGLE_APPLICATION_CREDENTIALS
+  unset GEMINI_API_KEY GOOGLE_API_KEY AIMIP_GEMINI_KEY_FILE AIMIP_GEMINI_VERTEX_TOKEN_FILE AIMIP_GEMINI_VERTEX_PROJECT AIMIP_GEMINI_VERTEX_LOCATION GOOGLE_APPLICATION_CREDENTIALS GOOGLE_CLOUD_PROJECT GCLOUD_PROJECT CLOUDSDK_AUTH_ACCESS_TOKEN OPENAI_API_KEY ANTHROPIC_API_KEY
 fi
 
 export AIMIP_HOME="$PREFIX"
@@ -122,6 +122,7 @@ export AIMIP_PLAYGROUND="$PREFIX"
 export AIMIP_DATA="$DATA"
 export AIMIP_SITE_CONFIG="$PREFIX/site.json"
 export AIMIP_DEFAULT_OUT_ROOT="$RUN_ROOT"
+export AIMIP_STATE="${AIMIP_STATE:-$RUN_ROOT/.aimip-state}"
 export AIMIP_USER="$U"
 export AIMIP_SCHEDULER="$SCHEDULER"
 export AIMIP_EXTRA_RO_BINDS="$EXTRA_RO"

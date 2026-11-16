@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AIMIP Console UI</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-brand">
+      <span class="brand-title">AIMIP</span>
+      <span class="brand-sub" id="session-meta">Climate Emulator Console</span>
+    </div>
+    <nav class="topnav" aria-label="Primary navigation">
+      <a href="#models" class="nav-link active" data-route="models">Models</a>
+      <a href="#new-run" class="nav-link" data-route="new-run">New Run</a>
+      <a href="#plan" class="nav-link" data-route="plan">Plan &amp; Approve</a>
+      <a href="#runs" class="nav-link" data-route="runs">Runs</a>
+      <a href="#doctor" class="nav-link" data-route="doctor">Doctor</a>
+    </nav>
+    <div class="topbar-actions">
+      <button type="button" id="btn-toggle-chat" class="btn btn-secondary hidden">Assistant</button>
+    </div>
+  </header>
+
+  <div id="auth-banner" class="banner banner-error hidden" role="alert">
+    <strong>Session token required:</strong> Open the full URL printed by <code>aimip ui</code> (including <code>?token=...</code>) in this browser tab.
+  </div>
+
+  <div id="global-notice" class="banner hidden" role="status"></div>
+
+  <div class="workspace">
+    <main class="main-pane">
+      <!-- 1. MODELS PAGE -->
+      <section id="view-models" class="view">
+        <div class="section-header">
+          <div>
+            <h1>Model Catalogue</h1>
+            <p class="muted">Registered climate emulators, forcing windows, calendars, and installation status.</p>
+          </div>
+          <button type="button" id="btn-refresh-models" class="btn btn-secondary">Refresh</button>
+        </div>
+
+        <form id="models-filter-form" class="filter-bar">
+          <label>
+            <span>Task</span>
+            <select id="filter-task">
+              <option value="">All tasks</option>
+              <option value="amip">amip</option>
+              <option value="slab-ocean">slab-ocean</option>
+              <option value="coupled">coupled</option>
+              <option value="scenario">scenario</option>
+            </select>
+          </label>
+          <label>
+            <span>Family</span>
+            <select id="filter-family">
+              <option value="">All families</option>
+              <option value="fme">fme</option>
+              <option value="e2s-dlesym">e2s-dlesym</option>
+              <option value="arches">arches</option>
+            </select>
+          </label>
+          <label>
+            <span>Status</span>
+            <select id="filter-status">
+              <option value="">All tiers</option>
+              <option value="certified">certified</option>
+              <option value="runs">runs</option>
+              <option value="experimental">experimental</option>
+            </select>
+          </label>
+          <label class="checkbox-inline">
+            <input type="checkbox" id="filter-installed">
+            <span>Installed only</span>
+          </label>
+        </form>
+
+        <div class="card-box">
+          <table class="data-table" id="models-table">
+            <thead>
+              <tr>
+                <th>Model</th>
+                <th>Status</th>
+                <th>Task</th>
+                <th>Family</th>
+                <th>Step / Calendar</th>
+                <th>Installed</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="models-tbody"></tbody>
+          </table>
+        </div>
+
+        <div id="model-detail-panel" class="card-box hidden">
+          <div class="section-header">
+            <h2 id="model-card-title">Model Card</h2>
+            <button type="button" id="btn-launch-from-card" class="btn btn-primary">Configure Run</button>
+          </div>
+          <div id="model-card-body"></div>
+        </div>
+      </section>
+
+      <!-- 2. NEW RUN PAGE -->
+      <section id="view-new-run" class="view hidden">
+        <div class="section-header">
+          <div>
+            <h1>New Run</h1>
+            <p class="muted">Validate a run specification and generate a side-effect-free plan card before execution.</p>
+          </div>
+        </div>
+
+        <div id="form-error-box" class="banner banner-error hidden" role="alert"></div>
+
+        <form id="new-run-form" class="card-box form-grid">
+          <div class="form-row">
+            <label for="run-model">Model</label>
+            <select id="run-model" required></select>
+          </div>
+
+          <div class="form-row">
+            <label for="run-name">Run Name (optional, resolves under run root)</label>
+            <input type="text" id="run-name" placeholder="e.g. demo-era5-1979" autocomplete="off">
+          </div>
+
+          <div class="form-row">
+            <label for="run-start">Start Time (ISO)</label>
+            <input type="text" id="run-start" placeholder="1979-01-01T00:00:00" required autocomplete="off">
+            <small class="hint" id="run-start-hint"></small>
+          </div>
+
+          <div class="form-row-split">
+            <div>
+              <label for="run-horizon-kind">Horizon Mode</label>
+              <select id="run-horizon-kind">
+                <option value="steps">Steps (--steps)</option>
+                <option value="length">Duration (--length, e.g. 1y, 6m, 30d)</option>
+                <option value="end">End Time (--end ISO)</option>
+              </select>
+            </div>
+            <div>
+              <label for="run-horizon-value">Horizon Value</label>
+              <input type="text" id="run-horizon-value" value="4" required autocomplete="off">
+            </div>
+          </div>
+
+          <div class="form-row-split">
+            <div>
+              <label for="run-forcing-set">Forcing Set</label>
+              <select id="run-forcing-set">
+                <option value="">Default (auto-select covering window)</option>
+              </select>
+            </div>
+            <div>
+              <label for="run-mode">Execution Mode</label>
+              <select id="run-mode">
+                <option value="slurm">slurm (sbatch)</option>
+                <option value="local">local (runs on UI host / container)</option>
+              </select>
+              <small class="hint hidden" id="run-mode-hint"></small>
+            </div>
+          </div>
+
+          <div class="form-row-split">
+            <div>
+              <label for="run-members">Ensemble Members (--members)</label>
+              <input type="number" id="run-members" min="1" max="10000" step="1" placeholder="1">
+            </div>
+            <div>
+              <label for="run-seed">Random Seed (--seed)</label>
+              <input type="number" id="run-seed" min="0" step="1" placeholder="0">
+            </div>
+          </div>
+
+          <div class="form-row-split">
+            <div>
+              <label for="run-ic-picker">Custom Initial Condition (--ic, allowed roots only)</label>
+              <select id="run-ic-picker">
+                <option value="">Shipped model IC (default)</option>
+              </select>
+              <input type="text" id="run-ic-manual" placeholder="Optional exact .nc path inside allowed roots" autocomplete="off">
+            </div>
+            <div>
+              <label for="run-ocean-ic-picker">Companion Ocean IC (--ocean-ic, coupled models)</label>
+              <select id="run-ocean-ic-picker">
+                <option value="">Shipped ocean IC / N/A (default)</option>
+              </select>
+              <input type="text" id="run-ocean-ic-manual" placeholder="Optional exact ocean .nc path inside allowed roots" autocomplete="off">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <label for="run-lora-picker">LoRA Checkpoint (--lora, trusted files only)</label>
+            <select id="run-lora-picker">
+              <option value="">None</option>
+            </select>
+            <input type="text" id="run-lora-manual" placeholder="Optional exact checkpoint path owned by you" autocomplete="off">
+          </div>
+          <p class="hint" id="picker-roots-hint"></p>
+
+          <div class="checkbox-group">
+            <label class="checkbox-inline">
+              <input type="checkbox" id="run-monthly" checked>
+              <span>Save monthly means (<code>--monthly</code>)</span>
+            </label>
+            <label class="checkbox-inline">
+              <input type="checkbox" id="run-prediction">
+              <span>Save full step predictions (<code>--prediction</code> — large output)</span>
+            </label>
+          </div>
+
+          <details class="overrides-box">
+            <summary>Slurm Resource Overrides (optional)</summary>
+            <div class="form-row-split top-gap">
+              <div>
+                <label for="res-partition">Partition</label>
+                <input type="text" id="res-partition" placeholder="site default">
+              </div>
+              <div>
+                <label for="res-account">Account</label>
+                <input type="text" id="res-account" placeholder="site default">
+              </div>
+            </div>
+            <div class="form-row-split top-gap">
+              <div>
+                <label for="res-time">Walltime (--time)</label>
+                <input type="text" id="res-time" placeholder="HH:MM:SS">
+              </div>
+              <div>
+                <label for="res-mem">Memory (--mem)</label>
+                <input type="text" id="res-mem" placeholder="64G">
+              </div>
+            </div>
+            <div class="form-row-split top-gap">
+              <div>
+                <label for="res-gres">GRES (--gres)</label>
+                <input type="text" id="res-gres" placeholder="gpu:1">
+              </div>
+              <div>
+                <label for="res-cpus">CPUs per task</label>
+                <input type="number" id="res-cpus" min="1" step="1" placeholder="site default">
+              </div>
+            </div>
+          </details>
+
+          <div class="form-actions">
+            <button type="submit" id="btn-generate-plan" class="btn btn-primary">Generate Plan Card</button>
+          </div>
+        </form>
+      </section>
+
+      <!-- 3. PLAN CARD + HUMAN APPROVE PAGE -->
+      <section id="view-plan" class="view hidden">
+        <div class="section-header">
+          <div>
+            <h1>Plan Card &amp; Human Approval</h1>
+            <p class="muted" id="plan-subtitle">Review the exact plan card and 8-hex digest prefix below before approving.</p>
+          </div>
+          <a href="#new-run" class="btn btn-secondary">Edit Specification</a>
+        </div>
+
+        <div id="plan-superseded-box" class="banner banner-warn hidden" role="alert">
+          <span id="plan-superseded-text"></span>
+          <button type="button" id="btn-load-newer-plan" class="btn btn-primary btn-small">Load Newer Card</button>
+        </div>
+
+        <div id="plan-empty" class="card-box">
+          <p class="muted">No active run proposal. Configure a run on the <a href="#new-run">New Run</a> page first.</p>
+        </div>
+
+        <div id="plan-active" class="card-box hidden">
+          <div class="digest-bar">
+            <div>
+              <span class="label-caps">Approval Prefix</span>
+              <code class="digest-prefix" id="plan-prefix-badge">--------</code>
+            </div>
+            <div>
+              <span class="label-caps">Full SHA-256 Plan Digest</span>
+              <code class="digest-full" id="plan-full-digest"></code>
+            </div>
+          </div>
+
+          <pre class="code-card" id="plan-card-pre"></pre>
+
+          <div id="plan-model-context" class="kv-grid"></div>
+
+          <div id="plan-container-note" class="consent-box hidden"></div>
+
+          <div id="plan-download-box" class="consent-box hidden">
+            <label class="checkbox-inline">
+              <input type="checkbox" id="plan-download-consent">
+              <span id="plan-download-label">Allow downloading missing model assets before running</span>
+            </label>
+          </div>
+
+          <div id="plan-error-box" class="banner banner-error hidden" role="alert"></div>
+
+          <div class="form-actions">
+            <button type="button" id="btn-approve-submit" class="btn btn-primary">Approve &amp; Submit</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 4. RUNS LIST + LIVE LOG TAIL PAGE -->
+      <section id="view-runs" class="view hidden">
+        <div class="section-header">
+          <div>
+            <h1>Runs</h1>
+            <p class="muted" id="runs-root-label">Runs in configured output directory.</p>
+          </div>
+          <div class="inline-controls">
+            <label class="checkbox-inline">
+              <input type="checkbox" id="runs-autopoll">
+              <span>Live poll (15s)</span>
+            </label>
+            <button type="button" id="btn-refresh-runs" class="btn btn-secondary">Refresh</button>
+          </div>
+        </div>
+
+        <div id="cancel-approval-box" class="card-box cancel-box hidden">
+          <h3>Confirm Run Cancellation</h3>
+          <pre class="code-card" id="cancel-card-pre"></pre>
+          <div class="inline-controls">
+            <button type="button" id="btn-confirm-cancel" class="btn btn-danger">Approve Cancel</button>
+            <button type="button" id="btn-dismiss-cancel" class="btn btn-secondary">Dismiss</button>
+          </div>
+        </div>
+
+        <div class="card-box">
+          <table class="data-table" id="runs-table">
+            <thead>
+              <tr>
+                <th>Run Name</th>
+                <th>Model</th>
+                <th>Status</th>
+                <th>Job / PID</th>
+                <th>Elapsed / Exit</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="runs-tbody"></tbody>
+          </table>
+        </div>
+
+        <div id="runs-log-panel" class="card-box hidden">
+          <div class="section-header">
+            <h2 id="runs-log-title">Live Log Tail</h2>
+            <button type="button" id="btn-refresh-tail" class="btn btn-secondary">Refresh Logs</button>
+          </div>
+          <p class="hint hidden" id="runs-log-trunc-note"></p>
+          <pre class="log-viewer" id="runs-log-pre"></pre>
+        </div>
+      </section>
+
+      <!-- 5. RUN DETAIL (SUMMARY + PLOTS + FILES + LOGS) PAGE -->
+      <section id="view-run-detail" class="view hidden">
+        <div class="section-header">
+          <div>
+            <h1 id="detail-title">Run Detail</h1>
+            <p class="muted" id="detail-subtitle"></p>
+          </div>
+          <div class="inline-controls">
+            <a href="#runs" class="btn btn-secondary">Back to Runs</a>
+            <button type="button" id="btn-detail-refresh" class="btn btn-secondary">Refresh</button>
+            <button type="button" id="btn-detail-cancel" class="btn btn-danger">Cancel Run</button>
+          </div>
+        </div>
+
+        <div id="detail-host-submit-box" class="card-box host-cmd-box hidden">
+          <h3>Prepared — Run on Host Login Node to Submit</h3>
+          <p class="muted">Container installs do not invoke host <code>sbatch</code> directly from inside the image. Run this digest-verified command in a login-node shell:</p>
+          <pre class="code-card" id="detail-host-submit-cmd"></pre>
+        </div>
+
+        <div id="detail-cancel-box" class="card-box cancel-box hidden">
+          <h3>Confirm Run Cancellation</h3>
+          <pre class="code-card" id="detail-cancel-pre"></pre>
+          <div class="inline-controls">
+            <button type="button" id="btn-detail-confirm-cancel" class="btn btn-danger">Approve Cancel</button>
+            <button type="button" id="btn-detail-dismiss-cancel" class="btn btn-secondary">Dismiss</button>
+          </div>
+        </div>
+
+        <div class="card-box" id="detail-status-box"></div>
+
+        <div class="card-box">
+          <h2>Monthly Global-Mean Summary</h2>
+          <div id="detail-plots-box"></div>
+          <div id="detail-summary-box"></div>
+        </div>
+
+        <div class="card-box">
+          <h2>Run Directory Files</h2>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>File</th>
+                <th>Size</th>
+                <th>Modified (UTC)</th>
+              </tr>
+            </thead>
+            <tbody id="detail-files-tbody"></tbody>
+          </table>
+        </div>
+
+        <div class="card-box">
+          <div class="section-header">
+            <h2>Log Tail</h2>
+            <label class="checkbox-inline">
+              <input type="checkbox" id="detail-log-autopoll">
+              <span>Live poll (15s)</span>
+            </label>
+          </div>
+          <p class="hint hidden" id="detail-log-trunc-note"></p>
+          <pre class="log-viewer" id="detail-log-pre"></pre>
+        </div>
+      </section>
+
+      <!-- 6. DOCTOR PAGE -->
+      <section id="view-doctor" class="view hidden">
+        <div class="section-header">
+          <div>
+            <h1>Environment Doctor</h1>
+            <p class="muted">Runtime, GPU, scheduler, data root, and directory permission checks.</p>
+          </div>
+          <button type="button" id="btn-refresh-doctor" class="btn btn-secondary">Re-run Checks</button>
+        </div>
+        <div class="card-box">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Check</th>
+                <th>Result</th>
+                <th>Detail</th>
+                <th>Fix Hint</th>
+              </tr>
+            </thead>
+            <tbody id="doctor-tbody"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <!-- OPTIONAL ASSISTANT PANEL -->
+    <aside id="chat-drawer" class="chat-drawer hidden" aria-label="AIMIP Planning Assistant">
+      <div class="section-header">
+        <h2>Planning Assistant</h2>
+        <button type="button" id="btn-close-chat" class="btn btn-secondary">Close</button>
+      </div>
+      <p class="hint" id="chat-privacy-hint">Prompts and tool outputs are sent to Google Gemini and logged locally under chat-logs. Only your click on Approve can execute a run.</p>
+      <div id="chat-messages" class="chat-messages"></div>
+      <form id="chat-form" class="chat-form">
+        <input type="text" id="chat-input" placeholder="Ask about models or propose a run..." autocomplete="off" required>
+        <button type="submit" id="btn-chat-send" class="btn btn-primary">Send</button>
+      </form>
+    </aside>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

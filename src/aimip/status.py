@@ -20,11 +20,14 @@ fme 2026.5.1 references:
 
 from __future__ import annotations
 
+import collections
+from collections.abc import Sequence
 import json
 import os
 import shutil
 import subprocess
-from collections.abc import Sequence
+import threading
+import time
 from typing import Any
 
 from .errors import ConfigError, ValidationError
@@ -34,6 +37,14 @@ MONTHLY_PREDICTIONS_FILENAME = "monthly_mean_predictions.nc"
 # Includes EAMv3 (`TREFHT`, `TS`) and SamudrACE-E3SMv3 (`Tat2m`) alongside ERA5/SHiELD/HiRO (`TMP2m`, `surface_temperature`).
 SUMMARY_TEMP_VARS = ("TMP2m", "Tat2m", "surface_temperature", "TREFHT", "TS", "t2m", "tas")   # + DLESyM, ArchesClimate
 SUMMARY_OCEAN_TEMP_VARS = ("sst", "surface_temperature", "thetao_0", "temperatureCoarsened_0")
+
+MAX_SUMMARY_MONTHS = 2400
+MAX_SUMMARY_MEMBERS = 128
+MAX_SUMMARY_VAR_BYTES = 512 * 1024 * 1024
+SUMMARY_TIME_CHUNK_MONTHS = 24
+MAX_SUMMARY_CACHE_ENTRIES = 32
+_SUMMARY_CACHE_LOCK = threading.Lock()
+_SUMMARY_CACHE: collections.OrderedDict[tuple[Any, ...], dict[str, Any]] = collections.OrderedDict()
 
 
 def _parse_submitted_txt(out_dir: str) -> dict[str, str] | None:
@@ -274,6 +285,8 @@ def _query_sacct_with_raw(job_id: str) -> tuple[dict[str, str] | None, str | Non
     if not sacct_bin:
         return None, None
 
+    from .submit import sanitized_subprocess_env
+
     try:
         proc = subprocess.run(
             [
@@ -286,6 +299,7 @@ def _query_sacct_with_raw(job_id: str) -> tuple[dict[str, str] | None, str | Non
             ],
             capture_output=True,
             text=True,
+            env=sanitized_subprocess_env(),
             check=False,
             timeout=10,
         )
@@ -306,10 +320,106 @@ def _query_sacct(job_id: str) -> dict[str, str] | None:
     return parsed
 
 
+_SACCT_CACHE_LOCK = threading.Lock()
+_LAST_SACCT_QUERY: dict[tuple[str, str], tuple[float, dict[str, str] | None]] = {}
+
+
+def refresh_sacct_batch(
+    run_jobs: Sequence[tuple[str, str]],
+    *,
+    min_interval_seconds: float = 15.0,
+) -> None:
+    """Refresh `_LAST_SACCT_QUERY` and `<run>/sacct.txt` for multiple active Slurm jobs in one `sacct` call."""
+    if not run_jobs:
+        return
+    sacct_bin = shutil.which("sacct")
+    if not sacct_bin:
+        return
+
+    now_mono = time.monotonic()
+    pending: list[tuple[str, str]] = []
+    with _SACCT_CACHE_LOCK:
+        for out_dir, raw_jid in run_jobs:
+            try:
+                vid = validate_slurm_job_id(str(raw_jid))
+            except ValidationError:
+                continue
+            cache_key = (out_dir, vid)
+            if min_interval_seconds > 0.0:
+                cached_entry = _LAST_SACCT_QUERY.get(cache_key)
+                if cached_entry is not None and (now_mono - cached_entry[0]) < min_interval_seconds:
+                    continue
+            pending.append((out_dir, vid))
+
+    if not pending:
+        return
+
+    from .submit import is_trusted_run_dir, sanitized_subprocess_env, write_in_trusted_dir
+
+    unique_ids = list(dict.fromkeys(vid for _, vid in pending))
+    for chunk_start in range(0, len(unique_ids), 100):
+        chunk_ids = unique_ids[chunk_start : chunk_start + 100]
+        chunk_set = set(chunk_ids)
+        try:
+            proc = subprocess.run(
+                [
+                    sacct_bin,
+                    "-j",
+                    ",".join(chunk_ids),
+                    "--format=JobIDRaw,State,Elapsed,ExitCode",
+                    "--noheader",
+                    "--parsable2",
+                ],
+                capture_output=True,
+                text=True,
+                env=sanitized_subprocess_env(),
+                check=False,
+                timeout=10,
+            )
+        except (OSError, subprocess.SubprocessError):
+            continue
+
+        raw_out = proc.stdout.strip()
+        all_lines = raw_out.splitlines() if (proc.returncode == 0 and raw_out) else []
+        by_base_id: dict[str, list[str]] = {}
+        for line in all_lines:
+            stripped = line.strip()
+            if not stripped or "|" not in stripped:
+                continue
+            base_jid = stripped.split("|", 1)[0].strip().split(".", 1)[0]
+            if base_jid:
+                by_base_id.setdefault(base_jid, []).append(stripped)
+
+        stamp = time.monotonic()
+        for out_dir, vid in pending:
+            if vid not in chunk_set:
+                continue
+            job_lines = by_base_id.get(vid)
+            if not job_lines and len(chunk_ids) == 1 and all_lines:
+                job_lines = all_lines
+            parsed = (
+                _parse_sacct_pipe_lines(job_lines, target_job_id=vid)
+                if job_lines
+                else None
+            )
+            with _SACCT_CACHE_LOCK:
+                _LAST_SACCT_QUERY[(out_dir, vid)] = (
+                    stamp,
+                    dict(parsed) if parsed is not None else None,
+                )
+            if parsed is not None and job_lines and is_trusted_run_dir(out_dir):
+                try:
+                    write_in_trusted_dir(out_dir, "sacct.txt", "\n".join(job_lines))
+                except Exception:
+                    pass
+
+
 def _resolve_sacct_info(
     out_dir: str,
     job_id: str | None,
     sacct_json_path: str | None = None,
+    *,
+    min_sacct_interval_seconds: float = 0.0,
 ) -> tuple[dict[str, str] | None, bool, str | None]:
     """Resolve `(sacct_info, sacct_available, sacct_source)` from `--sacct-json`, live `sacct`, or `sacct.txt`."""
     if sacct_json_path is not None:
@@ -318,7 +428,25 @@ def _resolve_sacct_info(
 
     sacct_bin_available = shutil.which("sacct") is not None
     if job_id and sacct_bin_available:
+        cache_key = (out_dir, str(job_id))
+        now_mono = time.monotonic()
+        if min_sacct_interval_seconds > 0.0:
+            with _SACCT_CACHE_LOCK:
+                cached_entry = _LAST_SACCT_QUERY.get(cache_key)
+            if cached_entry is not None and (now_mono - cached_entry[0]) < min_sacct_interval_seconds:
+                if cached_entry[1] is not None:
+                    return dict(cached_entry[1]), True, "sacct"
+                txt_cached = _read_sacct_txt(out_dir, target_job_id=job_id)
+                if txt_cached is not None:
+                    return txt_cached, True, "sacct.txt"
+                return None, sacct_bin_available, None
+
         live_info, raw_out = _query_sacct_with_raw(job_id)
+        with _SACCT_CACHE_LOCK:
+            _LAST_SACCT_QUERY[cache_key] = (
+                time.monotonic(),
+                dict(live_info) if live_info is not None else None,
+            )
         if live_info is not None:
             from .submit import is_trusted_run_dir, write_in_trusted_dir
 
@@ -341,6 +469,7 @@ def _get_spin_status(
     spin_manifest_path: str,
     *,
     sacct_json_path: str | None = None,
+    min_sacct_interval_seconds: float = 0.0,
 ) -> dict[str, Any]:
     """Summarize status of a `<spin-dir>` created by `aimip ic spin`."""
     try:
@@ -353,7 +482,10 @@ def _get_spin_status(
     local_pid = _parse_local_pid(validated_out)
     job_id = _discover_job_id(validated_out, manifest, submitted_info)
     sacct_info, sacct_available, sacct_source = _resolve_sacct_info(
-        validated_out, job_id, sacct_json_path=sacct_json_path
+        validated_out,
+        job_id,
+        sacct_json_path=sacct_json_path,
+        min_sacct_interval_seconds=min_sacct_interval_seconds,
     )
     if job_id is None and sacct_info is not None and sacct_info.get("job_id"):
         try:
@@ -404,8 +536,8 @@ def _get_spin_status(
     elif total_members > 0 and completed_count == total_members:
         state = "completed"
         rc_out = 0
-    elif sacct_info is not None and sacct_info.get("state"):
-        state = sacct_info["state"].lower().split()[0]
+    elif sacct_info is not None and str(sacct_info.get("state") or "").strip():
+        state = (sacct_info["state"].lower().split() or ["unknown"])[0]
         rc_out = None
     elif completed_count > 0 or local_pid is not None:
         state = "running"
@@ -456,6 +588,7 @@ def get_run_status(
     out_dir: str,
     *,
     sacct_json_path: str | None = None,
+    min_sacct_interval_seconds: float = 0.0,
 ) -> dict[str, Any]:
     """Read `<out>/aimip-manifest.json` (or `spin-manifest.json`), `sacct.txt`/`--sacct-json`/`sacct`, and artifacts."""
     validated_out = validate_run_path(out_dir, label="run directory")
@@ -474,6 +607,7 @@ def get_run_status(
                 validated_out,
                 spin_manifest_path,
                 sacct_json_path=sacct_json_path,
+                min_sacct_interval_seconds=min_sacct_interval_seconds,
             )
         raise ConfigError(f"Run manifest not found: {manifest_path}")
 
@@ -486,22 +620,49 @@ def get_run_status(
     submitted_info = _parse_submitted_txt(validated_out)
     local_pid = _parse_local_pid(validated_out)
     job_id = _discover_job_id(validated_out, manifest, submitted_info)
-    sacct_info, sacct_available, sacct_source = _resolve_sacct_info(
-        validated_out, job_id, sacct_json_path=sacct_json_path
-    )
+    has_finished = "finished" in manifest and "rc" in manifest
+    if has_finished and sacct_json_path is None:
+        sacct_info = _read_sacct_txt(validated_out, target_job_id=job_id)
+        sacct_available = True if sacct_info is not None else (shutil.which("sacct") is not None)
+        sacct_source = "sacct.txt" if sacct_info is not None else None
+    else:
+        sacct_info, sacct_available, sacct_source = _resolve_sacct_info(
+            validated_out,
+            job_id,
+            sacct_json_path=sacct_json_path,
+            min_sacct_interval_seconds=min_sacct_interval_seconds,
+        )
     if job_id is None and sacct_info is not None and sacct_info.get("job_id"):
         try:
             job_id = validate_slurm_job_id(sacct_info["job_id"].split(".")[0])
         except ValidationError:
             pass
 
-    if "finished" in manifest and "rc" in manifest:
+    sacct_age_seconds: float | None = None
+    if sacct_source == "sacct.txt":
+        try:
+            sacct_mtime = os.path.getmtime(os.path.join(validated_out, "sacct.txt"))
+            sacct_age_seconds = round(max(0.0, time.time() - sacct_mtime), 1)
+        except OSError:
+            sacct_age_seconds = None
+
+    if has_finished:
         rc_val = int(manifest["rc"])
         state = "completed" if rc_val == 0 else "failed"
-    elif sacct_info is not None and sacct_info.get("state"):
-        state = sacct_info["state"].lower().split()[0]
+    elif sacct_info is not None and str(sacct_info.get("state") or "").strip():
+        state = (sacct_info["state"].lower().split() or ["unknown"])[0]
     elif local_pid is not None:
-        state = "running"
+        in_container = os.environ.get("AIMIP_IMAGE_SHA", "native") not in ("", "native")
+        if not in_container:
+            try:
+                os.kill(local_pid, 0)
+                state = "running"
+            except ProcessLookupError:
+                state = "failed"
+            except PermissionError:
+                state = "running"
+        else:
+            state = "running"
     else:
         state = "unknown"
 
@@ -519,6 +680,7 @@ def get_run_status(
             "sacct.txt",
             "local.pid",
             "submitted.txt",
+            "cancel-requested.txt",
             "restart.nc",
             "atmosphere/restart.nc",
             "ocean/restart.nc",
@@ -546,7 +708,9 @@ def get_run_status(
         "submitted": submitted_info,
         "sacct_available": sacct_available,
         "sacct_source": sacct_source,
+        "sacct_age_seconds": sacct_age_seconds,
         "sacct": sacct_info,
+        "cancel_requested": bool(artifacts.get("cancel-requested.txt") and not has_finished),
         "start_time": manifest.get("start_time"),
         "end_time": manifest.get("end_time"),
         "steps": manifest.get("steps"),
@@ -560,11 +724,22 @@ def _summarize_monthly_dataset(
     candidate_vars: Sequence[str],
     *,
     prefix: str = "",
+    max_var_bytes: int | None = None,
+    max_months: int | None = None,
+    max_members: int | None = None,
 ) -> dict[str, Any]:
-    """Compute area-weighted (`cos(lat)`) global-mean monthly series for *candidate_vars* in *monthly_path*."""
+    """Compute area-weighted (`cos(lat)`) global-mean monthly series for *candidate_vars* in *monthly_path*.
+
+    Opens *monthly_path* lazily without loading unrelated variables, enforces dimension and
+    uncompressed-byte limits up front, and streams selected variables in bounded time chunks.
+    """
     import numpy as np
     import xarray as xr
     from xarray.coding.times import CFDatetimeCoder
+
+    eff_max_months = MAX_SUMMARY_MONTHS if max_months is None else int(max_months)
+    eff_max_members = MAX_SUMMARY_MEMBERS if max_members is None else int(max_members)
+    eff_max_bytes = MAX_SUMMARY_VAR_BYTES if max_var_bytes is None else int(max_var_bytes)
 
     try:
         with xr.open_dataset(
@@ -573,7 +748,6 @@ def _summarize_monthly_dataset(
             decode_timedelta=False,
             decode_times=CFDatetimeCoder(use_cftime=True),
         ) as ds:
-            ds.load()
             present_vars = [v for v in candidate_vars if v in ds.data_vars]
             if not present_vars:
                 available = sorted(
@@ -602,6 +776,34 @@ def _summarize_monthly_dataset(
             n_lat = int(first_var.sizes[y_dim])
             n_lon = int(first_var.sizes[x_dim])
 
+            if n_months > eff_max_months:
+                raise ValidationError(
+                    f"Monthly dataset {monthly_path} has {n_months} months, exceeding diagnostic limit ({eff_max_months})."
+                )
+            if n_samples > eff_max_members:
+                raise ValidationError(
+                    f"Monthly dataset {monthly_path} has {n_samples} ensemble members, exceeding diagnostic limit ({eff_max_members})."
+                )
+            for vname in present_vars:
+                v_da = ds[vname]
+                if v_da.ndim != 4 or set(str(d) for d in v_da.dims) != {
+                    sample_dim,
+                    time_dim,
+                    y_dim,
+                    x_dim,
+                }:
+                    raise ValidationError(
+                        f"Expected 4D ({sample_dim!r}, {time_dim!r}, {y_dim!r}, {x_dim!r}) variable {vname!r}, "
+                        f"got dims {v_da.dims} with shape {v_da.shape}."
+                    )
+                itemsize = max(int(getattr(v_da.dtype, "itemsize", 4) or 4), 1)
+                est_bytes = int(v_da.size) * itemsize
+                if est_bytes > eff_max_bytes:
+                    raise ValidationError(
+                        f"Variable {vname!r} in {monthly_path} requires {est_bytes} uncompressed bytes, "
+                        f"exceeding diagnostic budget ({eff_max_bytes} bytes)."
+                    )
+
             lat_var_name: str | None = None
             if y_dim in ds:
                 lat_var_name = y_dim
@@ -613,6 +815,10 @@ def _summarize_monthly_dataset(
             if lat_var_name is None:
                 raise ValidationError(
                     f"Monthly dataset {monthly_path} is missing latitude coordinate {y_dim!r}."
+                )
+            if int(ds[lat_var_name].size) > max(n_lat * max(n_lon, 1), 1):
+                raise ValidationError(
+                    f"Monthly dataset {monthly_path}: {lat_var_name!r} coordinate exceeds spatial grid size."
                 )
 
             lat_vals = np.asarray(ds[lat_var_name].values, dtype=np.float64)
@@ -650,60 +856,64 @@ def _summarize_monthly_dataset(
             else:
                 valid_labels = [f"month_{m_idx:04d}" for m_idx in range(n_months)]
 
+            chunk_step = max(1, int(SUMMARY_TIME_CHUNK_MONTHS))
             series_by_var: dict[str, Any] = {}
             for vname in present_vars:
                 da = ds[vname]
-                v_sdim, v_tdim, v_ydim, v_xdim = (str(d) for d in da.dims)
-                arr = np.asarray(
-                    da.transpose(v_sdim, v_tdim, v_ydim, v_xdim).values,
-                    dtype=np.float64,
-                )
-                units = str(da.attrs.get("units", "K"))
+                raw_units = da.attrs.get("units")
+                units = str(raw_units) if raw_units is not None else ""
+                long_name = str(da.attrs.get("long_name", vname))
 
                 rows: list[dict[str, Any]] = []
-                for m_idx in range(n_months):
-                    member_means: list[float | None] = []
-                    for s_idx in range(n_samples):
-                        if counts_arr is not None and int(counts_arr[s_idx, m_idx]) <= 0:
-                            member_means.append(None)
-                            continue
-                        field = arr[s_idx, m_idx]
-                        valid_mask = np.isfinite(field)
-                        if not np.any(valid_mask):
-                            member_means.append(None)
-                            continue
-                        w_sum = float(np.sum(weights_2d[valid_mask]))
-                        if w_sum <= 0.0:
-                            member_means.append(None)
-                            continue
-                        val = float(
-                            np.sum(field[valid_mask] * weights_2d[valid_mask]) / w_sum
-                        )
-                        member_means.append(val)
+                for t0 in range(0, n_months, chunk_step):
+                    t1 = min(n_months, t0 + chunk_step)
+                    chunk_da = da.isel({time_dim: slice(t0, t1)}).transpose(
+                        sample_dim, time_dim, y_dim, x_dim
+                    )
+                    chunk_arr = np.asarray(chunk_da.values, dtype=np.float64)
+                    for rel_m, m_idx in enumerate(range(t0, t1)):
+                        member_means: list[float | None] = []
+                        for s_idx in range(n_samples):
+                            if counts_arr is not None and int(counts_arr[s_idx, m_idx]) <= 0:
+                                member_means.append(None)
+                                continue
+                            field = chunk_arr[s_idx, rel_m]
+                            valid_mask = np.isfinite(field)
+                            if not np.any(valid_mask):
+                                member_means.append(None)
+                                continue
+                            w_sum = float(np.sum(weights_2d[valid_mask]))
+                            if w_sum <= 0.0:
+                                member_means.append(None)
+                                continue
+                            val = float(
+                                np.sum(field[valid_mask] * weights_2d[valid_mask]) / w_sum
+                            )
+                            member_means.append(val)
 
-                    finite_members = [v for v in member_means if v is not None]
-                    ens_mean = (
-                        float(sum(finite_members) / len(finite_members))
-                        if finite_members
-                        else None
-                    )
-                    step_count = (
-                        int(counts_arr[0, m_idx]) if counts_arr is not None else None
-                    )
-                    rows.append(
-                        {
-                            "month_index": m_idx,
-                            "month": valid_labels[m_idx],
-                            "counts": step_count,
-                            "ensemble_mean": ens_mean,
-                            "members": member_means,
-                        }
-                    )
+                        finite_members = [v for v in member_means if v is not None]
+                        ens_mean = (
+                            float(sum(finite_members) / len(finite_members))
+                            if finite_members
+                            else None
+                        )
+                        step_count = (
+                            int(counts_arr[0, m_idx]) if counts_arr is not None else None
+                        )
+                        rows.append(
+                            {
+                                "month_index": m_idx,
+                                "month": valid_labels[m_idx],
+                                "counts": step_count,
+                                "ensemble_mean": ens_mean,
+                                "members": member_means,
+                            }
+                        )
 
                 out_key = f"{prefix}{vname}" if prefix else vname
                 series_by_var[out_key] = {
                     "units": units,
-                    "long_name": str(da.attrs.get("long_name", vname)),
+                    "long_name": long_name,
                     "series": rows,
                 }
     except (ValidationError, ConfigError):
@@ -722,11 +932,32 @@ def _summarize_monthly_dataset(
     }
 
 
+def _file_cache_sig(path: str) -> tuple[str, int, int]:
+    st = os.stat(path)
+    return (os.path.realpath(path), int(st.st_size), int(st.st_mtime_ns))
+
+
 def summarize_run(out_dir: str) -> dict[str, Any]:
-    """Compute area-weighted (`cos(lat)`) global-mean monthly series for single-component or coupled runs."""
+    """Compute area-weighted (`cos(lat)`) global-mean monthly series for single-component or coupled runs.
+
+    Caches validated summaries in memory keyed by canonical monthly NetCDF `(path, st_size, st_mtime_ns)`
+    so repeated summary/plot queries do not re-read unchanged NetCDF files.
+    """
     validated_out = validate_run_path(out_dir, label="run directory")
     if not os.path.isdir(validated_out):
         raise ValidationError(f"Run directory not found: {validated_out}")
+
+    manifest_model: str | None = None
+    manifest_file = os.path.join(validated_out, "aimip-manifest.json")
+    if os.path.isfile(manifest_file) and not os.path.islink(manifest_file):
+        try:
+            with open(manifest_file, encoding="utf-8") as mfh:
+                mdoc = json.load(mfh)
+            reg_name = (mdoc.get("registry_entry") or {}).get("name") or mdoc.get("model")
+            if isinstance(reg_name, str) and reg_name.strip():
+                manifest_model = reg_name.strip()
+        except (OSError, json.JSONDecodeError):
+            manifest_model = None
 
     top_monthly = validate_run_path(
         f"{validated_out}/{MONTHLY_PREDICTIONS_FILENAME}",
@@ -742,17 +973,56 @@ def summarize_run(out_dir: str) -> dict[str, Any]:
     )
 
     if os.path.isfile(top_monthly):
+        cache_key = (
+            "single",
+            validated_out,
+            manifest_model,
+            _file_cache_sig(top_monthly),
+            MAX_SUMMARY_MONTHS,
+            MAX_SUMMARY_MEMBERS,
+            MAX_SUMMARY_VAR_BYTES,
+        )
+        with _SUMMARY_CACHE_LOCK:
+            cached = _SUMMARY_CACHE.get(cache_key)
+            if cached is not None:
+                _SUMMARY_CACHE.move_to_end(cache_key)
+                return json.loads(json.dumps(cached))
+
         primary = _summarize_monthly_dataset(top_monthly, SUMMARY_TEMP_VARS)
-        return {
+        res_single: dict[str, Any] = {
             "out_dir": validated_out,
             **primary,
         }
+        if manifest_model:
+            res_single["model"] = manifest_model
+        with _SUMMARY_CACHE_LOCK:
+            _SUMMARY_CACHE[cache_key] = json.loads(json.dumps(res_single))
+            while len(_SUMMARY_CACHE) > MAX_SUMMARY_CACHE_ENTRIES:
+                _SUMMARY_CACHE.popitem(last=False)
+        return res_single
 
     if os.path.isfile(atmos_monthly):
+        has_ocean = os.path.isfile(ocean_monthly)
+        cache_key_coupled = (
+            "coupled",
+            validated_out,
+            manifest_model,
+            _file_cache_sig(atmos_monthly),
+            _file_cache_sig(ocean_monthly) if has_ocean else None,
+            MAX_SUMMARY_MONTHS,
+            MAX_SUMMARY_MEMBERS,
+            MAX_SUMMARY_VAR_BYTES,
+        )
+        with _SUMMARY_CACHE_LOCK:
+            cached_c = _SUMMARY_CACHE.get(cache_key_coupled)
+            if cached_c is not None:
+                _SUMMARY_CACHE.move_to_end(cache_key_coupled)
+                return json.loads(json.dumps(cached_c))
+
         primary = _summarize_monthly_dataset(atmos_monthly, SUMMARY_TEMP_VARS)
         variables = dict(primary["variables"])
         ocean_file_out: str | None = None
-        if os.path.isfile(ocean_monthly):
+        if has_ocean:
             try:
                 ocean_summary = _summarize_monthly_dataset(
                     ocean_monthly, SUMMARY_OCEAN_TEMP_VARS, prefix="ocean."
@@ -769,8 +1039,14 @@ def summarize_run(out_dir: str) -> dict[str, Any]:
             "n_months": primary["n_months"],
             "variables": variables,
         }
+        if manifest_model:
+            res["model"] = manifest_model
         if ocean_file_out is not None:
             res["ocean_monthly_file"] = ocean_file_out
+        with _SUMMARY_CACHE_LOCK:
+            _SUMMARY_CACHE[cache_key_coupled] = json.loads(json.dumps(res))
+            while len(_SUMMARY_CACHE) > MAX_SUMMARY_CACHE_ENTRIES:
+                _SUMMARY_CACHE.popitem(last=False)
         return res
 
     raise ConfigError(

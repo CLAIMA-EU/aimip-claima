@@ -209,7 +209,9 @@ def test_ic_list_ic_spin_and_collect_heterogeneous_dims(
     # Verify `aimip status <spin_dir>` reports completed spin status cleanly.
     (spin_dir / "slurm.jobid").write_text("999001\n", encoding="utf-8")
     assert main(["status", str(spin_dir), "--json"]) == 0
-    spin_status = json.loads(capsys.readouterr().out)
+    from conftest import parse_cli_json
+
+    spin_status = parse_cli_json(capsys.readouterr().out)
     assert spin_status["state"] == "completed"
     assert spin_status["spin_members_completed"] == 3
     assert spin_status["slurm_job_id"] == "999001"

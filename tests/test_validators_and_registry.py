@@ -230,7 +230,9 @@ def test_cli_models_table_and_json(
 
     rc_json = main(["models", "--json"])
     assert rc_json == 0
-    parsed = json.loads(capsys.readouterr().out)
+    from conftest import parse_cli_json
+
+    parsed = parse_cli_json(capsys.readouterr().out)
     assert len(parsed) == 3
     era5_entry = next(item for item in parsed if item["name"] == "ace2-era5")
     assert len(era5_entry["available_ic_timestamps"]) == 6
@@ -330,7 +332,9 @@ def test_default_registry_and_ic_list_expose_relabelled_ic_provenance(
     assert "spin-up" in txt_out
 
     assert main(["ic", "list", "-m", "ace2-eamv3", "--json"]) == 0
-    json_out = json.loads(capsys.readouterr().out)
+    from conftest import parse_cli_json
+
+    json_out = parse_cli_json(capsys.readouterr().out)
     assert "1971-01-01" in json_out["ic_provenance"]
     assert "discard the first simulated year" in json_out["ic_provenance"]
 
@@ -470,7 +474,9 @@ def test_intermediate_symlinks_and_root_aliases_in_input_and_output_policies(
     empty_reg.write_text('{"schema_version": 3, "generated_by": "aimip setup", "models": []}\n', encoding="utf-8")
     monkeypatch.delenv("AIMIP_REGISTRY", raising=False)
     assert main(["models", "--json"]) == 0
-    assert json.loads(capsys.readouterr().out) == []
+    from conftest import parse_cli_json
+
+    assert parse_cli_json(capsys.readouterr().out) == []
     assert main(["ic", "list", "-m", "ace2-eamv3"]) == 2
     assert "(none)" in capsys.readouterr().err
 

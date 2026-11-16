@@ -46,7 +46,7 @@ from aimip.setup_data import (
     build_artifact_catalog,
     load_lock_file,
 )
-from conftest import write_fake_ic_netcdf
+from conftest import parse_cli_json, write_fake_ic_netcdf
 
 
 @pytest.fixture(autouse=True)
@@ -431,7 +431,7 @@ def test_ace2_som_scenarios_1xco2_3xco2_and_2026_5_1_config(
         )
         == 0
     )
-    res_1x = json.loads(capsys.readouterr().out)
+    res_1x = parse_cli_json(capsys.readouterr().out)
     assert res_1x["forcing_set"]["name"] == "1xCO2"
     assert res_1x["ic_path"] == str(data_dir / "inputs/ace2-som/ic/1xCO2/ic.nc")
     cfg_1x = yaml.safe_load((out_1x / "config.yaml").read_text(encoding="utf-8"))
@@ -462,7 +462,7 @@ def test_ace2_som_scenarios_1xco2_3xco2_and_2026_5_1_config(
         )
         == 0
     )
-    res_3x = json.loads(capsys.readouterr().out)
+    res_3x = parse_cli_json(capsys.readouterr().out)
     assert res_3x["forcing_set"]["name"] == "3xCO2"
     assert res_3x["ic_path"] == str(data_dir / "inputs/ace2-som/ic/3xCO2/ic.nc")
     cfg_3x = yaml.safe_load((out_3x / "config.yaml").read_text(encoding="utf-8"))
@@ -616,7 +616,7 @@ def test_samudrace_cm4_coupled_config_n_repeats_ic_list_spin_collect_and_continu
 
     # 1. `aimip ic list -m samudrace-cm4 --json` exposes both `ic_files` and `ocean_ic_files`
     assert main(["ic", "list", "-m", "samudrace-cm4", "--json"]) == 0
-    ic_list_out = json.loads(capsys.readouterr().out)
+    ic_list_out = parse_cli_json(capsys.readouterr().out)
     assert ic_list_out["model"] == "samudrace-cm4"
     assert len(ic_list_out["ic_files"]) == 6
     assert len(ic_list_out["ocean_ic_files"]) == 6
@@ -725,7 +725,7 @@ def test_samudrace_cm4_coupled_config_n_repeats_ic_list_spin_collect_and_continu
         )
         == 0
     )
-    spin_res = json.loads(capsys.readouterr().out)
+    spin_res = parse_cli_json(capsys.readouterr().out)
     assert spin_res["is_coupled"] is True
     assert spin_res["members"][0]["steps"] == 6  # 30 days / 5 days = 6 coupled steps
 
@@ -748,7 +748,7 @@ def test_samudrace_cm4_coupled_config_n_repeats_ic_list_spin_collect_and_continu
     )
 
     assert main(["collect", str(spin_dir), "--out", str(spun_atmos_out), "--json"]) == 0
-    col_res = json.loads(capsys.readouterr().out)
+    col_res = parse_cli_json(capsys.readouterr().out)
     assert col_res["path"] == str(spun_atmos_out)
     spun_ocean_out = runs_dir / "spun_0311_jan31_ocean.nc"
     assert spun_atmos_out.is_file()
@@ -776,7 +776,7 @@ def test_samudrace_cm4_coupled_config_n_repeats_ic_list_spin_collect_and_continu
         )
         == 0
     )
-    cont_res = json.loads(capsys.readouterr().out)
+    cont_res = parse_cli_json(capsys.readouterr().out)
     assert cont_res["ic_path"] == str(spun_atmos_out)
     assert cont_res["ocean_ic_path"] == str(spun_ocean_out)
     manifest_cont = json.loads((out_cont / "aimip-manifest.json").read_text(encoding="utf-8"))
@@ -1312,7 +1312,7 @@ def test_fetch_on_first_use_cli_run_spin_no_fetch_and_concurrent_flock(
     # prints progress + byte sizes to `stderr`, keeps `stdout` valid JSON, and computes `pin_after_first_fetch` sha256!
     assert main(["fetch", "-m", "ace2-som", "--json"]) == 0
     captured = capsys.readouterr()
-    fetch_out = json.loads(captured.out)
+    fetch_out = parse_cli_json(captured.out)
     assert fetch_out["models"] == ["ace2-som"]
     assert fetch_out["downloaded_files"] == 8
     assert fetch_out["verified_models"] == ["ace2-som"]
@@ -1368,7 +1368,7 @@ def test_fetch_on_first_use_cli_run_spin_no_fetch_and_concurrent_flock(
                 "--dry-run",
             ]
         )
-        == 2
+        == 3
     )
     err_nf = capsys.readouterr().err
     assert "--no-fetch" in err_nf
@@ -1474,7 +1474,7 @@ def test_fetch_on_first_use_cli_run_spin_no_fetch_and_concurrent_flock(
         == 0
     )
     spin_cap = capsys.readouterr()
-    spin_json = json.loads(spin_cap.out)
+    spin_json = parse_cli_json(spin_cap.out)
     assert spin_json["members"][0]["steps"] == 2
     assert "samudrace-cm4" in spin_cap.err
     assert list(load_registry(data_dir=str(data_dir)).keys()) == [
@@ -1521,8 +1521,8 @@ def test_fetch_on_first_use_cli_run_spin_no_fetch_and_concurrent_flock(
     assert p1.returncode == 0, err1
     assert p2.returncode == 0, err2
     assert (concurrent_dest / ".aimip-fetch.lock").is_file()
-    r1 = json.loads(out1)
-    r2 = json.loads(out2)
+    r1 = parse_cli_json(out1)
+    r2 = parse_cli_json(out2)
     assert r1["verified_models"] == ["samudrace-e3smv3"]
     assert r2["verified_models"] == ["samudrace-e3smv3"]
     # Second lock holder sees files already staged by the first!
@@ -1609,7 +1609,7 @@ def test_coupled_status_and_summary_atmosphere_tat2m_and_ocean_sst(
     (run_dir / "ocean" / "restart.nc").write_bytes(b"OCEAN_RESTART")
 
     assert main(["status", str(run_dir), "--json"]) == 0
-    st = json.loads(capsys.readouterr().out)
+    st = parse_cli_json(capsys.readouterr().out)
     assert st["state"] == "completed"
     assert st["artifacts"]["atmosphere/monthly_mean_predictions.nc"] is True
     assert st["artifacts"]["ocean/monthly_mean_predictions.nc"] is True
@@ -1617,7 +1617,7 @@ def test_coupled_status_and_summary_atmosphere_tat2m_and_ocean_sst(
     assert st["artifacts"]["ocean/restart.nc"] is True
 
     assert main(["summary", str(run_dir), "--json"]) == 0
-    sm = json.loads(capsys.readouterr().out)
+    sm = parse_cli_json(capsys.readouterr().out)
     assert sm["ocean_monthly_file"] == str(run_dir / "ocean/monthly_mean_predictions.nc")
     assert sm["variables"]["Tat2m"]["series"][0]["ensemble_mean"] == pytest.approx(
         287.5, rel=1e-5
@@ -1955,7 +1955,7 @@ def test_ace2_som_ic_continuation_inherits_scenario_or_refuses_orphan_ic(
     )
     captured_cont = capsys.readouterr()
     assert "--ic comes from a 3xCO2 run" in captured_cont.err
-    cont_manifest = json.loads(captured_cont.out)
+    cont_manifest = parse_cli_json(captured_cont.out)
     assert cont_manifest["forcing_set"]["name"] == "3xCO2"
     cont_cfg = yaml.safe_load((som_cont_dir / "config.yaml").read_text(encoding="utf-8"))
     assert cont_cfg["forcing_loader"]["dataset"]["data_path"].endswith("/inputs/ace2-som/3xCO2")
@@ -1986,7 +1986,7 @@ def test_ace2_som_ic_continuation_inherits_scenario_or_refuses_orphan_ic(
         )
         == 0
     )
-    link_manifest = json.loads(capsys.readouterr().out)
+    link_manifest = parse_cli_json(capsys.readouterr().out)
     assert link_manifest["forcing_set"]["name"] == "3xCO2"
 
     # 2. Orphan IC file with no `aimip-manifest.json` and NO `--forcing-set` -> ConfigError (`rc=2`).
@@ -2043,7 +2043,7 @@ def test_ace2_som_ic_continuation_inherits_scenario_or_refuses_orphan_ic(
         )
         == 0
     )
-    explicit_manifest = json.loads(capsys.readouterr().out)
+    explicit_manifest = parse_cli_json(capsys.readouterr().out)
     assert explicit_manifest["forcing_set"]["name"] == "1xCO2"
 
     # 4. Single-set (`ace2s`) and non-overlapping scenario-set (`samudrace-cm4`) models are unaffected by orphan `--ic`.

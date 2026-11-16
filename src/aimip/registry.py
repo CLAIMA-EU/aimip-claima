@@ -28,12 +28,18 @@ PLAYGROUND_PLACEHOLDER = "${PLAYGROUND}"
 DATA_PLACEHOLDER = "${DATA}"
 
 SUPPORTED_FAMILIES: tuple[str, ...] = ("fme", "e2s-dlesym", "arches")
+ALLOWED_FME_MODULES: tuple[str, ...] = (
+    "fme.ace.inference",
+    "fme.coupled.inference",
+    "aimip.emu_job",
+)
 SUPPORTED_FME_VERSIONS: tuple[str, ...] = ("2026.5.1", "2026.10.0")
 SUPPORTED_CALENDARS: tuple[str, ...] = (
     "proleptic_gregorian",
     "julian",
     "noleap",
     "365_day",
+    "360_day",
     "gregorian",
     "standard",
 )
@@ -521,7 +527,30 @@ def _parse_model_entry(
     if not isinstance(family, str) or family not in SUPPORTED_FAMILIES:
         raise RegistryError(
             f"Model {name!r}: unsupported 'family' {family!r} "
-            f"(supported: {', '.join(SUPPORTED_FAMILIES)})."
+            f"(supported: {', '.join(SUPPORTED_FAMILIES)}).",
+            field="family",
+            allowed=SUPPORTED_FAMILIES,
+        )
+    raw_adapter = entry.get("adapter")
+    if raw_adapter is not None and (
+        not isinstance(raw_adapter, str) or raw_adapter not in (*SUPPORTED_FAMILIES, "emu")
+    ):
+        raise RegistryError(
+            f"Model {name!r}: unsupported 'adapter' {raw_adapter!r}; registry JSON may name only installed adapter IDs.",
+            field="adapter",
+            allowed=(*SUPPORTED_FAMILIES, "emu"),
+        )
+    if fme_module not in ALLOWED_FME_MODULES:
+        raise RegistryError(
+            f"Model {name!r}: disallowed 'fme_module' {fme_module!r}; arbitrary module imports are refused.",
+            field="fme_module",
+            allowed=ALLOWED_FME_MODULES,
+        )
+    if family == "fme" and fme_module not in ("fme.ace.inference", "fme.coupled.inference"):
+        raise RegistryError(
+            f"Model {name!r}: family 'fme' must use 'fme.ace.inference' or 'fme.coupled.inference', got {fme_module!r}.",
+            field="fme_module",
+            allowed=("fme.ace.inference", "fme.coupled.inference"),
         )
 
     fme_version = entry.get("fme_version", "2026.5.1")

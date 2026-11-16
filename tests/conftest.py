@@ -33,6 +33,8 @@ def _isolate_aimip_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "AIMIP_DATA",
         "AIMIP_SITE_CONFIG",
         "AIMIP_DEFAULT_OUT_ROOT",
+        "AIMIP_STATE",
+        "AIMIP_TTY_PATH",
         "AIMIP_RUN_ROOTS",
         "AIMIP_EXTRA_RO_BINDS",
         "AIMIP_REGISTRY",
@@ -59,6 +61,54 @@ def sha256_path(path: pathlib.Path) -> str:
     h = hashlib.sha256()
     h.update(path.read_bytes())
     return h.hexdigest()
+
+
+def parse_cli_json(raw: str) -> Any:
+    """Parse a v1 CLI `--json` envelope (`{"aimip": "1", "ok": True, "result": ...}`) and return `result`."""
+    doc = json.loads(raw)
+    assert isinstance(doc, dict) and doc.get("aimip") == "1", f"Missing v1 envelope: {doc!r}"
+    assert doc.get("ok") is True, f"Expected ok=True envelope: {doc!r}"
+    assert "result" in doc
+    return doc["result"]
+
+
+import contextlib
+import pty
+import termios
+
+
+@contextlib.contextmanager
+def pty_responder(*lines: str):
+    """Create a real pseudo-TTY pair (`os.isatty == True`), pre-fill human responses on `master_fd`, and yield `(tty_path, read_Transcript_fn)`."""
+    master_fd, slave_fd = pty.openpty()
+    try:
+        attrs = termios.tcgetattr(slave_fd)
+        attrs[3] &= ~termios.ECHO
+        termios.tcsetattr(slave_fd, termios.TCSANOW, attrs)
+        tty_path = os.ttyname(slave_fd)
+        for line in lines:
+            os.write(master_fd, (line + "\n").encode("utf-8"))
+
+        def _drain_prompt() -> str:
+            os.set_blocking(master_fd, False)
+            chunks: list[bytes] = []
+            while True:
+                try:
+                    chunk = os.read(master_fd, 4096)
+                    if not chunk:
+                        break
+                    chunks.append(chunk)
+                except BlockingIOError:
+                    break
+            return b"".join(chunks).decode("utf-8", errors="replace")
+
+        yield tty_path, _drain_prompt
+    finally:
+        for fd in (slave_fd, master_fd):
+            try:
+                os.close(fd)
+            except OSError:
+                pass
 
 
 def write_fake_ic_netcdf(

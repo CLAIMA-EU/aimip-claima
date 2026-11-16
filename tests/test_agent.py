@@ -1,4 +1,6 @@
-"""Offline agent tests: real LangGraph + scripted model + synthetic CLI inputs."""
+"""Offline agent tests: real LangGraph + scripted model + `/dev/tty` 8-hex digest approval."""
+
+from __future__ import annotations
 
 import contextlib
 import io
@@ -16,21 +18,62 @@ pytest.importorskip("langchain_core")
 
 from langchain_core.messages import AIMessage
 
+from aimip import services
 from aimip.agent import disable_tracing
 from aimip.agent.chat import ChatAgent, Transcript, read_api_key, repl
 from aimip.agent.tools import AgentTools, cli_json
 from aimip.cli import main as cli_main
-from conftest import write_fake_ic_netcdf
+from aimip.errors import ApprovalError, MissingAssetsError
+from aimip.services.types import RunSpec
+from conftest import pty_responder, write_fake_ic_netcdf
 
 
 @pytest.fixture(autouse=True)
 def offline(monkeypatch):
     def forbidden(*args, **kwargs):
         raise AssertionError("Network is forbidden in agent tests")
+
     monkeypatch.setattr(socket.socket, "connect", forbidden)
     monkeypatch.setattr(socket, "create_connection", forbidden)
     for key in ("GEMINI_API_KEY", "GOOGLE_API_KEY", "AIMIP_GEMINI_KEY_FILE"):
         monkeypatch.delenv(key, raising=False)
+
+
+@pytest.fixture
+def fake_slurm(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Path]:
+    """Install offline fake `sbatch`, `squeue`, `sacct`, and `scancel` binaries on PATH."""
+    fbin = tmp_path / "fake_slurm_bin"
+    fbin.mkdir(exist_ok=True)
+    sbatch_log = tmp_path / "sbatch_calls.log"
+    scancel_log = tmp_path / "scancel_calls.log"
+
+    sbatch = fbin / "sbatch"
+    sbatch.write_text(
+        "#!/bin/bash\n"
+        f'echo "$@" >> "{sbatch_log}"\n'
+        "echo 818181\n",
+        encoding="utf-8",
+    )
+    sbatch.chmod(0o755)
+
+    squeue = fbin / "squeue"
+    squeue.write_text("#!/bin/bash\nexit 0\n", encoding="utf-8")
+    squeue.chmod(0o755)
+
+    sacct = fbin / "sacct"
+    sacct.write_text("#!/bin/bash\necho '818181|RUNNING|00:01:00|0:0'\n", encoding="utf-8")
+    sacct.chmod(0o755)
+
+    scancel = fbin / "scancel"
+    scancel.write_text(
+        "#!/bin/bash\n"
+        f'echo "$@" >> "{scancel_log}"\n',
+        encoding="utf-8",
+    )
+    scancel.chmod(0o755)
+
+    monkeypatch.setenv("PATH", f"{fbin}:{os.environ.get('PATH', '')}")
+    return {"bin": fbin, "sbatch_log": sbatch_log, "scancel_log": scancel_log}
 
 
 def in_process_cli(args):
@@ -38,8 +81,11 @@ def in_process_cli(args):
     with contextlib.redirect_stdout(output), contextlib.redirect_stderr(error):
         rc = cli_main([*args, "--json"])
     if rc:
-        raise ValueError(error.getvalue())
-    return json.loads(output.getvalue())
+        raise ValueError(error.getvalue() or output.getvalue())
+    doc = json.loads(output.getvalue())
+    if isinstance(doc, dict) and doc.get("aimip") == "1" and "result" in doc:
+        return doc["result"]
+    return doc
 
 
 class ScriptedModel:
@@ -61,8 +107,8 @@ def call(name, args=None, id="call-1"):
 
 
 @pytest.fixture
-def backend(playground_env):
-    return AgentTools(cli=in_process_cli)
+def backend(playground_env, fake_slurm):
+    return AgentTools()
 
 
 def plan(backend):
@@ -80,120 +126,173 @@ def test_real_cli_plan_and_one_use_confirmation(backend):
     assert card["runs"][0]["forcing_set"]["name"] == "amip-hist"
     assert card["runs"][0]["sbatch_resources"]["time"]
     assert Path(card["runs"][0]["ic_source"]).is_file()
-    with pytest.raises(ValueError, match="not approved"):
-        backend.submit(card["run_dir"])
-    with pytest.raises(ValueError, match="No displayed"):
-        backend.confirm("yes")
-    backend.present()
-    backend.confirm("yes")
-    result = backend.submit(card["run_dir"])
-    assert result["submitted"] is False
-    assert result["host_command"] == f"aimip submit {card['run_dir']}"
-    with pytest.raises(ValueError, match="not approved"):
-        backend.submit(card["run_dir"])
+    assert not Path(card["run_dir"]).exists()
+
+    # Submitting without human `/dev/tty` digest authorization is refused.
+    prepared_unauth = services.prepare(RunSpec(model="ace2-era5", start="1979-01-01T00:00:00", steps=4, name="unauth-check"))
+    with pytest.raises(ApprovalError, match="human approval"):
+        services.submit(prepared_unauth, require_authorization=True, broker=backend.broker)
+
+    # Matching 8-hex digest prefix on `/dev/tty` prepares and submits once; replay fails.
+    with pty_responder(card["approval_prefix"]) as (tty_path, _):
+        attempt = backend.approve_and_execute_on_tty(tty_path=tty_path)
+    assert attempt["scheduler"] == "slurm"
+    assert attempt["attempt_id"] == "818181"
+    assert (Path(card["run_dir"]) / "plan.json").is_file()
+    with pty_responder(card["approval_prefix"]) as (tty_path, _):
+        with pytest.raises(ApprovalError, match="No pending"):
+            backend.approve_and_execute_on_tty(tty_path=tty_path)
 
 
 def test_yes_for_a_does_not_authorize_b(backend):
-    a = plan(backend)
-    backend.present()
-    backend.confirm("yes")
-    b = plan(backend)
+    a = backend.plan_run("ace2-era5", "1979-01-01T00:00:00", 4)
+    with pty_responder(a["approval_prefix"]) as (tty_path, _):
+        auth_a, _ = backend.broker.approve_pending_on_tty(tty_path=tty_path)
+
+    b = backend.plan_run("ace2-era5", "1979-01-01T00:00:00", 8)
     assert a["run_dir"] != b["run_dir"]
-    with pytest.raises(ValueError, match="not approved"):
-        backend.submit(b["run_dir"])
-    with pytest.raises(ValueError, match="No displayed"):
-        backend.confirm("yes")
+    assert a["digest"] != b["digest"]
+
+    # `auth_a` was revoked when `b` was proposed AND its digest does not match `b`.
+    prep_b = services.prepare(RunSpec(model="ace2-era5", start="1979-01-01T00:00:00", steps=8, out=b["run_dir"]))
+    with pytest.raises(ApprovalError):
+        services.submit(prep_b, authorization=auth_a, require_authorization=True, broker=backend.broker)
+
+    # Typing A's 8-hex prefix when B is pending is refused on `/dev/tty`.
+    if a["approval_prefix"] != b["approval_prefix"]:
+        with pty_responder(a["approval_prefix"]) as (tty_path, _):
+            with pytest.raises(ApprovalError, match="does not match expected digest prefix"):
+                backend.approve_and_execute_on_tty(tty_path=tty_path)
 
 
 def test_wrong_directory_consumes_approval(backend):
-    card = plan(backend)
-    backend.present()
-    backend.confirm("yes")
-    with pytest.raises(ValueError, match="different plan"):
-        backend.submit(card["run_dir"] + "-other")
-    with pytest.raises(ValueError, match="not approved"):
-        backend.submit(card["run_dir"])
+    card = backend.plan_run("ace2-era5", "1979-01-01T00:00:00", 4, name="approved-a")
+    with pty_responder(card["approval_prefix"]) as (tty_path, _):
+        auth, _ = backend.broker.approve_pending_on_tty(tty_path=tty_path)
+
+    prep_a = services.prepare(RunSpec(model="ace2-era5", start="1979-01-01T00:00:00", steps=4, name="approved-a"))
+    prep_other = services.prepare(RunSpec(model="ace2-era5", start="1979-01-01T00:00:00", steps=8, name="other-b"))
+
+    # Presenting `auth` against a different run directory fails AND burns the single-use token.
+    with pytest.raises(ApprovalError, match="Plan changed|digest mismatch"):
+        services.submit(prep_other, authorization=auth, require_authorization=True, broker=backend.broker)
+    with pytest.raises(ApprovalError, match="already used, revoked"):
+        services.submit(prep_a, authorization=auth, require_authorization=True, broker=backend.broker)
 
 
 @pytest.mark.parametrize("after_yes", [False, True])
 @pytest.mark.parametrize("artifact", ["config.yaml", "job.sbatch", "aimip-manifest.json"])
-def test_changed_plan_is_rejected(backend, after_yes, artifact):
-    card = plan(backend)
-    backend.present()
+def test_changed_plan_is_rejected(backend, playground_env, after_yes, artifact):
+    spec = RunSpec(
+        model="ace2-era5",
+        start="1979-01-01T00:00:00",
+        steps=4,
+        name=f"tamper-{artifact.replace('.', '-')}-{int(after_yes)}",
+    )
     if after_yes:
-        backend.confirm("yes")
-    file = Path(card["run_dir"]) / artifact
-    file.write_text(file.read_text() + "\n")
-    with pytest.raises(ValueError, match="Plan changed"):
-        if after_yes:
-            backend.submit(card["run_dir"])
-        else:
-            backend.confirm("yes")
+        card = backend.propose_run(spec.model, spec.start, steps=spec.steps, name=spec.name)
+        with pty_responder(card["approval_prefix"]) as (tty_path, _):
+            auth, _ = backend.broker.approve_pending_on_tty(tty_path=tty_path)
+        prepared = services.prepare(spec)
+        target = Path(prepared.run_dir) / artifact
+        target.write_text(target.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+        with pytest.raises(ApprovalError, match="Plan changed"):
+            services.submit(prepared, authorization=auth, require_authorization=True, broker=backend.broker)
+    else:
+        prepared = services.prepare(spec)
+        target = Path(prepared.run_dir) / artifact
+        target.write_text(target.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+        with pytest.raises(ApprovalError, match="Plan changed"):
+            services.submit(prepared)
 
 
 def test_failed_replan_revokes_approval(backend):
     a = plan(backend)
-    backend.present()
-    backend.confirm("yes")
+    with pty_responder(a["approval_prefix"]) as (tty_path, _):
+        auth_a, _ = backend.broker.approve_pending_on_tty(tty_path=tty_path)
+    prep_a = services.prepare(RunSpec(model="ace2-era5", start="1979-01-01T00:00:00", steps=4, out=a["run_dir"]))
+
     with pytest.raises(ValueError):
         backend.plan_run("ace2-era5", "1500-01-01T00:00:00", 4)
-    with pytest.raises(ValueError, match="not approved"):
-        backend.submit(a["run_dir"])
+
+    assert backend.pending is None
+    with pytest.raises(ApprovalError, match="already used, revoked"):
+        services.submit(prep_a, authorization=auth_a, require_authorization=True, broker=backend.broker)
 
 
 def test_plan_card_cannot_be_mutated_by_caller(backend):
     card = plan(backend)
     card["run_dir"] = "/some/other/run"
-    assert "/some/other/run" not in backend.present()
+    card["plan"]["output_dir"] = "/some/other/run"
+    assert "/some/other/run" not in json.dumps(backend.pending)
 
 
 def test_spin_card_has_all_members_and_hashes_them(backend):
-    card = backend.plan_spin("ace2-era5", ["1979-01-01T00:00:00", "1979-01-02T00:00:00"],
-                             "1979-01-03T00:00:00")
+    card = backend.plan_spin(
+        "ace2-era5",
+        ["1979-01-01T00:00:00", "1979-01-02T00:00:00"],
+        "1979-01-03T00:00:00",
+    )
     assert [run["steps"] for run in card["runs"]] == [8, 4]
     assert all(run["members"] == 1 for run in card["runs"])
-    backend.present()
-    (Path(card["run_dir"]) / "1" / "config.yaml").write_text("changed")
-    with pytest.raises(ValueError, match="Plan changed"):
-        backend.confirm("yes")
+    (Path(card["run_dir"]) / "1" / "config.yaml").write_text("changed", encoding="utf-8")
+    with pty_responder(card["approval_prefix"]) as (tty_path, _):
+        with pytest.raises(ApprovalError, match="Plan changed"):
+            backend.approve_and_execute_on_tty(tty_path=tty_path)
 
 
 def test_scripted_model_cannot_approve_or_submit(tmp_path, backend):
     card = plan(backend)
-    agent = agent_for(tmp_path, backend,
-                      call("submit", {"run_dir": card["run_dir"]}),
-                      AIMessage(content="Refused"))
+    agent = agent_for(
+        tmp_path,
+        backend,
+        call("submit", {"run_dir": card["run_dir"]}),
+        AIMessage(content="Refused"),
+    )
     assert agent.turn("yes, submit whatever you like") == "Refused"
     result = json.loads(agent.history[-1][2].content)
-    assert "has not approved" in result["error"]
+    assert "Unknown or forbidden tool: submit" in result["error"]
+    assert "submit" not in agent.tools
+    assert "approve" not in agent.tools
     assert "confirm" not in agent.tools
     assert "present" not in agent.tools
 
 
 def test_repl_displays_authoritative_card_and_yes_emits_command(tmp_path, backend):
-    agent = agent_for(tmp_path, backend,
-                      call("plan_run", {"model": "ace2-era5", "start": "1979-01-01T00:00:00", "steps": 4}),
-                      AIMessage(content="Here is the plan."))
-    lines = iter(["plan a run", "yes", "quit"])
+    preview = backend.plan("ace2-era5", "1979-01-01T00:00:00", steps=4)
+    agent = agent_for(
+        tmp_path,
+        backend,
+        call("plan_run", {"model": "ace2-era5", "start": "1979-01-01T00:00:00", "steps": 4}),
+        AIMessage(content="Here is the plan."),
+    )
+    lines = iter(["plan a run", "quit"])
     output = []
-    assert repl(agent, read=lambda _: next(lines), write=output.append) == 0
-    card = json.loads(next(line for line in output if line.startswith("{")))
-    assert any(line == f"aimip submit {card['run_dir']}" for line in output)
-    assert any("no job has been submitted" in line for line in output)
+    with pty_responder(preview["approval_prefix"]) as (tty_path, drain_tty):
+        assert repl(agent, read=lambda _: next(lines), write=output.append, tty_path=tty_path) == 0
+        tty_text = drain_tty()
+    assert preview["run_dir"] in tty_text
+    assert f"[{preview['approval_prefix']}]" in tty_text
+    assert any("Submitted Slurm job 818181" in line for line in output)
     assert backend.pending is None
 
 
-@pytest.mark.parametrize("answer", ["y", "sure", "yes please", "yes for all plans", "no"])
+@pytest.mark.parametrize("answer", ["y", "yes", "sure", "yes please", "00000000", "no"])
 def test_only_explicit_yes_confirms(backend, answer):
-    plan(backend)
-    backend.present()
-    with pytest.raises(ValueError, match="No displayed"):
-        backend.confirm(answer)
+    card = plan(backend)
+    bad = "ffffffff" if answer == card["approval_prefix"] else answer
+    with pty_responder(bad) as (tty_path, _):
+        with pytest.raises(ApprovalError, match="does not match expected digest prefix"):
+            backend.approve_and_execute_on_tty(tty_path=tty_path)
 
 
 def test_tool_errors_reach_model(tmp_path, backend):
-    agent = agent_for(tmp_path, backend, call("list_ics", {"model": "does-not-exist"}),
-                      AIMessage(content="Unknown model"))
+    agent = agent_for(
+        tmp_path,
+        backend,
+        call("list_ics", {"model": "does-not-exist"}),
+        AIMessage(content="Unknown model"),
+    )
     assert agent.turn("inspect this model") == "Unknown model"
     assert "error" in json.loads(agent.history[-1][2].content)
 
@@ -201,8 +300,10 @@ def test_tool_errors_reach_model(tmp_path, backend):
 def test_budget_counts_parallel_tool_calls_and_errors(tmp_path):
     calls = []
     backend = AgentTools(cli=lambda args: calls.append(args) or [])
-    reply = AIMessage(content="", tool_calls=[{"name": "list_models", "args": {}, "id": str(i)}
-                                              for i in range(15)])
+    reply = AIMessage(
+        content="",
+        tool_calls=[{"name": "list_models", "args": {}, "id": str(i)} for i in range(15)],
+    )
     agent = agent_for(tmp_path, backend, reply, call("list_models"), AIMessage(content="Done"))
     assert "12-tool-call limit" in agent.turn("list many times")
     assert len(calls) == 12
@@ -275,14 +376,17 @@ def test_cli_subprocess_uses_argv_and_scrubs_secrets(monkeypatch):
         assert kwargs.get("shell", False) is False
         assert "GEMINI_API_KEY" not in kwargs["env"]
         return SimpleNamespace(returncode=0, stdout='[{"name":"test"}]', stderr="")
+
     monkeypatch.setenv("GEMINI_API_KEY", "fake")
     monkeypatch.setattr("aimip.agent.tools.subprocess.run", run)
     assert cli_json(["models"]) == [{"name": "test"}]
 
 
 def test_cli_errors_are_visible(monkeypatch):
-    monkeypatch.setattr("aimip.agent.tools.subprocess.run",
-                        lambda *a, **k: SimpleNamespace(returncode=2, stderr="bad window", stdout=""))
+    monkeypatch.setattr(
+        "aimip.agent.tools.subprocess.run",
+        lambda *a, **k: SimpleNamespace(returncode=2, stderr="bad window", stdout=""),
+    )
     with pytest.raises(ValueError, match="bad window"):
         cli_json(["models"])
 
@@ -290,7 +394,6 @@ def test_cli_errors_are_visible(monkeypatch):
 def _isolated_python_with_aimip(tmp_path: Path) -> str:
     """Return `sys.executable` if `-I` already imports `aimip`, else a stdlib-only venv with `.pth` to `sys.path`."""
     import subprocess as sp
-    import sysconfig
     import venv
 
     probe = sp.run(
@@ -313,7 +416,7 @@ def _isolated_python_with_aimip(tmp_path: Path) -> str:
     return str(vpy)
 
 
-def test_real_cli_subprocess_plan_and_status(playground_env, monkeypatch, tmp_path):
+def test_real_cli_subprocess_plan_and_status(playground_env, fake_slurm, monkeypatch, tmp_path):
     monkeypatch.setattr(sys, "executable", _isolated_python_with_aimip(tmp_path))
     # Stage shadow `aimip` packages in both CWD and PYTHONPATH: `-I` must ignore both.
     for shadow_name in ("shadow_cwd", "shadow_pypath"):
@@ -323,33 +426,48 @@ def test_real_cli_subprocess_plan_and_status(playground_env, monkeypatch, tmp_pa
         (pkg / "__main__.py").write_text("raise RuntimeError('SHADOWED_AIMIP')\n", encoding="utf-8")
     monkeypatch.chdir(tmp_path / "shadow_cwd")
     monkeypatch.setenv("PYTHONPATH", str(tmp_path / "shadow_pypath"))
-    # The in-process ALLOWED_RUN_ROOTS monkeypatch does not reach the CLI subprocess: allow the simulated scratch root
-    # through the production AIMIP_RUN_ROOTS environment variable instead.
     monkeypatch.setenv("AIMIP_RUN_ROOTS", str(tmp_path / "scratch"))
+
+    assert cli_json(["models"])[0]["name"] == "ace2-era5"
     backend = AgentTools()
     assert backend.list_models()[0]["name"] == "ace2-era5"
     assert backend.list_ics("ace2-era5")["ic_files"]
     card = plan(backend)
+    with pty_responder(card["approval_prefix"]) as (tty_path, _):
+        backend.approve_and_execute_on_tty(tty_path=tty_path)
     assert backend.status(card["run_dir"])["model"] == "ace2-era5"
+    assert cli_json(["status", card["run_dir"]])["model"] == "ace2-era5"
 
 
 def test_scripted_replan_then_yes_selects_only_last_plan(tmp_path, backend):
     args = {"model": "ace2-era5", "start": "1979-01-01T00:00:00", "steps": 4}
-    agent = agent_for(tmp_path, backend, call("plan_run", args), AIMessage(content="First"),
-                      call("plan_run", {**args, "steps": 8}), AIMessage(content="Second"))
+    agent = agent_for(
+        tmp_path,
+        backend,
+        call("plan_run", args),
+        AIMessage(content="First"),
+        call("plan_run", {**args, "steps": 8}),
+        AIMessage(content="Second"),
+    )
     agent.turn("plan A")
-    first = json.loads(backend.present())
+    first = backend.pending
     agent.turn("change to plan B")
-    second = json.loads(backend.present())
-    result = agent.yes()
-    assert second["run_dir"] in result["host_command"]
-    assert first["run_dir"] not in result["host_command"]
+    second = backend.pending
+    assert first["digest"] != second["digest"]
+
+    with pty_responder(second["digest"][:8]) as (tty_path, _):
+        result = agent.approve_on_tty(tty_path=tty_path)
+    assert result["run_dir"] == second["card_data"]["output_dir"]
+    assert result["run_dir"] != first["card_data"]["output_dir"]
 
 
 def test_provider_failure_clears_pending_plan(tmp_path, backend):
     # Script ends after the tool call, causing the next model invocation to fail.
-    agent = agent_for(tmp_path, backend,
-                      call("plan_run", {"model": "ace2-era5", "start": "1979-01-01T00:00:00", "steps": 4}))
+    agent = agent_for(
+        tmp_path,
+        backend,
+        call("plan_run", {"model": "ace2-era5", "start": "1979-01-01T00:00:00", "steps": 4}),
+    )
     with pytest.raises(RuntimeError, match="no approval retained"):
         agent.turn("plan")
     assert backend.pending is None
@@ -361,9 +479,11 @@ def test_cli_entrypoint_model_options_without_network(tmp_path, monkeypatch, ove
     import aimip.agent.chat as chat
 
     seen = {}
+
     def model(**kwargs):
         seen.update(kwargs)
         return ScriptedModel()
+
     monkeypatch.setattr(langchain_google_genai, "ChatGoogleGenerativeAI", model)
     monkeypatch.setattr(chat, "repl", lambda agent: 0)
     monkeypatch.setenv("AIMIP_HOME", str(tmp_path / "install-prefix"))
@@ -375,7 +495,7 @@ def test_cli_entrypoint_model_options_without_network(tmp_path, monkeypatch, ove
     expected_dir = tmp_path / override if override else tmp_path / "runs" / "chat-logs"
     monkeypatch.setenv("GEMINI_API_KEY", "fake-test-key")
     monkeypatch.setenv("AIMIP_AGENT_MODEL", "environment-model")
-    assert chat.main(["--yes-means-yes"]) == 0
+    assert chat.main([]) == 0
     assert seen["model"] == "environment-model"
     assert seen["temperature"] == 0
     assert seen["google_api_key"] == "fake-test-key"
@@ -411,7 +531,10 @@ def test_card_science_and_default_multisample_ic(backend, playground_env):
     assert run["outputs"] == {"monthly": True, "prediction": False}
     assert run["lora_info"] is None
     assert isinstance(run["walltime_capped"], bool)
-    manifest = json.loads((Path(card["run_dir"]) / "aimip-manifest.json").read_text())
+    assert not Path(card["run_dir"]).exists()
+    with pty_responder(card["approval_prefix"]) as (tty_path, _):
+        backend.approve_and_execute_on_tty(tty_path=tty_path)
+    manifest = json.loads((Path(card["run_dir"]) / "aimip-manifest.json").read_text(encoding="utf-8"))
     assert manifest["seed_explicit"] is False
 
 
@@ -423,19 +546,24 @@ def test_card_reports_registry_ic_provenance(backend):
 
 def test_spin_card_uses_combined_walltime_cap(backend, tmp_path, monkeypatch):
     from aimip.site_config import load_site_config
+
     site = load_site_config().to_dict()
     site["sbatch"]["max_time"] = "00:20:00"
     path = tmp_path / "site.json"
     path.write_text(json.dumps(site))
     monkeypatch.setenv("AIMIP_SITE_CONFIG", str(path))
-    card = backend.plan_spin("ace2-era5", ["1979-01-01T00:00:00", "1979-01-02T00:00:00"],
-                              "2001-01-01T00:00:00")
+    card = backend.plan_spin(
+        "ace2-era5",
+        ["1979-01-01T00:00:00", "1979-01-02T00:00:00"],
+        "2001-01-01T00:00:00",
+    )
     assert card["walltime_capped"] is True
     assert all(r["outputs"] == {"monthly": False, "prediction": False} for r in card["runs"])
 
 
 def test_replication_and_inferred_member_limits_precede_writes(backend, playground_env, monkeypatch):
     import aimip.agent.tools as module
+
     root = playground_env["default_out_root"]
     with pytest.raises(ValueError, match="at most"):
         backend.plan_run("ace2s-shield-plus", "1979-01-01T00:00:00", 4, members=65)
@@ -452,8 +580,10 @@ def test_replication_and_inferred_member_limits_precede_writes(backend, playgrou
 def test_failed_cli_plan_removes_only_fresh_directory(backend, playground_env):
     existing = playground_env["default_out_root"] / "keep"
     existing.mkdir()
+
     def fail(args):
         raise ValueError("CLI failed")
+
     backend.cli = fail
     with pytest.raises(ValueError, match="CLI failed"):
         plan(backend)
@@ -462,18 +592,21 @@ def test_failed_cli_plan_removes_only_fresh_directory(backend, playground_env):
 
 
 def test_collect_plan_is_confirmed_host_command(backend):
-    spin = backend.plan_spin("ace2-era5", ["1979-01-01T00:00:00", "1979-01-02T00:00:00"],
-                              "1979-01-03T00:00:00")
+    spin = backend.plan_spin(
+        "ace2-era5",
+        ["1979-01-01T00:00:00", "1979-01-02T00:00:00"],
+        "1979-01-03T00:00:00",
+    )
     for i in range(2):
-        write_fake_ic_netcdf(Path(spin["run_dir"]) / str(i) / "restart.nc",
-                            ["1979-01-03T00:00:00"], sample_dim="sample")
+        write_fake_ic_netcdf(
+            Path(spin["run_dir"]) / str(i) / "restart.nc",
+            ["1979-01-03T00:00:00"],
+            sample_dim="sample",
+        )
     card = backend.plan_collect(spin["run_dir"])
     assert card["kind"] == "collect" and card["members"] == 2
-    with pytest.raises(ValueError, match="not approved"):
-        backend.submit(card["run_dir"])
-    backend.present()
-    backend.confirm("yes")
-    result = backend.submit(card["run_dir"])
+    with pty_responder(card["approval_prefix"]) as (tty_path, _):
+        result = backend.approve_and_execute_on_tty(tty_path=tty_path)
     assert result["host_command"] == f"aimip collect {spin['run_dir']} --out {card['output']}"
     assert result["submitted"] is False
     assert not Path(card["output"]).exists()
@@ -504,12 +637,18 @@ def test_unsafe_lora_never_reaches_cli(playground_env, method):
         elif method == "plan_run":
             backend.plan_run("ace2-era5", "1979-01-01T00:00:00", 4, lora=str(checkpoint))
         else:
-            backend.plan_spin("ace2-era5", ["1979-01-01T00:00:00"], "1979-01-02T00:00:00", lora=str(checkpoint))
+            backend.plan_spin(
+                "ace2-era5",
+                ["1979-01-01T00:00:00"],
+                "1979-01-02T00:00:00",
+                lora=str(checkpoint),
+            )
     assert calls == []
 
 
 def test_lora_trust_ownership_symlinks_and_resolved_ancestry(playground_env, monkeypatch):
     from aimip.agent.security import trusted_lora_path
+
     checkpoint = playground_env["runs_dir"] / "owned.tar"
     checkpoint.write_bytes(b"not a pickle")
     assert trusted_lora_path(str(checkpoint)) == str(checkpoint.resolve())
@@ -537,6 +676,7 @@ def test_lora_trust_ownership_symlinks_and_resolved_ancestry(playground_env, mon
 
 def test_bounded_payload_is_valid_json_and_reaches_model(tmp_path):
     from aimip.agent.chat import RESULT_BUDGET
+
     backend = AgentTools(cli=lambda _: [{"untrusted_attr": "x" * (RESULT_BUDGET * 2)}])
     agent = agent_for(tmp_path, backend, call("list_models"), AIMessage(content="Result too large"))
     agent.turn("list")
@@ -567,6 +707,7 @@ def test_turn_failure_reports_redacted_error_type(tmp_path, backend):
     class FailingModel(ScriptedModel):
         def invoke(self, messages):
             raise ValueError("provider denied https://example.invalid?api_key=UNKNOWN_SECRET&code=403")
+
     log = Transcript(tmp_path / "logs")
     agent = ChatAgent(FailingModel(), backend, log)
     with pytest.raises(RuntimeError, match="ValueError.*provider denied") as error:
@@ -580,11 +721,14 @@ def test_turn_failure_reports_redacted_error_type(tmp_path, backend):
 def test_optional_agent_import_error_is_actionable(monkeypatch, capsys):
     import aimip.agent
     import builtins
+
     original = builtins.__import__
+
     def fail(name, *args, **kwargs):
         if name == "chat":
             raise ModuleNotFoundError("langgraph")
         return original(name, *args, **kwargs)
+
     monkeypatch.setattr(builtins, "__import__", fail)
     assert aimip.agent.main([]) == 2
     assert "container/requirements-agent.txt" in capsys.readouterr().err
@@ -596,9 +740,12 @@ def test_vertex_backend_selected_by_project_env(tmp_path, monkeypatch):
     import aimip.agent.chat as chat
 
     seen = {}
+
     def model(**kwargs):
-        seen.clear(); seen.update(kwargs)
+        seen.clear()
+        seen.update(kwargs)
         return ScriptedModel()
+
     monkeypatch.setattr(langchain_google_genai, "ChatGoogleGenerativeAI", model)
     monkeypatch.setattr(chat, "repl", lambda agent: 0)
     monkeypatch.setenv("AIMIP_DEFAULT_OUT_ROOT", str(tmp_path / "runs"))
@@ -611,15 +758,16 @@ def test_vertex_backend_selected_by_project_env(tmp_path, monkeypatch):
     monkeypatch.setenv("AIMIP_GEMINI_VERTEX_PROJECT", "my-gcp-project")
     monkeypatch.delenv("GOOGLE_APPLICATION_CREDENTIALS", raising=False)
     monkeypatch.delenv("AIMIP_GEMINI_VERTEX_TOKEN_FILE", raising=False)
-    assert chat.main([]) == 2          # Vertex refuses an AI Studio key: it needs a token file or ADC
+    assert chat.main([]) == 2  # Vertex refuses an AI Studio key: it needs a token file or ADC
     token = tmp_path / "vertex.token"
-    token.write_text("ya29.fake-access-token\n"); token.chmod(0o600)
+    token.write_text("ya29.fake-access-token\n")
+    token.chmod(0o600)
     monkeypatch.setenv("AIMIP_GEMINI_VERTEX_TOKEN_FILE", str(token))
     assert chat.main([]) == 0
     assert seen["vertexai"] is True and seen["project"] == "my-gcp-project" and seen["location"] == "global"
     assert "google_api_key" not in seen and seen["credentials"].token == "ya29.fake-access-token"
     token.chmod(0o644)
-    assert chat.main([]) == 2          # token file must be 0600
+    assert chat.main([]) == 2  # token file must be 0600
     monkeypatch.delenv("AIMIP_GEMINI_VERTEX_TOKEN_FILE")
     monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS", str(tmp_path / "sa.json"))
     monkeypatch.setenv("AIMIP_GEMINI_VERTEX_LOCATION", "europe-west4")
@@ -687,11 +835,15 @@ def test_coupled_models_plans_and_unfetched_hint(
     monkeypatch.setenv("AIMIP_DEFAULT_OUT_ROOT", str(runs))
     monkeypatch.delenv("AIMIP_REGISTRY", raising=False)
 
-    backend = AgentTools(cli=in_process_cli)
+    backend = AgentTools()
 
-    # Before any fetch (empty $AIMIP_DATA), planning or listing ICs refuses WITHOUT auto-fetching and hints `aimip fetch -m ace2s`.
-    with pytest.raises(ValueError, match=r"aimip fetch -m ace2s"):
-        backend.plan_run("ace2s", "2014-01-01T00:00:00", 4)
+    # Before any fetch (empty $AIMIP_DATA):
+    # - `propose_run` / `plan_run` is side-effect-free (no auto-fetch!) and reports missing assets/bytes;
+    # - `services.prepare(..., allow_fetch=False)`, `plan_spin`, and `list_ics` refuse with `aimip fetch -m ace2s` hint.
+    unfetched_prop = backend.plan_run("ace2s", "2014-01-01T00:00:00", 4)
+    assert unfetched_prop["missing_count"] > 0 and unfetched_prop["missing_bytes"] > 0
+    with pytest.raises(MissingAssetsError, match=r"aimip fetch -m ace2s"):
+        services.prepare(RunSpec(model="ace2s", start="2014-01-01T00:00:00", steps=4), allow_fetch=False)
     with pytest.raises(ValueError, match=r"aimip fetch -m ace2s"):
         backend.plan_spin("ace2s", ["2014-01-01T00:00:00"], "2014-01-02T00:00:00")
     with pytest.raises(ValueError, match=r"aimip fetch -m ace2s"):
@@ -707,8 +859,9 @@ def test_coupled_models_plans_and_unfetched_hint(
     assert cli_main(["fetch", "-m", "ace2-som", "--json"]) == 0
     capsys.readouterr()
     assert (data_dir / "registry.json").is_file()
+    assert backend.plan_run("ace2s", "2014-01-01T00:00:00", 4)["missing_count"] > 0
     with pytest.raises(ValueError, match=r"aimip fetch -m ace2s"):
-        backend.plan_run("ace2s", "2014-01-01T00:00:00", 4)
+        backend.plan_spin("ace2s", ["2014-01-01T00:00:00"], "2014-01-02T00:00:00")
     with pytest.raises(ValueError, match=r"aimip fetch -m ace2s"):
         backend.list_ics("ace2s")
 
@@ -753,7 +906,7 @@ def test_coupled_models_plans_and_unfetched_hint(
         for r in cm4_spin["runs"]
     )
 
-    # Coupled spin collection (`plan_collect` -> `yes` -> `aimip collect <spin_dir> --out <ic.nc>`).
+    # Coupled spin collection (`plan_collect` -> `/dev/tty` 8-hex digest -> `aimip collect <spin_dir> --out <ic.nc>`).
     for i in range(2):
         write_fake_ic_netcdf(
             Path(cm4_spin["run_dir"]) / str(i) / "atmosphere" / "restart.nc",
@@ -774,9 +927,8 @@ def test_coupled_models_plans_and_unfetched_hint(
     collect_card = backend.plan_collect(cm4_spin["run_dir"])
     assert collect_card["kind"] == "collect" and collect_card["members"] == 2
     assert collect_card["ocean_output"].endswith("/ic_ocean.nc")
-    backend.present()
-    backend.confirm("yes")
-    collect_submit = backend.submit(collect_card["run_dir"])
+    with pty_responder(collect_card["approval_prefix"]) as (tty_path, _):
+        collect_submit = backend.approve_and_execute_on_tty(tty_path=tty_path)
     assert collect_submit["host_command"] == f"aimip collect {cm4_spin['run_dir']} --out {collect_card['output']}"
     merged_coupled = in_process_cli(["collect", cm4_spin["run_dir"], "--out", collect_card["output"]])
     assert merged_coupled["n_samples"] == 2

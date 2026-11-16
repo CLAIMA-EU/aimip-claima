@@ -3,21 +3,50 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Sequence
 import json
 import os
+import re
 import sys
-from collections.abc import Sequence
 from typing import Any
 
 from . import __version__
-from .errors import AimipError, ConfigError
+from .errors import EXIT_CODES, AimipError, ConfigError, ValidationError, enrich_error
+
+
+class _AimipArgumentParser(argparse.ArgumentParser):
+    """ArgumentParser that raises `ValidationError` instead of printing unframed usage text on `--json`."""
+
+    def error(self, message: str) -> None:
+        field_match = re.search(r"argument (?:-[A-Za-z0-9]/)?--([A-Za-z0-9_-]+)", message)
+        field = field_match.group(1).replace("-", "_") if field_match else None
+        raise ValidationError(message, field=field)
 from .registry import (
     ModelSpec,
     get_model,
     get_model_ic_provenance,
-    load_registry,
     resolve_playground_dir,
 )
+
+
+def _emit_json_ok(result: Any) -> int:
+    """Emit the versioned AIMIP v1 JSON envelope on stdout."""
+    print(json.dumps({"aimip": "1", "ok": True, "result": result}, indent=2))
+    return 0
+
+
+def _wants_json(args: argparse.Namespace | None, raw_argv: Sequence[str]) -> bool:
+    """Return True when `--json` or `--format json` was requested."""
+    if args is not None and (
+        bool(getattr(args, "json", False)) or getattr(args, "format", None) == "json"
+    ):
+        return True
+    if "--json" in raw_argv or "--format=json" in raw_argv:
+        return True
+    for idx, tok in enumerate(raw_argv[:-1]):
+        if tok == "--format" and raw_argv[idx + 1] == "json":
+            return True
+    return False
 
 
 def _add_registry_args(parser: argparse.ArgumentParser) -> None:
@@ -85,8 +114,97 @@ def _add_slurm_args(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_plan_and_run_spec_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "model_pos",
+        nargs="?",
+        default=None,
+        metavar="model",
+        help="Model name in registry (or pass `-m/--model` or `--config`).",
+    )
+    parser.add_argument(
+        "-m",
+        "--model",
+        dest="model_opt",
+        default=None,
+        help="Model name in registry.",
+    )
+    parser.add_argument(
+        "--config",
+        default=None,
+        help="Path to declarative experiment.yaml (CLI flags override file keys).",
+    )
+    parser.add_argument(
+        "--start",
+        default=None,
+        help="Start ISO timestamp (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS).",
+    )
+    parser.add_argument("--steps", type=int, default=None, help="Number of forward steps.")
+    parser.add_argument(
+        "--length",
+        default=None,
+        help="Simulation horizon with unit (`20y`, `6m`, `30d`, `12h`), converted with model calendar.",
+    )
+    parser.add_argument(
+        "--end",
+        default=None,
+        help="Target end ISO timestamp, converted with model calendar and step size.",
+    )
+    parser.add_argument(
+        "--ic",
+        default=None,
+        help="Custom/spun IC netCDF, <prev>/restart.nc, or <prev-run-dir> for coupled runs.",
+    )
+    parser.add_argument(
+        "--ocean-ic",
+        dest="ocean_ic",
+        default=None,
+        help="Companion ocean IC netCDF for coupled models (`fme.coupled.inference`).",
+    )
+    parser.add_argument("--members", type=int, default=None, help="Number of ensemble members K.")
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="RNG seed for fme.core.set_seed / rollout (default: 0).",
+    )
+    parser.add_argument("--lora", default=None, help="Replace model checkpoint with LoRA checkpoint.")
+    parser.add_argument(
+        "--forcing-set",
+        default=None,
+        help="Optional explicit forcing set name (default: auto-selected by [start, end] window).",
+    )
+    parser.add_argument(
+        "--name",
+        default=None,
+        help="Short run name resolved under site `run_root` (`<run_root>/<name>`).",
+    )
+    parser.add_argument(
+        "--out",
+        default=None,
+        help="Output run dir under an allowed run root (default: $AIMIP_DEFAULT_OUT_ROOT/<model>-<start>-<hash>).",
+    )
+    parser.add_argument(
+        "--monthly",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Enable/disable monthly_mean_predictions.nc output (default: --monthly).",
+    )
+    parser.add_argument(
+        "--prediction",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Enable/disable step-by-step autoregressive_predictions.nc output (default: --no-prediction).",
+    )
+
+
 def _format_table(headers: Sequence[str], rows: Sequence[Sequence[str]]) -> str:
     """Render a plain-text aligned table without external formatting dependencies."""
+    if not rows:
+        widths = [len(h) for h in headers]
+        return "  ".join(headers[i].ljust(widths[i]) for i in range(len(headers))) + "\n" + "  ".join(
+            "-" * w for w in widths
+        )
     widths = [len(h) for h in headers]
     for row in rows:
         for idx, cell in enumerate(row):
@@ -105,133 +223,161 @@ def _format_table(headers: Sequence[str], rows: Sequence[Sequence[str]]) -> str:
     return "\n".join(lines)
 
 
-def _probe_model_ic_summary(spec: ModelSpec) -> tuple[list[str] | None, str]:
-    """Inspect staged IC timestamps when files exist locally; stay graceful when unstaged."""
-    if spec.family == "e2s-dlesym":
-        return None, "ERA5 at --start (ARCO-ERA5)"
-    if spec.family == "arches":
-        return None, "2015 scenario state"
-    existing = [p for p in spec.ic_files if os.path.isfile(p)]
-    ocean_ok = all(os.path.isfile(p) for p in spec.ocean_ic_files)
-    if len(existing) != len(spec.ic_files) or not ocean_ok:
-        return None, f"unstaged ({len(spec.ic_files)} file)"
+def _spec_from_cli_args(args: argparse.Namespace) -> Any:
+    """Build a `RunSpec` by merging optional `--config` with CLI flags."""
+    from .services import merge_config_and_cli
 
-    from .ic import inspect_ic_file
-
-    all_ts: list[str] = []
-    try:
-        for path in existing:
-            info = inspect_ic_file(path)
-            all_ts.extend(info.timestamps)
-    except Exception:
-        return None, f"unreadable ({len(spec.ic_files)} file)"
-
-    if not all_ts:
-        return [], "0"
-    if len(all_ts) <= 2:
-        return all_ts, ", ".join(all_ts)
-    return all_ts, f"{len(all_ts)} ({all_ts[0]} .. {all_ts[-1]})"
+    if args.model_pos and args.model_opt and args.model_pos != args.model_opt:
+        raise ValidationError(
+            f"Conflicting model arguments: positional {args.model_pos!r} vs -m/--model {args.model_opt!r}.",
+            field="model",
+        )
+    chosen_model = args.model_opt or args.model_pos
+    cli_mode = "local" if getattr(args, "local", False) else None
+    cli_values: dict[str, Any] = {
+        "model": chosen_model,
+        "start": args.start,
+        "steps": args.steps,
+        "length": args.length,
+        "end": args.end,
+        "members": args.members,
+        "seed": args.seed,
+        "ic": args.ic,
+        "ocean_ic": args.ocean_ic,
+        "lora": args.lora,
+        "forcing_set": args.forcing_set,
+        "name": args.name,
+        "out": args.out,
+        "monthly": args.monthly,
+        "prediction": args.prediction,
+        "mode": cli_mode,
+        "resources": {
+            "partition": args.partition,
+            "account": args.account,
+            "gres": args.gres,
+            "cpus_per_task": args.cpus_per_task,
+            "mem": args.mem,
+            "time": args.time,
+            "job_name": args.job_name,
+        },
+    }
+    return merge_config_and_cli(args.config, cli_values)
 
 
 def _cmd_models(args: argparse.Namespace) -> int:
-    catalog = load_registry(
+    from .services import models as svc_models
+
+    entries = svc_models(
+        task=args.task,
+        family=args.family,
+        status=args.status,
+        installed_only=args.installed,
         registry_path=args.registry,
         playground_dir=args.playground,
         data_dir=args.data_dir,
     )
-    specs = list(catalog.values())
 
-    if args.json:
-        out_list: list[dict[str, Any]] = []
-        for spec in specs:
-            entry = spec.to_dict()
-            ts_list, _ = _probe_model_ic_summary(spec)
-            entry["available_ic_timestamps"] = ts_list
-            out_list.append(entry)
-        print(json.dumps(out_list, indent=2))
-        return 0
+    if args.json or args.format == "json":
+        return _emit_json_ok(entries)
 
     rows: list[list[str]] = []
-    for spec in specs:
-        _, ic_summary = _probe_model_ic_summary(spec)
-        base_kind = "stochastic" if spec.stochastic else "deterministic"
-        kind = f"coupled/{base_kind}" if spec.is_coupled else base_kind
-        sets_str = ", ".join(
-            f"{fs.name}[{fs.window[0][:10]}..{fs.window[1][:10]}]"
-            for fs in spec.forcing_sets
+    for item in entries:
+        fam = item["family"]
+        runtime = {"e2s-dlesym": "e2s 0.19", "arches": "arches"}.get(
+            fam, item["fme_version"]
         )
-        runtime = {"e2s-dlesym": "e2s 0.19", "arches": "arches"}.get(spec.family, spec.fme_version)
-        dt = "1mo" if spec.family == "arches" else f"{spec.timestep_hours}h"
-        if spec.family == "e2s-dlesym":
-            kind = "coupled/" + kind
+        dt = "1mo" if fam == "arches" else f"{item['timestep_hours']}h"
+        base_kind = "stochastic" if item["stochastic"] else "deterministic"
+        kind = (
+            f"coupled/{base_kind}"
+            if (item["is_coupled"] or fam == "e2s-dlesym")
+            else base_kind
+        )
+        sets_str = ", ".join(
+            f"{fs['name']}[{fs['window'][0][:10]}..{fs['window'][1][:10]}]"
+            for fs in item["forcing_sets"]
+        )
+        ic_ts = item["available_ic_timestamps"]
+        if fam == "e2s-dlesym":
+            ic_summary = "ERA5 at --start (ARCO-ERA5)"
+        elif fam == "arches":
+            ic_summary = "2015 scenario state"
+        elif not ic_ts:
+            ic_summary = f"unstaged ({len(item['ic_files'])} file)"
+        elif len(ic_ts) <= 2:
+            ic_summary = ", ".join(ic_ts)
+        else:
+            ic_summary = f"{len(ic_ts)} ({ic_ts[0]} .. {ic_ts[-1]})"
+
         rows.append(
             [
-                spec.name,
+                item["name"],
+                item["status"],
+                item["task"],
                 runtime,
                 kind,
                 dt,
                 sets_str,
                 ic_summary,
-                spec.notes,
+                item["notes"],
             ]
         )
 
     print(
         _format_table(
-            ["MODEL", "RUNTIME", "TYPE", "DT", "FORCING_SETS", "IC_TIMES", "NOTES"],
+            ["MODEL", "STATUS", "TASK", "RUNTIME", "TYPE", "DT", "FORCING_SETS", "IC_TIMES", "NOTES"],
             rows,
         )
     )
     return 0
 
 
-def _cmd_ic_list(args: argparse.Namespace) -> int:
-    from .ic import list_model_ics, list_model_ocean_ics
+def _cmd_show(args: argparse.Namespace) -> int:
+    from .services import render_show_card, show as svc_show
 
-    spec = get_model(
+    card = svc_show(
+        args.model,
+        include_examples=args.examples,
+        registry_path=args.registry,
+        playground_dir=args.playground,
+        data_dir=args.data_dir,
+    )
+    if args.json:
+        return _emit_json_ok(card)
+    print(render_show_card(card, include_examples=args.examples))
+    return 0
+
+
+def _cmd_cite(args: argparse.Namespace) -> int:
+    from .services import cite as svc_cite
+
+    doc = svc_cite(
         args.model,
         registry_path=args.registry,
         playground_dir=args.playground,
         data_dir=args.data_dir,
     )
-    infos = list_model_ics(spec)
-    ocean_infos = list_model_ocean_ics(spec) if spec.is_coupled else []
-    provenance = get_model_ic_provenance(spec.name, spec.notes)
-
     if args.json:
-        payload: dict[str, Any] = {
-            "model": spec.name,
-            "ic_provenance": provenance,
-            "ic_files": [info.to_dict() for info in infos],
-        }
-        if spec.is_coupled:
-            payload["ocean_ic_files"] = [info.to_dict() for info in ocean_infos]
-        print(json.dumps(payload, indent=2))
-        return 0
+        return _emit_json_ok(doc)
+    print(f"# {doc['model']} — {doc['title']} (licence: {doc['licence']})")
+    print(doc["bibtex"])
+    return 0
 
-    rows: list[list[str]] = []
-    if spec.is_coupled and len(ocean_infos) == len(infos):
-        for info, o_info in zip(infos, ocean_infos):
-            dims_str = "/".join(info.spatial_dims) if info.spatial_dims else "-"
-            for idx, ts in enumerate(info.timestamps):
-                rows.append(
-                    [ts, info.calendar, dims_str, str(idx), info.path, o_info.path]
-                )
-        print(
-            _format_table(
-                ["TIMESTAMP", "CALENDAR", "DIMS", "INDEX", "ATMOS_FILE", "OCEAN_FILE"],
-                rows,
-            )
-        )
-    else:
-        for info in infos:
-            dims_str = "/".join(info.spatial_dims) if info.spatial_dims else "-"
-            for idx, ts in enumerate(info.timestamps):
-                rows.append([ts, info.calendar, dims_str, str(idx), info.path])
-        print(_format_table(["TIMESTAMP", "CALENDAR", "DIMS", "INDEX", "FILE"], rows))
 
-    if provenance:
-        print(f"\nProvenance: {provenance}")
+def _cmd_plan(args: argparse.Namespace) -> int:
+    from .services import plan as svc_plan, render_plan_card
+
+    spec = _spec_from_cli_args(args)
+    resolved = svc_plan(
+        spec,
+        registry_path=args.registry,
+        playground_dir=args.playground,
+        data_dir=args.data_dir,
+        site_config_path=args.site_config,
+    )
+    if args.json:
+        return _emit_json_ok(resolved.to_dict())
+    print(render_plan_card(resolved, is_tty=sys.stdout.isatty()))
     return 0
 
 
@@ -259,6 +405,55 @@ def _build_slurm_and_site(args: argparse.Namespace) -> tuple[Any, Any]:
         job_name=args.job_name,
     )
     return slurm_opts, site_cfg
+
+
+def _cmd_ic_list(args: argparse.Namespace) -> int:
+    from .ic import list_model_ics, list_model_ocean_ics
+
+    spec = get_model(
+        args.model,
+        registry_path=args.registry,
+        playground_dir=args.playground,
+        data_dir=args.data_dir,
+    )
+    infos = list_model_ics(spec)
+    ocean_infos = list_model_ocean_ics(spec) if spec.is_coupled else []
+    provenance = get_model_ic_provenance(spec.name, spec.notes)
+
+    if args.json:
+        payload: dict[str, Any] = {
+            "model": spec.name,
+            "ic_provenance": provenance,
+            "ic_files": [info.to_dict() for info in infos],
+        }
+        if spec.is_coupled:
+            payload["ocean_ic_files"] = [info.to_dict() for info in ocean_infos]
+        return _emit_json_ok(payload)
+
+    rows: list[list[str]] = []
+    if spec.is_coupled and len(ocean_infos) == len(infos):
+        for info, o_info in zip(infos, ocean_infos):
+            dims_str = "/".join(info.spatial_dims) if info.spatial_dims else "-"
+            for idx, ts in enumerate(info.timestamps):
+                rows.append(
+                    [ts, info.calendar, dims_str, str(idx), info.path, o_info.path]
+                )
+        print(
+            _format_table(
+                ["TIMESTAMP", "CALENDAR", "DIMS", "INDEX", "ATMOS_FILE", "OCEAN_FILE"],
+                rows,
+            )
+        )
+    else:
+        for info in infos:
+            dims_str = "/".join(info.spatial_dims) if info.spatial_dims else "-"
+            for idx, ts in enumerate(info.timestamps):
+                rows.append([ts, info.calendar, dims_str, str(idx), info.path])
+        print(_format_table(["TIMESTAMP", "CALENDAR", "DIMS", "INDEX", "FILE"], rows))
+
+    if provenance:
+        print(f"\nProvenance: {provenance}")
+    return 0
 
 
 def _cmd_ic_spin(args: argparse.Namespace, raw_argv: Sequence[str]) -> int:
@@ -296,14 +491,13 @@ def _cmd_ic_spin(args: argparse.Namespace, raw_argv: Sequence[str]) -> int:
             playground_dir=playground_dir,
         )
         if args.json:
-            print(json.dumps(merged_info.to_dict(), indent=2))
-        else:
-            dims_str = "/".join(merged_info.spatial_dims) if merged_info.spatial_dims else "-"
-            print(
-                f"Merged {merged_info.n_samples} spin restart(s) from {resolved_spin} into {merged_info.path} "
-                f"(time={merged_info.timestamps[0]}, calendar={merged_info.calendar}, "
-                f"dims=sample/{dims_str}, vars={len(merged_info.variable_names)})."
-            )
+            return _emit_json_ok(merged_info.to_dict())
+        dims_str = "/".join(merged_info.spatial_dims) if merged_info.spatial_dims else "-"
+        print(
+            f"Merged {merged_info.n_samples} spin restart(s) from {resolved_spin} into {merged_info.path} "
+            f"(time={merged_info.timestamps[0]}, calendar={merged_info.calendar}, "
+            f"dims=sample/{dims_str}, vars={len(merged_info.variable_names)})."
+        )
         return 0
 
     if not args.model or not args.from_times or not args.to_time:
@@ -346,7 +540,6 @@ def _cmd_ic_spin(args: argparse.Namespace, raw_argv: Sequence[str]) -> int:
         precheck_fn=_spin_precheck,
     )
 
-    # Support both `--out <spin-dir>` and `--out <ic.nc>` (which spins into `<ic.nc>.spin`).
     target_ic_hint: str | None = None
     effective_spin_dir = args.out
     if args.out and args.out.endswith(".nc"):
@@ -377,8 +570,7 @@ def _cmd_ic_spin(args: argparse.Namespace, raw_argv: Sequence[str]) -> int:
         return 0
 
     if args.json:
-        print(json.dumps(manifest, indent=2))
-        return 0
+        return _emit_json_ok(manifest)
 
     spin_dir = manifest["spin_dir"]
     ic_out_hint = target_ic_hint or f"{spin_dir}/ic.nc"
@@ -425,128 +617,148 @@ def _cmd_collect(args: argparse.Namespace) -> int:
         playground_dir=playground_dir,
     )
     if args.json:
-        print(json.dumps(merged_info.to_dict(), indent=2))
-    else:
-        dims_str = "/".join(merged_info.spatial_dims) if merged_info.spatial_dims else "-"
-        print(
-            f"Merged {merged_info.n_samples} spin restart(s) from {args.spin_dir} into {merged_info.path} "
-            f"(time={merged_info.timestamps[0]}, calendar={merged_info.calendar}, "
-            f"dims=sample/{dims_str}, vars={len(merged_info.variable_names)})."
-        )
+        return _emit_json_ok(merged_info.to_dict())
+    dims_str = "/".join(merged_info.spatial_dims) if merged_info.spatial_dims else "-"
+    print(
+        f"Merged {merged_info.n_samples} spin restart(s) from {args.spin_dir} into {merged_info.path} "
+        f"(time={merged_info.timestamps[0]}, calendar={merged_info.calendar}, "
+        f"dims=sample/{dims_str}, vars={len(merged_info.variable_names)})."
+    )
     return 0
 
 
 def _cmd_run(args: argparse.Namespace, raw_argv: Sequence[str]) -> int:
-    from .runner import prepare_run, resolve_model_for_prepare
-    from .time_utils import select_forcing_set
-    from .validators import validate_int_range, validate_iso_timestamp
+    from .services import execute_tty_plan_flow, prepare as svc_prepare, render_plan_card
 
     mode = _resolve_mode(args)
-    slurm_opts, site_cfg = _build_slurm_and_site(args)
-    playground_dir = resolve_playground_dir(args.playground)
+    spec = _spec_from_cli_args(args)
     auto_fetch = not bool(getattr(args, "no_fetch", False))
 
-    def _run_precheck(candidate_spec: ModelSpec) -> None:
-        if candidate_spec.family != "fme":
-            from .emu import precheck_emu_request
-
-            precheck_emu_request(
-                candidate_spec, start_iso=args.start, steps=args.steps, members=args.members,
-                forcing_set_name=args.forcing_set, ic_path=args.ic, ocean_ic_path=args.ocean_ic, lora_path=args.lora,
-            )
-            return
-        norm_start = validate_iso_timestamp(args.start, label="--start")
-        validated_steps = validate_int_range(
-            args.steps, "--steps", min_value=1, max_value=10_000_000
+    if getattr(args, "approve", False):
+        tty_path = os.environ.get("AIMIP_TTY_PATH") or "/dev/tty"
+        attempt = execute_tty_plan_flow(
+            spec,
+            allow_fetch=auto_fetch,
+            tty_path=tty_path,
+            registry_path=args.registry,
+            playground_dir=args.playground,
+            data_dir=args.data_dir,
+            site_config_path=args.site_config,
+            argv=list(raw_argv),
         )
-        if args.ocean_ic is not None and not candidate_spec.is_coupled:
-            raise ConfigError(
-                f"--ocean-ic is only valid for coupled models (fme.coupled.inference), not {candidate_spec.name!r}."
+        res = attempt.to_dict()
+        if args.json:
+            return _emit_json_ok(res)
+        if attempt.host_command:
+            print(f"Prepared for host submission: {attempt.host_command}")
+            return 0
+        if attempt.scheduler == "slurm":
+            print(
+                f"submitted job {attempt.attempt_id}   (then: aimip status {attempt.run_dir}  or: aimip watch {attempt.run_name})"
             )
-        select_forcing_set(
-            norm_start,
-            validated_steps,
-            candidate_spec.timestep_hours,
-            candidate_spec.forcing_sets,
-            calendar=candidate_spec.calendar,
-            model_name=candidate_spec.name,
-            preferred_set_name=args.forcing_set,
-        )
+        else:
+            print(
+                f"started locally, pid {attempt.attempt_id}   (log: {attempt.run_dir}/local-run.log)"
+            )
+        return 0
 
-    spec = resolve_model_for_prepare(
-        args.model,
+    prepared = svc_prepare(
+        spec,
+        allow_fetch=auto_fetch,
+        execute_local=(mode == "local" and not args.print_sbatch_path),
         registry_path=args.registry,
         playground_dir=args.playground,
         data_dir=args.data_dir,
-        auto_fetch=auto_fetch,
-        precheck_fn=_run_precheck,
-    )
-
-    manifest = prepare_run(
-        model=spec,
-        start_iso=args.start,
-        steps=args.steps,
-        out_dir=args.out,
-        ic_path=args.ic,
-        ocean_ic_path=args.ocean_ic,
-        members=args.members,
-        seed=args.seed,
-        lora_path=args.lora,
-        forcing_set_name=args.forcing_set,
-        save_monthly=args.monthly,
-        save_prediction=args.prediction,
-        mode=mode,
-        slurm_opts=slurm_opts,
-        site_config=site_cfg,
-        playground_dir=playground_dir,
-        data_dir=args.data_dir,
-        auto_fetch=auto_fetch,
-        argv=raw_argv,
+        site_config_path=args.site_config,
+        manifest_mode=mode,
+        argv=list(raw_argv),
     )
 
     if args.print_sbatch_path:
-        print(manifest["sbatch_path"])
+        print(prepared.sbatch_path)
         return 0
 
+    manifest = dict(prepared.manifest)
     if args.json:
-        print(json.dumps(manifest, indent=2))
-        return 0
+        manifest.setdefault("digest", prepared.plan.digest)
+        manifest.setdefault("short_digest", prepared.plan.short_digest)
+        manifest.setdefault("run_name", prepared.plan.run_name)
+        manifest.setdefault("plan_path", prepared.plan_path)
+        manifest.setdefault("cli_overrides", list(prepared.plan.cli_overrides))
+        return _emit_json_ok(manifest)
 
-    out_dir = manifest["out_dir"]
-    fs_name = manifest["forcing_set"]["name"]
+    out_dir = prepared.run_dir
+    fs_name = (manifest.get("forcing_set") or {}).get("name") or prepared.plan.forcing_set or "(none)"
+    print(render_plan_card(prepared.plan, is_tty=sys.stdout.isatty()))
+    print()
+    verb_word = "Completed local" if mode == "local" else "Prepared"
     print(
-        f"Prepared {spec.name} run in {out_dir} "
-        f"(mode={mode}, forcing_set={fs_name}, start={manifest['start_time']}, "
-        f"end={manifest['end_time']}, steps={manifest['steps']}, "
-        f"members={manifest['members']}, seed={manifest['seed']})."
+        f"{verb_word} {prepared.plan.model} run in {out_dir} "
+        f"(mode={mode}, forcing_set={fs_name}, start={prepared.plan.start_time}, "
+        f"end={prepared.plan.end_time}, steps={prepared.plan.steps}, "
+        f"members={prepared.plan.members}, seed={prepared.plan.seed})."
     )
-    print(f"Config:   {manifest['config_path']}")
-    print(f"Manifest: {out_dir}/aimip-manifest.json")
-    print(f"Sbatch:   {manifest['sbatch_path']}")
+    print(f"Config:   {prepared.config_path}")
+    print(f"Manifest: {prepared.manifest_path}")
+    print(f"Plan:     {prepared.plan_path}")
+    print(f"Sbatch:   {prepared.sbatch_path}")
     if mode != "local":
-        print(f"Next:     aimip submit {out_dir}")
+        name_hint = f"   (or: aimip submit {prepared.plan.run_name})" if spec.name else ""
+        print(f"Next:     aimip submit {out_dir}{name_hint}")
     return 0
 
 
 def _cmd_submit(args: argparse.Namespace) -> int:
-    from .submit import submit_run
+    from .services import submit as svc_submit
 
-    res = submit_run(
+    attempt = svc_submit(
         args.out,
+        expected_digest=getattr(args, "expect_digest", None),
         playground_dir=args.playground,
         site_config_path=args.site_config,
     )
+    res = attempt.to_dict()
     if args.json:
-        print(json.dumps(res, indent=2))
+        return _emit_json_ok(res)
+    if attempt.host_command:
+        print(f"Prepared for host submission: {attempt.host_command}")
         return 0
-    if res["scheduler"] == "slurm":
+    if attempt.scheduler == "slurm":
         print(
-            f"submitted job {res['slurm_job_id']}   (then: aimip status {res['out_dir']})"
+            f"submitted job {attempt.attempt_id}   (then: aimip status {attempt.run_dir}  or: aimip watch {attempt.run_name})"
         )
     else:
         print(
-            f"started locally, pid {res['local_pid']}   (log: {res['log_path']})"
+            f"started locally, pid {attempt.attempt_id}   (log: {attempt.run_dir}/local-run.log)"
         )
+    return 0
+
+
+def _cmd_verify_submit(args: argparse.Namespace) -> int:
+    from .services import resolve_run_target, verify_prepared_run_for_submit
+
+    run_dir, run_name = resolve_run_target(
+        args.out,
+        site_config_path=args.site_config,
+        playground_dir=args.playground,
+    )
+    trusted_dir, saved_digest, saved_mode = verify_prepared_run_for_submit(
+        run_dir,
+        require_plan=True,
+        expected_digest=args.expect_digest,
+        script_override_path=args.script_path,
+        playground_dir=args.playground,
+        site_config_path=args.site_config,
+    )
+    payload = {
+        "run_dir": trusted_dir,
+        "run_name": run_name,
+        "digest": saved_digest,
+        "mode": saved_mode or "slurm",
+    }
+    if args.json:
+        return _emit_json_ok(payload)
+    print(f"{saved_digest or ''}|{saved_mode or 'slurm'}|{trusted_dir}")
     return 0
 
 
@@ -555,7 +767,9 @@ def _cmd_exec_fme(args: argparse.Namespace) -> int:
     from .submit import check_trusted_run_dir
 
     check_trusted_run_dir(args.out)
-    exec_fme(args.out)
+    res = exec_fme(args.out)
+    if getattr(args, "json", False):
+        return _emit_json_ok(res)
     return 0
 
 
@@ -564,8 +778,7 @@ def _cmd_lora_info(args: argparse.Namespace) -> int:
 
     info = inspect_lora(args.ckpt)
     if args.json:
-        print(json.dumps(info.to_dict(), indent=2))
-        return 0
+        return _emit_json_ok(info.to_dict())
 
     print(f"Checkpoint:          {info.checkpoint_path}")
     print(f"Loader note:         {info.loader_note}")
@@ -626,8 +839,7 @@ def _cmd_lora_scale(args: argparse.Namespace) -> int:
 
     result = scale_lora(args.ckpt, args.alpha, args.out)
     if args.json:
-        print(json.dumps(result, indent=2))
-        return 0
+        return _emit_json_ok(result)
 
     sf = result.get("scale_factor")
     sf_str = f"{sf:.8g}" if sf is not None else "n/a"
@@ -649,16 +861,21 @@ def _cmd_lora_scale(args: argparse.Namespace) -> int:
 
 
 def _cmd_status(args: argparse.Namespace) -> int:
-    from .status import get_run_status
+    from .services import status as svc_status
 
-    st = get_run_status(args.out, sacct_json_path=args.sacct_json)
+    st = svc_status(
+        args.out,
+        sacct_json_path=args.sacct_json,
+        site_config_path=args.site_config,
+    )
     if args.json:
-        print(json.dumps(st, indent=2))
-        return 0
+        return _emit_json_ok(st)
 
     print(f"Run directory: {st['out_dir']}")
     print(f"Model:         {st['model']} (forcing_set={st['forcing_set'] or 'unknown'})")
     print(f"State:         {st['state']}")
+    if st.get("short_digest"):
+        print(f"Digest:        {st['short_digest']}")
     if "spin_members_completed" in st:
         print(f"Spin members:  {st['spin_members_completed']}/{st['members']} completed")
     print(f"Mode:          {st['mode']}")
@@ -678,13 +895,129 @@ def _cmd_status(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_summary(args: argparse.Namespace) -> int:
-    from .status import summarize_run
+def _cmd_watch(args: argparse.Namespace) -> int:
+    from .services import watch as svc_watch
 
-    summary = summarize_run(args.out)
+    stream = sys.stderr if args.json else sys.stdout
+
+    def _on_tick(tick: dict[str, Any]) -> None:
+        jid = tick.get("job_id") or "-"
+        el = tick.get("elapsed") or "00:00:00"
+        print(
+            f"[{tick['poll']}] {tick.get('run_name') or tick.get('run_dir')}  "
+            f"model={tick.get('model')}  state={tick['state']}  job={jid}  elapsed={el}",
+            file=stream,
+        )
+
+    final = svc_watch(
+        args.out,
+        poll_interval=args.interval,
+        max_polls=args.max_polls,
+        timeout_seconds=args.timeout,
+        site_config_path=args.site_config,
+        on_tick=_on_tick,
+    )
+    is_terminal = bool(final.get("terminal"))
+    st_upper = (str(final.get("state") or "").split() or [""])[0].rstrip("+").upper()
+    rc = 0
+    if is_terminal:
+        if st_upper != "COMPLETED":
+            rc = EXIT_CODES["execution_error"]
+    elif args.max_polls is None and (final.get("slurm_job_id") or final.get("local_pid")):
+        print("still running, watch timed out", file=stream)
+        rc = EXIT_CODES["deadline"]
     if args.json:
-        print(json.dumps(summary, indent=2))
+        _emit_json_ok(final)
+    return rc
+
+
+def _cmd_logs(args: argparse.Namespace) -> int:
+    from .services import logs as svc_logs
+
+    if args.json:
+        res = svc_logs(
+            args.out,
+            follow=args.follow,
+            max_bytes=args.max_bytes,
+            poll_interval=args.interval,
+            max_polls=args.max_polls,
+            site_config_path=args.site_config,
+        )
+        return _emit_json_ok(res)
+
+    printed = False
+
+    def _on_chunk(chunk: str) -> None:
+        nonlocal printed
+        printed = True
+        sys.stdout.write(chunk)
+        if not chunk.endswith("\n"):
+            sys.stdout.write("\n")
+        sys.stdout.flush()
+
+    res = svc_logs(
+        args.out,
+        follow=args.follow,
+        max_bytes=args.max_bytes,
+        poll_interval=args.interval,
+        max_polls=args.max_polls,
+        site_config_path=args.site_config,
+        on_chunk=_on_chunk,
+    )
+    if not printed:
+        print(f"(no log output yet in {res['run_dir']})")
+    return 0
+
+
+def _cmd_ls(args: argparse.Namespace) -> int:
+    from .services import ls as svc_ls
+
+    items = svc_ls(args.run_root, site_config_path=args.site_config)
+    if args.json:
+        return _emit_json_ok(items)
+    if not items:
+        print("No runs found.")
         return 0
+    rows = [
+        [
+            str(it["name"]),
+            str(it.get("model") or "-"),
+            str(it.get("state") or "unknown"),
+            str(it.get("job_id") or "-"),
+            str(it.get("start_time") or "-"),
+            str(it.get("steps") if it.get("steps") is not None else "-"),
+            str(it.get("updated_at") or "-"),
+        ]
+        for it in items
+    ]
+    print(
+        _format_table(
+            ["NAME", "MODEL", "STATE", "JOB_ID", "START", "STEPS", "UPDATED"],
+            rows,
+        )
+    )
+    return 0
+
+
+def _cmd_cancel(args: argparse.Namespace) -> int:
+    from .services import cancel as svc_cancel
+
+    res = svc_cancel(args.out, site_config_path=args.site_config)
+    if args.json:
+        return _emit_json_ok(res)
+    print(
+        f"Cancelled {res['scheduler']} attempt {res['attempt_id']} for {res['run_name']} ({res['run_dir']})."
+    )
+    return 0
+
+
+def _cmd_summary(args: argparse.Namespace) -> int:
+    from .services import summary as svc_summary
+
+    res = svc_summary(args.out, site_config_path=args.site_config)
+    summary = res.to_dict()
+    if args.json:
+        return _emit_json_ok(summary)
 
     print(
         f"Summary for {summary['out_dir']} "
@@ -708,6 +1041,63 @@ def _cmd_summary(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_doctor(args: argparse.Namespace) -> int:
+    from .services import doctor as svc_doctor, render_doctor_report
+
+    report = svc_doctor(
+        registry_path=args.registry,
+        playground_dir=args.playground,
+        data_dir=args.data_dir,
+        site_config_path=args.site_config,
+    )
+    rc = 0 if report["ok"] else 1
+    if args.json:
+        _emit_json_ok(report)
+        return rc
+    print(render_doctor_report(report))
+    return rc
+
+
+def _cmd_approve(args: argparse.Namespace) -> int:
+    from .services import approve_state_proposal
+
+    tty_path = os.environ.get("AIMIP_TTY_PATH") or "/dev/tty"
+    auth, proposal = approve_state_proposal(
+        args.digest_prefix,
+        state_dir=args.state_dir,
+        tty_path=tty_path,
+    )
+    payload = {
+        "approved": True,
+        "action": auth.action,
+        "digest": auth.digest,
+        "short_digest": auth.digest[:12],
+        "user": auth.user,
+        "expires_at": auth.expires_at,
+        "allow_download": auth.allow_download,
+        "proposal_action": proposal.get("action"),
+    }
+    if args.json:
+        return _emit_json_ok(payload)
+    print(
+        f"Approved {auth.action} for digest {auth.digest[:12]} "
+        f"(user={auth.user}, valid for 10 minutes)."
+    )
+    return 0
+
+
+def _cmd_completion(args: argparse.Namespace) -> int:
+    from .completion import render_completion
+
+    script = render_completion(args.shell)
+    if args.json:
+        return _emit_json_ok({"shell": args.shell, "script": script})
+    sys.stdout.write(script)
+    if not script.endswith("\n"):
+        sys.stdout.write("\n")
+    return 0
+
+
 def _cmd_setup(args: argparse.Namespace) -> int:
     from .setup_data import run_setup
 
@@ -724,8 +1114,7 @@ def _cmd_setup(args: argparse.Namespace) -> int:
         accept_derived=args.accept_derived,
     )
     if args.json:
-        print(json.dumps(result, indent=2))
-        return 0
+        return _emit_json_ok(result)
 
     mode = result["mode"]
     if mode == "write-lock":
@@ -775,8 +1164,7 @@ def _cmd_fetch(args: argparse.Namespace) -> int:
         progress_stream=sys.stderr,
     )
     if args.json:
-        print(json.dumps(result, indent=2))
-        return 0
+        return _emit_json_ok(result)
 
     print(
         f"Fetched model(s) {','.join(result['models'])} into {result['dest_dir']} "
@@ -814,8 +1202,7 @@ def _cmd_site_init(args: argparse.Namespace) -> int:
     )
     payload = {"path": target_path, "site": cfg.to_dict()}
     if args.json:
-        print(json.dumps(payload, indent=2))
-        return 0
+        return _emit_json_ok(payload)
 
     print(
         f"Wrote site profile {target_path} "
@@ -840,8 +1227,7 @@ def _cmd_site_show(args: argparse.Namespace) -> int:
         "site": cfg.to_dict(),
     }
     if args.json:
-        print(json.dumps(payload, indent=2))
-        return 0
+        return _emit_json_ok(payload)
 
     print(f"Site config:    {payload['path'] or 'built-in default'}")
     print(f"Name:           {cfg.name}")
@@ -858,13 +1244,15 @@ def _cmd_site_show(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     """Build top-level `aimip` argument parser."""
-    parser = argparse.ArgumentParser(
+    parser = _AimipArgumentParser(
         prog="aimip",
         description="AIMIP CLI for ACE/SamudrACE (`fme`), DLESyM, and ArchesClimate-SSP climate emulators.",
         epilog=(
             "Submission and interactive commands:\n"
             "  submit <run-dir>    Validate and submit <run-dir>/job.sbatch (Slurm or local background).\n"
-            "  chat [args...]      Launch the interactive Gemini planning agent (API key or Vertex AI)."
+            "  approve <prefix>    Approve a pending MCP run/cancel proposal on /dev/tty.\n"
+            "  chat [args...]      Launch the interactive Gemini planning agent (API key or Vertex AI).\n"
+            "  mcp [args...]       Start the stdio Model Context Protocol (MCP) server."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -874,22 +1262,70 @@ def build_parser() -> argparse.ArgumentParser:
         version=f"aimip {__version__}",
     )
 
-    subparsers = parser.add_subparsers(dest="command", required=True)
+    subparsers = parser.add_subparsers(
+        dest="command",
+        required=True,
+        parser_class=_AimipArgumentParser,
+    )
 
     # 1. `aimip models`
     p_models = subparsers.add_parser(
         "models",
-        help="List registered climate emulator models, forcing sets, and IC availability.",
+        help="List registered climate emulator models with optional task, family, and status filters.",
+    )
+    p_models.add_argument("--task", default=None, help="Filter by task (amip, slab-ocean, coupled, scenario).")
+    p_models.add_argument("--family", default=None, help="Filter by family (fme, e2s-dlesym, arches, emu).")
+    p_models.add_argument("--status", default=None, help="Filter by tier (certified, runs, experimental).")
+    p_models.add_argument("--installed", action="store_true", help="Show only models whose files are staged locally.")
+    p_models.add_argument(
+        "--format",
+        choices=("table", "json"),
+        default="table",
+        help="Output format (table or json).",
     )
     p_models.add_argument("--json", action="store_true", help="Emit JSON output.")
     _add_registry_args(p_models)
+
+    # 1b. `aimip show <model>`
+    p_show = subparsers.add_parser(
+        "show",
+        help="Display detailed model card (grid, step, calendar, forcing sets, licence, limits, examples).",
+    )
+    p_show.add_argument("model", help="Model name in registry.")
+    p_show.add_argument("--examples", action="store_true", help="Print ready-to-copy CLI examples.")
+    p_show.add_argument("--json", action="store_true", help="Emit JSON output.")
+    _add_registry_args(p_show)
+
+    # 1c. `aimip cite <model>`
+    p_cite = subparsers.add_parser(
+        "cite",
+        help="Print BibTeX entries and licence attribution for a model.",
+    )
+    p_cite.add_argument("model", help="Model name in registry.")
+    p_cite.add_argument("--json", action="store_true", help="Emit JSON output.")
+    _add_registry_args(p_cite)
+
+    # 1d. `aimip plan`
+    p_plan = subparsers.add_parser(
+        "plan",
+        help="Resolve and validate a run specification without writing files or downloading data.",
+    )
+    _add_plan_and_run_spec_args(p_plan)
+    p_plan.add_argument("--local", action="store_true", help="Plan for in-process local execution instead of Slurm.")
+    p_plan.add_argument("--json", action="store_true", help="Emit JSON output.")
+    _add_registry_args(p_plan)
+    _add_slurm_args(p_plan)
 
     # 2. `aimip ic {list,spin}`
     p_ic = subparsers.add_parser(
         "ic",
         help="Inspect shipped initial conditions or prepare multi-start spin runs.",
     )
-    ic_sub = p_ic.add_subparsers(dest="ic_command", required=True)
+    ic_sub = p_ic.add_subparsers(
+        dest="ic_command",
+        required=True,
+        parser_class=_AimipArgumentParser,
+    )
 
     p_ic_list = ic_sub.add_parser(
         "list",
@@ -997,78 +1433,48 @@ def build_parser() -> argparse.ArgumentParser:
     # 4. `aimip run`
     p_run = subparsers.add_parser(
         "run",
-        help="Prepare, submit, or locally execute an AIMIP model run.",
+        help="Prepare (or locally execute) an AIMIP model run.",
     )
-    p_run.add_argument("-m", "--model", required=True, help="Model name in registry.")
-    p_run.add_argument("--start", required=True, help="Start ISO timestamp (YYYY-MM-DDTHH:MM:SS).")
-    p_run.add_argument("--steps", type=int, required=True, help="Number of forward steps.")
-    p_run.add_argument(
-        "--ic",
-        default=None,
-        help="Custom/spun IC netCDF, <prev>/restart.nc, or <prev-run-dir> for coupled runs.",
-    )
-    p_run.add_argument(
-        "--ocean-ic",
-        dest="ocean_ic",
-        default=None,
-        help="Companion ocean IC netCDF for coupled models (`fme.coupled.inference`).",
-    )
-    p_run.add_argument("--members", type=int, default=None, help="Number of ensemble members K.")
-    p_run.add_argument("--seed", type=int, default=None, help="RNG seed for fme.core.set_seed / rollout (default: 0).")
-    p_run.add_argument("--lora", default=None, help="Replace model checkpoint with LoRA checkpoint.")
-    p_run.add_argument(
-        "--forcing-set",
-        default=None,
-        help="Optional explicit forcing set name (default: auto-selected by [start, end] window).",
-    )
+    _add_plan_and_run_spec_args(p_run)
     p_run.add_argument(
         "--no-fetch",
         action="store_true",
         help="Forbid automatic fetch-on-first-use when model files are missing.",
     )
-    p_run.add_argument(
-        "--out",
-        default=None,
-        help="Output run dir under an allowed run root (default: $AIMIP_DEFAULT_OUT_ROOT/<model>-<start>-<hash>).",
-    )
-    p_run.add_argument(
-        "--monthly",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Enable/disable monthly_mean_predictions.nc output (default: --monthly).",
-    )
-    p_run.add_argument(
-        "--prediction",
-        action=argparse.BooleanOptionalAction,
-        default=False,
-        help=(
-            "Enable/disable step-by-step autoregressive_predictions.nc output "
-            "(~6 GB/yr per member; default: --no-prediction)."
-        ),
-    )
     run_mode = p_run.add_mutually_exclusive_group()
-    run_mode.add_argument("--dry-run", action="store_true", help="Write config, sbatch, and manifest only.")
+    run_mode.add_argument("--dry-run", action="store_true", help="Write config, sbatch, plan.json, and manifest only.")
     run_mode.add_argument(
         "--submit",
         action="store_true",
         help="Prepare files and print `aimip submit <out>` as the next host command.",
     )
-    run_mode.add_argument("--local", action="store_true", help="Execute fme immediately in-process.")
+    run_mode.add_argument("--local", action="store_true", help="Execute job immediately in-process.")
+    run_mode.add_argument(
+        "--approve",
+        action="store_true",
+        help="Prompt on /dev/tty to approve preparation/staging and final submission interactively.",
+    )
     p_run.add_argument(
         "--print-sbatch-path",
         action="store_true",
         help="Print only <out>/job.sbatch on stdout.",
     )
-    p_run.add_argument("--json", action="store_true", help="Emit JSON manifest on stdout.")
+    p_run.add_argument("--json", action="store_true", help="Emit JSON output.")
     _add_registry_args(p_run)
     _add_slurm_args(p_run)
 
     # 4b. `aimip submit <out>`
     p_submit = subparsers.add_parser(
         "submit",
-        help="Validate <out>/job.sbatch in a private copy and submit via sbatch or local background bash.",
+        help="Validate <out>/job.sbatch in a private copy, verify plan digest, and submit.",
     )
-    p_submit.add_argument("out", help="Prepared run or spin directory containing job.sbatch.")
+    p_submit.add_argument("out", help="Prepared run name or directory containing job.sbatch.")
+    p_submit.add_argument(
+        "--expect-digest",
+        dest="expect_digest",
+        default=None,
+        help="Require plan.json and live re-plan to match this exact 64-hex digest.",
+    )
     p_submit.add_argument(
         "--playground",
         default=None,
@@ -1082,19 +1488,46 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_submit.add_argument("--json", action="store_true", help="Emit JSON output.")
 
+    # 4c. `aimip verify-submit <out>` (internal host-wrapper verification gate)
+    p_vsub = subparsers.add_parser(
+        "verify-submit",
+        help="Verify plan.json, sealed artifact hashes, live re-plan digest, and private job.sbatch copy before host sbatch.",
+    )
+    p_vsub.add_argument("out", help="Prepared run name or directory containing plan.json.")
+    p_vsub.add_argument(
+        "--script-path",
+        dest="script_path",
+        default=None,
+        help="Private copy of job.sbatch to verify against sealed hashes and plan resources.",
+    )
+    p_vsub.add_argument(
+        "--expect-digest",
+        dest="expect_digest",
+        default=None,
+        help="Optional 64-hex digest required to match plan.json and live re-plan.",
+    )
+    p_vsub.add_argument("--playground", default=None, help="Override $AIMIP_HOME / $AIMIP_PLAYGROUND.")
+    p_vsub.add_argument("--site-config", dest="site_config", default=None, help="Explicit site.json path.")
+    p_vsub.add_argument("--json", action="store_true", help="Emit JSON output.")
+
     # 5. `aimip exec-fme <out>`
     p_exec = subparsers.add_parser(
         "exec-fme",
         help="Batch/job entrypoint: verify run directory, execute fme or emulator job, and update manifest.",
     )
     p_exec.add_argument("out", help="Prepared run output directory containing config.yaml.")
+    p_exec.add_argument("--json", action="store_true", help="Emit JSON output.")
 
     # 6. `aimip lora {info,scale}`
     p_lora = subparsers.add_parser(
         "lora",
         help="Inspect or dose-scale LoRA weights in an fme checkpoint.",
     )
-    lora_sub = p_lora.add_subparsers(dest="lora_command", required=True)
+    lora_sub = p_lora.add_subparsers(
+        dest="lora_command",
+        required=True,
+        parser_class=_AimipArgumentParser,
+    )
 
     p_lora_info = lora_sub.add_parser(
         "info",
@@ -1126,22 +1559,98 @@ def build_parser() -> argparse.ArgumentParser:
         "status",
         help="Report run state from aimip-manifest.json, sacct.txt / --sacct-json, or sacct.",
     )
-    p_status.add_argument("out", help="Run output directory.")
+    p_status.add_argument("out", help="Run name or output directory.")
     p_status.add_argument(
         "--sacct-json",
         dest="sacct_json",
         default=None,
         help="Read SLURM sacct JSON from FILE instead of invoking sacct.",
     )
+    p_status.add_argument(
+        "--site-config",
+        dest="site_config",
+        default=None,
+        help="Explicit site.json path for resolving bare run names.",
+    )
     p_status.add_argument("--json", action="store_true", help="Emit JSON output.")
+
+    # 7b. `aimip watch <out>`
+    p_watch = subparsers.add_parser(
+        "watch",
+        help="Poll run status until terminal completion (never submits or alters runs).",
+    )
+    p_watch.add_argument("out", help="Run name or output directory.")
+    p_watch.add_argument("--interval", type=float, default=5.0, help="Seconds between polls (default: 5.0).")
+    p_watch.add_argument("--max-polls", dest="max_polls", type=int, default=None, help="Optional maximum poll count.")
+    p_watch.add_argument("--timeout", type=float, default=3600.0, help="Maximum watch duration in seconds.")
+    p_watch.add_argument("--site-config", dest="site_config", default=None, help="Explicit site.json path.")
+    p_watch.add_argument("--json", action="store_true", help="Emit JSON output.")
+
+    # 7c. `aimip logs <out>`
+    p_logs = subparsers.add_parser(
+        "logs",
+        help="Print sanitized Slurm or local run logs (bounded by --max-bytes).",
+    )
+    p_logs.add_argument("out", help="Run name or output directory.")
+    p_logs.add_argument("--follow", "-f", action="store_true", help="Follow logs until the job finishes.")
+    p_logs.add_argument("--max-bytes", dest="max_bytes", type=int, default=65536, help="Maximum tail bytes to read.")
+    p_logs.add_argument("--interval", type=float, default=1.0, help="Follow poll interval in seconds (default: 1.0).")
+    p_logs.add_argument("--max-polls", dest="max_polls", type=int, default=None, help="Optional max follow polls.")
+    p_logs.add_argument("--site-config", dest="site_config", default=None, help="Explicit site.json path.")
+    p_logs.add_argument("--json", action="store_true", help="Emit JSON output.")
+
+    # 7d. `aimip ls [run_root]`
+    p_ls = subparsers.add_parser(
+        "ls",
+        help="List prepared, running, and completed runs in the configured run root.",
+    )
+    p_ls.add_argument("run_root", nargs="?", default=None, help="Optional run root directory override.")
+    p_ls.add_argument("--site-config", dest="site_config", default=None, help="Explicit site.json path.")
+    p_ls.add_argument("--json", action="store_true", help="Emit JSON output.")
+
+    # 7e. `aimip cancel <out>`
+    p_cancel = subparsers.add_parser(
+        "cancel",
+        help="Cancel an active Slurm job (`scancel`) or detached local run (`SIGTERM`).",
+    )
+    p_cancel.add_argument("out", help="Run name or output directory.")
+    p_cancel.add_argument("--site-config", dest="site_config", default=None, help="Explicit site.json path.")
+    p_cancel.add_argument("--json", action="store_true", help="Emit JSON output.")
 
     # 8. `aimip summary <out>`
     p_summary = subparsers.add_parser(
         "summary",
-        help="Print cos(lat)-weighted global-mean monthly temperature / ocean diagnostic series (TMP2m, Tat2m, t2m, tas, TREFHT, TS, ocean.*).",
+        help="Print cos(lat)-weighted global-mean monthly temperature / ocean diagnostic series.",
     )
-    p_summary.add_argument("out", help="Run output directory.")
+    p_summary.add_argument("out", help="Run name or output directory.")
+    p_summary.add_argument("--site-config", dest="site_config", default=None, help="Explicit site.json path.")
     p_summary.add_argument("--json", action="store_true", help="Emit JSON output.")
+
+    # 8b. `aimip doctor`
+    p_doctor = subparsers.add_parser(
+        "doctor",
+        help="Verify site configuration, runtime, GPU, scheduler tools, data directory, permissions, and version.",
+    )
+    p_doctor.add_argument("--site-config", dest="site_config", default=None, help="Explicit site.json path.")
+    p_doctor.add_argument("--json", action="store_true", help="Emit JSON output.")
+    _add_registry_args(p_doctor)
+
+    # 8c. `aimip approve <digest-prefix>`
+    p_approve = subparsers.add_parser(
+        "approve",
+        help="Approve a pending MCP run or cancel proposal interactively on /dev/tty.",
+    )
+    p_approve.add_argument("digest_prefix", help="First 8+ hex characters of the proposed plan digest.")
+    p_approve.add_argument("--state-dir", dest="state_dir", default=None, help="Override $AIMIP_STATE directory.")
+    p_approve.add_argument("--json", action="store_true", help="Emit JSON output.")
+
+    # 8d. `aimip completion {bash,zsh}`
+    p_comp = subparsers.add_parser(
+        "completion",
+        help="Generate shell tab-completion script for bash or zsh.",
+    )
+    p_comp.add_argument("shell", help="Target shell (bash or zsh).")
+    p_comp.add_argument("--json", action="store_true", help="Emit JSON output.")
 
     # 9. `aimip setup`
     p_setup = subparsers.add_parser(
@@ -1244,7 +1753,11 @@ def build_parser() -> argparse.ArgumentParser:
         "site",
         help="Initialize or inspect portable HPC site configuration ($AIMIP_HOME/site.json).",
     )
-    site_sub = p_site.add_subparsers(dest="site_command", required=True)
+    site_sub = p_site.add_subparsers(
+        dest="site_command",
+        required=True,
+        parser_class=_AimipArgumentParser,
+    )
 
     p_site_init = site_sub.add_parser(
         "init",
@@ -1306,31 +1819,56 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_site_show.add_argument("--json", action="store_true", help="Emit JSON output.")
 
+    subparsers.add_parser(
+        "ui",
+        help="Start the local AIMIP web UI on 127.0.0.1 with a per-session token.",
+    )
+
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     """CLI entrypoint returning POSIX exit code."""
     effective_argv = list(sys.argv[1:] if argv is None else argv)
-    if effective_argv[:1] == ["chat"]:  # the Gemini agent has its own argument parser
+    if effective_argv[:1] == ["chat"]:
         from .agent import main as agent_main
 
         return int(agent_main(effective_argv[1:]) or 0)
+    if effective_argv[:1] == ["mcp"]:
+        from .mcp_server import main as mcp_main
+
+        return int(mcp_main(effective_argv[1:]) or 0)
+    if effective_argv[:1] == ["ui"]:
+        from .ui import main as ui_main
+
+        return int(ui_main(effective_argv[1:]) or 0)
+
     parser = build_parser()
-    args = parser.parse_args(effective_argv)
+    args: argparse.Namespace | None = None
     recorded_argv = ["aimip", *effective_argv]
 
     try:
+        args = parser.parse_args(effective_argv)
         if args.command == "models":
             return _cmd_models(args)
+        if args.command == "show":
+            return _cmd_show(args)
+        if args.command == "cite":
+            return _cmd_cite(args)
+        if args.command == "plan":
+            return _cmd_plan(args)
         if args.command == "ic":
             from .emu_catalog import EMU_MODELS
 
-            if getattr(args, "model", None) in EMU_MODELS:   # by name: the model may not be fetched yet
+            if getattr(args, "model", None) in EMU_MODELS:
                 raise ConfigError(
                     f"`aimip ic` works with the fme models only; {args.model} starts from "
-                    + ("the scenario's 2015 state." if args.model == "archesclimate-ssp"
-                       else "ERA5 at --start (fetched by `aimip run`).")
+                    + (
+                        "the scenario's 2015 state."
+                        if args.model == "archesclimate-ssp"
+                        else "ERA5 at --start (fetched by `aimip run`)."
+                    ),
+                    field="model",
                 )
             if args.ic_command == "list":
                 return _cmd_ic_list(args)
@@ -1342,6 +1880,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _cmd_run(args, recorded_argv)
         if args.command == "submit":
             return _cmd_submit(args)
+        if args.command == "verify-submit":
+            return _cmd_verify_submit(args)
         if args.command == "exec-fme":
             return _cmd_exec_fme(args)
         if args.command == "lora":
@@ -1351,8 +1891,22 @@ def main(argv: Sequence[str] | None = None) -> int:
                 return _cmd_lora_scale(args)
         if args.command == "status":
             return _cmd_status(args)
+        if args.command == "watch":
+            return _cmd_watch(args)
+        if args.command == "logs":
+            return _cmd_logs(args)
+        if args.command == "ls":
+            return _cmd_ls(args)
+        if args.command == "cancel":
+            return _cmd_cancel(args)
         if args.command == "summary":
             return _cmd_summary(args)
+        if args.command == "doctor":
+            return _cmd_doctor(args)
+        if args.command == "approve":
+            return _cmd_approve(args)
+        if args.command == "completion":
+            return _cmd_completion(args)
         if args.command == "setup":
             return _cmd_setup(args)
         if args.command == "fetch":
@@ -1363,8 +1917,23 @@ def main(argv: Sequence[str] | None = None) -> int:
             if args.site_command == "show":
                 return _cmd_site_show(args)
     except AimipError as exc:
+        enrich_error(exc)
         print(f"aimip error: {exc}", file=sys.stderr)
-        return 2
+        if exc.allowed:
+            shown_allowed = ", ".join(str(x) for x in exc.allowed[:12])
+            if len(exc.allowed) > 12:
+                shown_allowed += ", ..."
+            print(f"  allowed: {shown_allowed}", file=sys.stderr)
+        if exc.next_command:
+            print(f"  next:    {exc.next_command}", file=sys.stderr)
+        if _wants_json(args, effective_argv):
+            print(
+                json.dumps(
+                    {"aimip": "1", "ok": False, "error": exc.to_dict()},
+                    indent=2,
+                )
+            )
+        return exc.exit_code
 
     parser.error(f"Unhandled command {args.command!r}")
     return 2

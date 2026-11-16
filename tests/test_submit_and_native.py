@@ -302,7 +302,9 @@ def test_python_submit_local_scheduler_detached_background_and_exec_fme_gate(
     monkeypatch.setenv("AIMIP_SCHEDULER", "none")
 
     assert main(["submit", str(run_dir), "--json"]) == 0
-    payload = json.loads(capsys.readouterr().out)
+    from conftest import parse_cli_json
+
+    payload = parse_cli_json(capsys.readouterr().out)
     assert payload["scheduler"] == "none"
     assert isinstance(payload["local_pid"], int) and payload["local_pid"] > 0
     assert (run_dir / "local.pid").read_text(encoding="utf-8").strip() == str(payload["local_pid"])
@@ -370,8 +372,10 @@ def test_native_status_refreshes_sacct_txt_and_preserves_last_good_record(
         (f"{safe_gate_root}/",),
     )
 
+    from conftest import parse_cli_json
+
     assert main(["status", str(run_dir), "--json"]) == 0
-    st1 = json.loads(capsys.readouterr().out)
+    st1 = parse_cli_json(capsys.readouterr().out)
     assert st1["state"] == "running"
     assert st1["sacct_source"] == "sacct"
     assert (run_dir / "sacct.txt").is_file()
@@ -384,7 +388,7 @@ def test_native_status_refreshes_sacct_txt_and_preserves_last_good_record(
         encoding="utf-8",
     )
     assert main(["status", str(run_dir), "--json"]) == 0
-    st2 = json.loads(capsys.readouterr().out)
+    st2 = parse_cli_json(capsys.readouterr().out)
     assert st2["state"] == "completed"
     assert st2["sacct_source"] == "sacct"
     assert "555111|COMPLETED|00:10:00|0:0" in (run_dir / "sacct.txt").read_text(encoding="utf-8")
@@ -392,7 +396,7 @@ def test_native_status_refreshes_sacct_txt_and_preserves_last_good_record(
     # When sacct returns empty output later, status preserves and falls back to the last good sacct.txt.
     sacct_bin.write_text("#!/bin/bash\nexit 0\n", encoding="utf-8")
     assert main(["status", str(run_dir), "--json"]) == 0
-    st3 = json.loads(capsys.readouterr().out)
+    st3 = parse_cli_json(capsys.readouterr().out)
     assert st3["state"] == "completed"
     assert st3["sacct_source"] == "sacct.txt"
 
@@ -1478,25 +1482,36 @@ def test_image_workflow_push_gate_version_validation_env_passing_and_digest_summ
     assert f"push ghcr.io/clidyn/aimip-claima:{real_version}\n" not in dlog1b
     assert ":latest" not in dlog1b
 
-    # 2. Push of matching release tag `v<version>` pushes `:<version>` and `:latest` and records digest in summary.
+    # 2. Push of matching release tag `v<release_version>` pushes `:<release_version>` and `:latest` and records digest in summary;
+    #    a `.devN` version refuses any release tag push so dev branches never clash with release tags!
+    if ".dev" in real_version:
+        rc_dev_tag, _, dlog_dev_tag, _ = _run_wf(
+            version_txt=f"{real_version}\n",
+            event_name="push",
+            ref_type="tag",
+            ref_name=f"v{real_version}",
+        )
+        assert rc_dev_tag != 0 and dlog_dev_tag == ""
+
+    release_ver = real_version.split(".dev")[0]
     rc2, out2, dlog2, sum2 = _run_wf(
-        version_txt=f"{real_version}\n",
+        version_txt=f"{release_ver}\n",
         event_name="push",
         ref_type="tag",
-        ref_name=f"v{real_version}",
+        ref_name=f"v{release_ver}",
     )
     assert rc2 == 0, sum2
-    assert out2["release"] == "true" and out2["primary_tag"] == real_version
-    assert f"push ghcr.io/clidyn/aimip-claima:{real_version}\n" in dlog2
+    assert out2["release"] == "true" and out2["primary_tag"] == release_ver
+    assert f"push ghcr.io/clidyn/aimip-claima:{release_ver}\n" in dlog2
     assert "push ghcr.io/clidyn/aimip-claima:latest" in dlog2
     assert "sha256:99887766554433221100ffeeddccbbaa" in sum2
 
     # 3. Existing release tag on registry is not overwritten.
     rc3, _, dlog3, _ = _run_wf(
-        version_txt=f"{real_version}\n",
+        version_txt=f"{release_ver}\n",
         event_name="push",
         ref_type="tag",
-        ref_name=f"v{real_version}",
+        ref_name=f"v{release_ver}",
         tag_exists="1",
     )
     assert rc3 != 0

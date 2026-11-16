@@ -31,7 +31,7 @@ jobs:
           python -m pip install "pip==25.2"
           python -m pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.14.0"
           python -m pip install -c container/constraints.txt \
-            numpy cftime netCDF4 h5netcdf xarray pyyaml pytest huggingface_hub scipy pandas \
+            numpy cftime netCDF4 h5netcdf xarray pyyaml pytest huggingface_hub scipy pandas matplotlib \
             -r container/requirements-agent.txt
           python -m pip install --no-deps -e .
 
@@ -49,3 +49,17 @@ jobs:
         run: |
           umask 022
           bash tests/wrapper/test_wrapper.sh
+
+      - name: Run end-to-end console session demo
+        env:
+          TMPDIR: /tmp
+        run: |
+          umask 022
+          bash tests/console_session.sh
+
+      - name: Run end-to-end UI session demo
+        env:
+          TMPDIR: /tmp
+        run: |
+          umask 022
+          bash tests/ui_session.sh

@@ -7,20 +7,59 @@ direct `aimip submit <run-dir>` calls have identical submission guarantees.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+import fcntl
 import os
 import pwd
 import re
+import secrets
 import shutil
 import stat
 import subprocess
 import tempfile
 from typing import Any
 
-from .errors import ConfigError, ValidationError
+from .errors import ConfigError, ExecutionError, ValidationError
 from .site_config import load_site_config
 
 _WRAPPER_SAFE_PATH_RE = re.compile(r"\A/[A-Za-z0-9._/+-]*\Z")
 _SBATCH_VAL_RE = re.compile(r"\A[A-Za-z0-9._/:%+-]+\Z")
+
+_SCRUBBED_ENV_KEYS: frozenset[str] = frozenset(
+    {
+        "GEMINI_API_KEY",
+        "GOOGLE_API_KEY",
+        "AIMIP_GEMINI_KEY_FILE",
+        "AIMIP_GEMINI_VERTEX_TOKEN_FILE",
+        "AIMIP_GEMINI_VERTEX_PROJECT",
+        "AIMIP_GEMINI_VERTEX_LOCATION",
+        "GOOGLE_APPLICATION_CREDENTIALS",
+        "GOOGLE_CLOUD_PROJECT",
+        "GCLOUD_PROJECT",
+        "CLOUDSDK_AUTH_ACCESS_TOKEN",
+        "OPENAI_API_KEY",
+        "ANTHROPIC_API_KEY",
+    }
+)
+_SCRUBBED_ENV_PREFIXES: tuple[str, ...] = (
+    "LANGCHAIN_",
+    "LANGSMITH_",
+    "APPTAINERENV_GEMINI",
+    "APPTAINERENV_GOOGLE",
+    "SINGULARITYENV_GEMINI",
+    "SINGULARITYENV_GOOGLE",
+)
+
+
+def sanitized_subprocess_env(base_env: Mapping[str, str] | None = None) -> dict[str, str]:
+    """Return a copy of *base_env* (or `os.environ`) with chat/LLM credentials and tracing keys removed."""
+    source = os.environ if base_env is None else base_env
+    return {
+        k: v
+        for k, v in source.items()
+        if k not in _SCRUBBED_ENV_KEYS and not k.startswith(_SCRUBBED_ENV_PREFIXES)
+    }
+
 
 ALLOWED_SBATCH_KEYS: frozenset[str] = frozenset(
     {
@@ -39,8 +78,15 @@ ALLOWED_SBATCH_KEYS: frozenset[str] = frozenset(
 TRUSTED_RUN_FILES: tuple[str, ...] = (
     "job.sbatch",
     "config.yaml",
+    "emu-job.json",
+    "ic_era5.pt",
     "aimip-manifest.json",
     "spin-manifest.json",
+    "plan.json",
+    "submit-intent.json",
+    "cancel-requested.txt",
+    "experiment.yaml",
+    ".submit.lock",
     "slurm.jobid",
     "sacct.txt",
     "local.pid",
@@ -315,13 +361,103 @@ def _resolve_submit_prefix(playground_dir: str | None = None) -> str:
     return check_safe_path(raw).rstrip("/")
 
 
+def _extract_sbatch_job_name(script_bytes: bytes, run_dir: str) -> str:
+    """Extract `#SBATCH --job-name=...` from a validated `job.sbatch` (or fall back to `os.path.basename(run_dir)`)."""
+    for line in script_bytes.decode("utf-8", errors="ignore").splitlines():
+        if line.startswith("#SBATCH --job-name="):
+            return line.split("=", 1)[1].strip()
+    return os.path.basename(run_dir.rstrip("/")) or "aimip"
+
+
+def _reconcile_squeue_job(
+    job_name: str,
+    user: str,
+    attempt_nonce: str | None,
+) -> tuple[str | None, str]:
+    """Query `squeue` for a live job matching `(user, job_name, comment=attempt_nonce)`.
+
+    A same-name job without the exact per-attempt nonce is NEVER adopted.
+    Returns `(job_id, status_note)` where `status_note` is `'found'`, `'absent'`, `'ambiguous'`, or `'unavailable'`.
+    """
+    if not attempt_nonce or not attempt_nonce.startswith("aimip-attempt-"):
+        return None, "absent"
+    squeue_bin = shutil.which("squeue")
+    if not squeue_bin:
+        return None, "unavailable"
+    try:
+        proc = subprocess.run(
+            [squeue_bin, "--noheader", "-u", user, "-n", job_name, "-o", "%i|%j|%T|%k"],
+            capture_output=True,
+            text=True,
+            env=sanitized_subprocess_env(),
+            timeout=15,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None, "unavailable"
+    if proc.returncode != 0:
+        return None, "unavailable"
+
+    matches: list[str] = []
+    for raw_line in proc.stdout.splitlines():
+        parts = [p.strip() for p in raw_line.strip().split("|", 3)]
+        if (
+            len(parts) >= 4
+            and parts[0].isdigit()
+            and parts[1] == job_name
+            and parts[3] == attempt_nonce
+        ):
+            matches.append(parts[0])
+    if len(matches) == 1:
+        return matches[0], "found"
+    if len(matches) > 1:
+        return None, "ambiguous"
+    return None, "absent"
+
+
+def _acquire_run_submit_lock(run_dir: str) -> int:
+    """Acquire an exclusive `flock` on caller-owned `<run_dir>/.submit.lock` without following symlinks."""
+    lock_path = f"{run_dir}/.submit.lock"
+    if os.path.islink(lock_path):
+        raise ValidationError(f"refusing symlinked {lock_path}")
+    flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        fd = os.open(lock_path, flags, 0o600)
+    except OSError as exc:
+        raise ConfigError(f"cannot open submit lock {lock_path}: {exc}") from exc
+    try:
+        st = os.fstat(fd)
+        if not stat.S_ISREG(st.st_mode):
+            raise ValidationError(f"submit lock is not a regular file: {lock_path}")
+        if st.st_uid != os.geteuid():
+            raise ValidationError(f"submit lock {lock_path} is not owned by the caller")
+        if st.st_mode & 0o077:
+            os.fchmod(fd, 0o600)
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        return fd
+    except BaseException:
+        os.close(fd)
+        raise
+
+
 def submit_run(
     run_dir: str,
     *,
     playground_dir: str | None = None,
     site_config_path: str | None = None,
+    scheduler_override: str | None = None,
+    sbatch_timeout: float = 60.0,
 ) -> dict[str, Any]:
-    """Validate `<run_dir>/job.sbatch` in a caller-private 0700 copy and submit via `sbatch` or detached `bash`."""
+    """Validate `<run_dir>/job.sbatch` in a caller-private 0700 copy and submit via `sbatch` or detached `bash`.
+
+    Serializes concurrent submissions per run directory via `flock`, records submission intent
+    (including a unique `attempt_nonce`) to `<run_dir>/submit-intent.json` BEFORE invoking `sbatch`,
+    and reconciles uncertain replies strictly by `attempt_nonce`.
+    """
+    import datetime
+    import hashlib
+    import json
+
     if not run_dir:
         raise ConfigError("usage: aimip submit <run-dir>")
     check_safe_path(run_dir)
@@ -332,118 +468,262 @@ def submit_run(
         raise ConfigError(
             f"{d} has no job.sbatch (prepare it with: aimip run ... --out {d})"
         )
-    if os.path.lexists(f"{d}/slurm.jobid") or os.path.lexists(f"{d}/local.pid"):
-        raise ConfigError("already submitted")
 
-    prefix = _resolve_submit_prefix(playground_dir)
-    site_cfg = load_site_config(site_config_path)
-    scheduler = site_cfg.scheduler
-
+    lock_fd = _acquire_run_submit_lock(d)
     try:
-        priv_dir = tempfile.mkdtemp(prefix="aimip-submit.")
-        os.chmod(priv_dir, 0o700)
-    except OSError as exc:
-        raise ConfigError(f"cannot create a private directory: {exc}") from exc
+        if os.path.lexists(f"{d}/slurm.jobid") or os.path.lexists(f"{d}/local.pid"):
+            raise ConfigError("already submitted")
 
-    keep_priv_dir = False
-    try:
-        priv_script = os.path.join(priv_dir, "job.sbatch")
-        read_flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
-        try:
-            src_fd = os.open(sbatch_src, read_flags)
-            try:
-                with os.fdopen(src_fd, "rb") as rfh:
-                    script_bytes = rfh.read()
-            except BaseException:
-                try:
-                    os.close(src_fd)
-                except OSError:
-                    pass
-                raise
-            dst_fd = os.open(
-                priv_script,
-                os.O_WRONLY | os.O_CREAT | os.O_EXCL,
-                0o400,
-            )
-            try:
-                os.write(dst_fd, script_bytes)
-            finally:
-                os.close(dst_fd)
-        except OSError as exc:
-            raise ConfigError(f"cannot read {sbatch_src}: {exc}") from exc
+        prefix = _resolve_submit_prefix(playground_dir)
+        site_cfg = load_site_config(site_config_path)
+        scheduler = scheduler_override if scheduler_override in ("slurm", "none") else site_cfg.scheduler
+        caller_user = (
+            os.environ.get("AIMIP_USER")
+            or os.environ.get("USER")
+            or _uid_name(os.geteuid())
+        )
 
-        check_job_script(priv_script, d, prefix)
-
-        if scheduler == "slurm":
+        intent_file = f"{d}/submit-intent.json"
+        if scheduler == "slurm" and os.path.isfile(intent_file) and not os.path.islink(intent_file):
             try:
-                proc = subprocess.run(
-                    ["sbatch", "--parsable", priv_script],
-                    capture_output=True,
-                    text=True,
-                    check=False,
+                with open(intent_file, encoding="utf-8") as ifh:
+                    prev_intent = json.load(ifh)
+            except (OSError, json.JSONDecodeError):
+                prev_intent = {}
+            if prev_intent.get("state") in ("submitting", "uncertain"):
+                jname = str(prev_intent.get("job_name") or os.path.basename(d))
+                prev_nonce = (
+                    str(prev_intent["attempt_nonce"])
+                    if prev_intent.get("attempt_nonce")
+                    else None
                 )
-            except FileNotFoundError as exc:
-                raise ConfigError("sbatch not found on PATH") from exc
+                rec_id, rec_note = _reconcile_squeue_job(jname, caller_user, prev_nonce)
+                if rec_note == "found" and rec_id:
+                    now_iso = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                    write_in_trusted_dir(d, "slurm.jobid", rec_id)
+                    write_in_trusted_dir(
+                        d,
+                        "submitted.txt",
+                        f"job={rec_id} submitted={now_iso} user={caller_user} reconciled=true",
+                    )
+                    prev_intent["state"] = "reconciled"
+                    prev_intent["job_id"] = rec_id
+                    write_in_trusted_dir(d, "submit-intent.json", json.dumps(prev_intent, indent=2))
+                    return {
+                        "out_dir": d,
+                        "scheduler": "slurm",
+                        "slurm_job_id": rec_id,
+                        "local_pid": None,
+                        "log_path": None,
+                        "reconciled": True,
+                    }
+                raise ExecutionError(
+                    f"Previous submission for {d} had an uncertain scheduler reply (squeue status: {rec_note}); "
+                    "refusing blind retry. Inspect `squeue` / `sacct` or prepare a fresh run directory."
+                )
+
+        try:
+            priv_dir = tempfile.mkdtemp(prefix="aimip-submit.")
+            os.chmod(priv_dir, 0o700)
+        except OSError as exc:
+            raise ConfigError(f"cannot create a private directory: {exc}") from exc
+
+        keep_priv_dir = False
+        try:
+            priv_script = os.path.join(priv_dir, "job.sbatch")
+            read_flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+            try:
+                src_fd = os.open(sbatch_src, read_flags)
+                try:
+                    with os.fdopen(src_fd, "rb") as rfh:
+                        script_bytes = rfh.read()
+                except BaseException:
+                    try:
+                        os.close(src_fd)
+                    except OSError:
+                        pass
+                    raise
+                dst_fd = os.open(
+                    priv_script,
+                    os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                    0o400,
+                )
+                try:
+                    view = memoryview(script_bytes)
+                    while view:
+                        n = os.write(dst_fd, view)
+                        if n <= 0:
+                            raise OSError("short write copying job.sbatch")
+                        view = view[n:]
+                finally:
+                    os.close(dst_fd)
             except OSError as exc:
-                raise ConfigError(f"sbatch failed: {exc}") from exc
+                raise ConfigError(f"cannot read {sbatch_src}: {exc}") from exc
 
-            if proc.returncode != 0:
-                detail = (proc.stderr or proc.stdout or "").strip()
-                raise ConfigError(f"sbatch failed: {detail}" if detail else "sbatch failed")
+            check_job_script(priv_script, d, prefix)
+            clean_env = sanitized_subprocess_env()
 
-            first_line = (
-                proc.stdout.strip().splitlines()[0] if proc.stdout.strip() else ""
+            if scheduler == "slurm":
+                job_name = _extract_sbatch_job_name(script_bytes, d)
+                attempt_nonce = f"aimip-attempt-{secrets.token_hex(12)}"
+                started_iso = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                intent_doc: dict[str, Any] = {
+                    "state": "submitting",
+                    "run_dir": d,
+                    "job_name": job_name,
+                    "user": caller_user,
+                    "attempt_nonce": attempt_nonce,
+                    "script_sha256": hashlib.sha256(script_bytes).hexdigest(),
+                    "started_at": started_iso,
+                }
+                write_in_trusted_dir(d, "submit-intent.json", json.dumps(intent_doc, indent=2))
+
+                uncertain_reason: str | None = None
+                proc: subprocess.CompletedProcess[str] | None = None
+                try:
+                    proc = subprocess.run(
+                        ["sbatch", "--parsable", f"--comment={attempt_nonce}", priv_script],
+                        capture_output=True,
+                        text=True,
+                        env=clean_env,
+                        timeout=sbatch_timeout,
+                        check=False,
+                    )
+                except FileNotFoundError as exc:
+                    intent_doc["state"] = "failed_before_submit"
+                    write_in_trusted_dir(d, "submit-intent.json", json.dumps(intent_doc, indent=2))
+                    raise ConfigError("sbatch not found on PATH") from exc
+                except subprocess.TimeoutExpired:
+                    uncertain_reason = f"sbatch timed out after {sbatch_timeout:g}s"
+                except OSError as exc:
+                    intent_doc["state"] = "failed_before_submit"
+                    write_in_trusted_dir(d, "submit-intent.json", json.dumps(intent_doc, indent=2))
+                    raise ConfigError(f"sbatch failed: {exc}") from exc
+
+                if proc is not None and uncertain_reason is None:
+                    detail = (proc.stderr or proc.stdout or "").strip()
+                    low_detail = detail.lower()
+                    if proc.returncode != 0:
+                        if any(
+                            tok in low_detail
+                            for tok in ("socket timed out", "slurm_receive_msg", "unable to contact", "transport endpoint")
+                        ):
+                            uncertain_reason = f"sbatch returned uncertain transport error ({detail})"
+                        else:
+                            intent_doc["state"] = "failed_before_submit"
+                            intent_doc["error"] = detail
+                            write_in_trusted_dir(d, "submit-intent.json", json.dumps(intent_doc, indent=2))
+                            raise ConfigError(f"sbatch failed: {detail}" if detail else "sbatch failed")
+
+                if proc is not None and uncertain_reason is None:
+                    first_line = (
+                        proc.stdout.strip().splitlines()[0] if proc.stdout.strip() else ""
+                    )
+                    job_id = first_line.split(";", 1)[0].strip()
+                    if not job_id or not job_id.isdigit():
+                        uncertain_reason = f"sbatch exited 0 with non-numeric/empty job ID ({first_line!r})"
+                    else:
+                        write_in_trusted_dir(d, "slurm.jobid", job_id)
+                        write_in_trusted_dir(
+                            d,
+                            "submitted.txt",
+                            f"job={job_id} submitted={started_iso} user={caller_user}",
+                        )
+                        intent_doc["state"] = "submitted"
+                        intent_doc["job_id"] = job_id
+                        write_in_trusted_dir(d, "submit-intent.json", json.dumps(intent_doc, indent=2))
+                        return {
+                            "out_dir": d,
+                            "scheduler": "slurm",
+                            "slurm_job_id": job_id,
+                            "local_pid": None,
+                            "log_path": None,
+                            "reconciled": False,
+                        }
+
+                # Uncertain sbatch outcome: record `"uncertain"` and reconcile once by `attempt_nonce`.
+                intent_doc["state"] = "uncertain"
+                intent_doc["reason"] = uncertain_reason
+                write_in_trusted_dir(d, "submit-intent.json", json.dumps(intent_doc, indent=2))
+                rec_id, rec_note = _reconcile_squeue_job(job_name, caller_user, attempt_nonce)
+                if rec_note == "found" and rec_id:
+                    write_in_trusted_dir(d, "slurm.jobid", rec_id)
+                    write_in_trusted_dir(
+                        d,
+                        "submitted.txt",
+                        f"job={rec_id} submitted={started_iso} user={caller_user} reconciled=true",
+                    )
+                    intent_doc["state"] = "reconciled"
+                    intent_doc["job_id"] = rec_id
+                    write_in_trusted_dir(d, "submit-intent.json", json.dumps(intent_doc, indent=2))
+                    return {
+                        "out_dir": d,
+                        "scheduler": "slurm",
+                        "slurm_job_id": rec_id,
+                        "local_pid": None,
+                        "log_path": None,
+                        "reconciled": True,
+                    }
+                raise ExecutionError(
+                    f"Uncertain scheduler reply ({uncertain_reason}; squeue reconciliation: {rec_note}); "
+                    "refusing blind retry."
+                )
+
+            # scheduler == "none": run the validated private copy in a detached background bash session.
+            log_path = f"{d}/local-run.log"
+            if os.path.islink(log_path):
+                raise ValidationError(f"refusing symlinked {log_path}")
+            log_flags = (
+                os.O_WRONLY
+                | os.O_CREAT
+                | os.O_TRUNC
+                | getattr(os, "O_NOFOLLOW", 0)
             )
-            job_id = first_line.split(";", 1)[0].strip()
-            if not job_id:
-                raise ConfigError("sbatch failed: empty job ID")
+            try:
+                log_fd = os.open(log_path, log_flags, 0o644)
+            except OSError as exc:
+                raise ConfigError(f"cannot open {log_path}: {exc}") from exc
 
-            write_in_trusted_dir(d, "slurm.jobid", job_id)
+            write_in_trusted_dir(
+                d,
+                "submit-intent.json",
+                json.dumps({"state": "submitting_local", "run_dir": d, "user": caller_user}, indent=2),
+            )
+            with os.fdopen(log_fd, "wb") as log_fh:
+                try:
+                    bg_proc = subprocess.Popen(
+                        ["bash", priv_script],
+                        stdin=subprocess.DEVNULL,
+                        stdout=log_fh,
+                        stderr=subprocess.STDOUT,
+                        env=clean_env,
+                        start_new_session=True,
+                        close_fds=True,
+                    )
+                except OSError as exc:
+                    raise ConfigError(f"failed to launch background bash job: {exc}") from exc
+
+            keep_priv_dir = True
+            write_in_trusted_dir(d, "local.pid", str(bg_proc.pid))
+            write_in_trusted_dir(
+                d,
+                "submit-intent.json",
+                json.dumps({"state": "submitted_local", "local_pid": int(bg_proc.pid)}, indent=2),
+            )
             return {
                 "out_dir": d,
-                "scheduler": "slurm",
-                "slurm_job_id": job_id,
-                "local_pid": None,
-                "log_path": None,
+                "scheduler": "none",
+                "slurm_job_id": None,
+                "local_pid": int(bg_proc.pid),
+                "log_path": log_path,
+                "reconciled": False,
             }
-
-        # scheduler == "none": run the validated private copy in a detached background bash session.
-        log_path = f"{d}/local-run.log"
-        if os.path.islink(log_path):
-            raise ValidationError(f"refusing symlinked {log_path}")
-        log_flags = (
-            os.O_WRONLY
-            | os.O_CREAT
-            | os.O_TRUNC
-            | getattr(os, "O_NOFOLLOW", 0)
-        )
-        try:
-            log_fd = os.open(log_path, log_flags, 0o644)
-        except OSError as exc:
-            raise ConfigError(f"cannot open {log_path}: {exc}") from exc
-
-        with os.fdopen(log_fd, "wb") as log_fh:
-            try:
-                bg_proc = subprocess.Popen(
-                    ["bash", priv_script],
-                    stdin=subprocess.DEVNULL,
-                    stdout=log_fh,
-                    stderr=subprocess.STDOUT,
-                    start_new_session=True,
-                    close_fds=True,
-                )
-            except OSError as exc:
-                raise ConfigError(f"failed to launch background bash job: {exc}") from exc
-
-        keep_priv_dir = True
-        write_in_trusted_dir(d, "local.pid", str(bg_proc.pid))
-        return {
-            "out_dir": d,
-            "scheduler": "none",
-            "slurm_job_id": None,
-            "local_pid": int(bg_proc.pid),
-            "log_path": log_path,
-        }
+        finally:
+            if not keep_priv_dir:
+                shutil.rmtree(priv_dir, ignore_errors=True)
     finally:
-        if not keep_priv_dir:
-            shutil.rmtree(priv_dir, ignore_errors=True)
+        try:
+            fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        except OSError:
+            pass
+        os.close(lock_fd)

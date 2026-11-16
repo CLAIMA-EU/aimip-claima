@@ -487,7 +487,10 @@ def validate_model_name(name: str, allowed: set[str] | None = None) -> str:
     if allowed is not None and name not in allowed:
         known = ", ".join(sorted(allowed)) if allowed else "(none)"
         raise ValidationError(
-            f"Unknown model {name!r}. Available models in registry: {known}."
+            f"Unknown model {name!r}. Available models in registry: {known}.",
+            field="model",
+            allowed=sorted(allowed),
+            next_command="aimip models",
         )
     return name
 

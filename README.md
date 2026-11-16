@@ -2,6 +2,11 @@
 
 Run AI climate emulators as climate experiments on a GPU machine or an HPC cluster, with one command: `aimip`.
 
+The `main` branch is the development version (1.4.0.dev0: a fuller console, agent runs with human approval, an
+MCP server and a web UI; see [docs/console.md](docs/console.md)). The latest release is
+[v1.3.1](https://github.com/CliDyn/aimip-claima/tree/v1.3.1); install from that tag for the released version. No image is published for development versions, so on `main`
+use `install/install-container.sh … --build` or the native installer.
+
 ```bash
 aimip run -m ace2-era5 --start 1979-01-01T00:00:00 --steps 1460 --submit   # one model year
 aimip submit <run-dir>
@@ -84,6 +89,7 @@ Without Slurm, use `--local` instead of `--submit`.
 | [docs/models.md](docs/models.md) | the fourteen models: type, forcing, initial conditions, calendars, known limits |
 | [docs/slurm-and-paths.md](docs/slurm-and-paths.md) | job scripts, wall time, run directories, path rules |
 | [docs/agent.md](docs/agent.md) | the optional planning assistant `aimip chat` |
+| [docs/console.md](docs/console.md) | development version: new commands, approval, agent runs, MCP server, web UI |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | error messages and what to do |
 | [docs/development.md](docs/development.md) | layout, tests, the lock file, adding a model |
 

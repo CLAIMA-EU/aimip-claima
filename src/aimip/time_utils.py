@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import datetime
+import re
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
 from .errors import ConfigError, ValidationError
+
+_LENGTH_SPEC_RE = re.compile(r"\A(?P<count>[1-9]\d{0,6})(?P<unit>[ymdh])\Z")
 from .validators import (
     validate_forcing_set_name,
     validate_int_range,
@@ -191,13 +194,22 @@ def select_forcing_set(
     if covering_start:
         first_fs, _, first_last = covering_start[0]
         max_steps = int((first_last - start_dt) // step_td)
+        last_fmt = format_cftime(first_last)
+        next_cmd = (
+            f"aimip plan {model_name} --start {start_fmt} --end {last_fmt}"
+            if model_name
+            else None
+        )
         raise ConfigError(
             f"Refusing run: end time {end_fmt} (start {start_fmt} + {steps} steps * "
             f"{timestep_hours}h, calendar={calendar}) exceeds forcing set {first_fs.name!r} "
-            f"end {format_cftime(first_last)} (maximum steps in {first_fs.name!r} from "
-            f"{start_fmt} is {max_steps}; available sets: {sets_desc}). "
+            f"end {last_fmt} (maximum steps in {first_fs.name!r} from "
+            f"{start_fmt} is {max_steps}; use `--end {last_fmt}` or `--steps {max_steps}`; "
+            f"available sets: {sets_desc}). "
             "If continuing into another forcing set, split the run at the boundary and "
-            "continue from `<prev-dir>/restart.nc` via `--ic <prev-dir>/restart.nc`."
+            "continue from `<prev-dir>/restart.nc` via `--ic <prev-dir>/restart.nc`.",
+            field="end",
+            next_command=next_cmd,
         )
 
     raise ConfigError(
@@ -235,3 +247,202 @@ def compute_spin_steps(
     if steps < 1:
         raise ConfigError("Spin run requires at least 1 forward step.")
     return steps
+
+
+def parse_length_spec(raw: str) -> tuple[int, str]:
+    """Parse a human duration string such as `'20y'`, `'6m'`, `'30d'`, or `'12h'`."""
+    if not isinstance(raw, str) or not raw.strip():
+        raise ValidationError(
+            "Invalid --length: expected '<N>y', '<N>m', '<N>d', or '<N>h' (e.g. '20y', '6m', '30d', '12h').",
+            field="length",
+            allowed=["<N>y", "<N>m", "<N>d", "<N>h"],
+        )
+    text = raw.strip()
+    m = _LENGTH_SPEC_RE.match(text)
+    if not m:
+        raise ValidationError(
+            f"Invalid --length {raw!r}: expected positive integer followed by y, m, d, or h (e.g. '20y', '6m', '30d', '12h').",
+            field="length",
+            allowed=["<N>y", "<N>m", "<N>d", "<N>h"],
+        )
+    return int(m.group("count")), m.group("unit")
+
+
+def add_calendar_months(dt: Any, months: int, calendar: str) -> Any:
+    """Advance `cftime.datetime` *dt* by *months* calendar months in *calendar*, refusing invalid target dates."""
+    import cftime
+
+    total_m = (int(dt.year) * 12 + (int(dt.month) - 1)) + int(months)
+    if total_m < 0:
+        raise ValidationError(
+            f"Target year/month out of range when advancing {format_cftime(dt)} by {months} months.",
+            field="length",
+        )
+    target_year, target_month_zero = divmod(total_m, 12)
+    target_month = target_month_zero + 1
+    if target_year < 1:
+        raise ValidationError(
+            f"Target year {target_year} out of range when advancing {format_cftime(dt)} by {months} months.",
+            field="length",
+        )
+    try:
+        return cftime.datetime(
+            target_year,
+            target_month,
+            int(dt.day),
+            int(dt.hour),
+            int(dt.minute),
+            int(dt.second),
+            calendar=calendar,
+        )
+    except ValueError as exc:
+        raise ValidationError(
+            f"Duration cannot advance {format_cftime(dt)} to {target_year:04d}-{target_month:02d}-{int(dt.day):02d} "
+            f"in calendar {calendar!r} ({exc}); pass an explicit --end or --steps instead.",
+            field="length",
+        ) from exc
+
+
+def resolve_horizon(
+    *,
+    start_iso: str,
+    steps: int | None = None,
+    length: str | None = None,
+    end_iso: str | None = None,
+    timestep_hours: int = 6,
+    calendar: str = "proleptic_gregorian",
+    family: str = "fme",
+    model_name: str = "",
+) -> tuple[int, str]:
+    """Resolve exactly one of `(steps, length, end_iso)` into `(resolved_steps, resolved_end_iso)`.
+
+    Rules:
+    - Exactly one of `steps`, `length`, or `end_iso` must be provided.
+    - Non-integral spans relative to the model's `timestep_hours` and `calendar` are refused.
+    - Monthly/yearly lengths require exact calendar date existence in `calendar` AND exact divisibility
+      by `timestep_hours` (or monthly stepping for `family == 'arches'`).
+    """
+    provided = [
+        name
+        for name, val in (("steps", steps), ("length", length), ("end", end_iso))
+        if val is not None
+    ]
+    if len(provided) == 0:
+        raise ValidationError(
+            "Specify run horizon using one of --steps <N>, --length <Ny|Nm|Nd|Nh>, or --end <ISO>.",
+            field="steps",
+            allowed=["--steps", "--length", "--end"],
+            next_command=(
+                f"aimip plan {model_name} --start {start_iso} --length 1y"
+                if model_name
+                else None
+            ),
+        )
+    if len(provided) > 1:
+        raise ValidationError(
+            f"Options {', '.join('--' + p for p in provided)} are mutually exclusive; pass only one.",
+            field=provided[1],
+            allowed=["--steps", "--length", "--end"],
+        )
+
+    start_dt = parse_cftime(start_iso, calendar=calendar)
+    validate_int_range(timestep_hours, "timestep_hours", min_value=1, max_value=24 * 366)
+    step_td = datetime.timedelta(hours=timestep_hours)
+
+    # Monthly-stepping models (`archesclimate-ssp`) integrate whole calendar months.
+    # Starting at 2015-01-01 uses 2015-01 and 2015-02 as lagged states so step 1 outputs 2015-03-01
+    # (`start_dt + 2 months`) and step N outputs `start_dt + (N + 1) months`.
+    if family == "arches":
+        first_output_dt = add_calendar_months(start_dt, 2, calendar)
+        if steps is not None:
+            resolved_steps = validate_int_range(steps, "steps", min_value=1, max_value=10_000_000)
+            end_dt = add_calendar_months(first_output_dt, resolved_steps - 1, calendar)
+            return resolved_steps, format_cftime(end_dt)
+        if length is not None:
+            count, unit = parse_length_spec(length)
+            if unit not in ("m", "y"):
+                raise ValidationError(
+                    f"Model {model_name or 'arches'!r} integrates in whole calendar monthly steps; "
+                    f"--length {length!r} with unit {unit!r} is not integral (use '<N>m' or '<N>y').",
+                    field="length",
+                    allowed=["<N>m", "<N>y"],
+                )
+            resolved_steps = count if unit == "m" else count * 12
+            end_dt = add_calendar_months(first_output_dt, resolved_steps - 1, calendar)
+            return resolved_steps, format_cftime(end_dt)
+        assert end_iso is not None
+        end_dt = parse_cftime(end_iso, calendar=calendar)
+        if end_dt < first_output_dt:
+            raise ValidationError(
+                f"--end {format_cftime(end_dt)} must be at or after the first output month "
+                f"{format_cftime(first_output_dt)} for {model_name or 'arches'!r}.",
+                field="end",
+            )
+        if (
+            int(end_dt.day) != int(start_dt.day)
+            or int(end_dt.hour) != int(start_dt.hour)
+            or int(end_dt.minute) != int(start_dt.minute)
+            or int(end_dt.second) != int(start_dt.second)
+        ):
+            raise ValidationError(
+                f"Span from {format_cftime(start_dt)} to {format_cftime(end_dt)} is not an exact whole number "
+                f"of calendar monthly steps for {model_name or 'arches'!r}.",
+                field="end",
+            )
+        resolved_steps = (
+            (int(end_dt.year) - int(first_output_dt.year)) * 12
+            + (int(end_dt.month) - int(first_output_dt.month))
+            + 1
+        )
+        return resolved_steps, format_cftime(end_dt)
+
+    # Fixed-hour / multi-day stepping (`6h`, `120h` = 5d, etc.) in `calendar`.
+    if steps is not None:
+        resolved_steps = validate_int_range(steps, "steps", min_value=1, max_value=10_000_000)
+        end_dt = start_dt + (step_td * resolved_steps)
+        return resolved_steps, format_cftime(end_dt)
+
+    if end_iso is not None:
+        end_dt = parse_cftime(end_iso, calendar=calendar)
+        if end_dt <= start_dt:
+            raise ValidationError(
+                f"--end {format_cftime(end_dt)} must be strictly after --start {format_cftime(start_dt)}.",
+                field="end",
+            )
+        delta = end_dt - start_dt
+        if delta % step_td != datetime.timedelta(0):
+            total_hours = delta.total_seconds() / 3600.0
+            raise ValidationError(
+                f"Span from {format_cftime(start_dt)} to {format_cftime(end_dt)} ({total_hours:g}h in calendar "
+                f"{calendar!r}) is not an exact multiple of model step ({timestep_hours}h).",
+                field="end",
+            )
+        resolved_steps = int(delta // step_td)
+        return resolved_steps, format_cftime(end_dt)
+
+    assert length is not None
+    count, unit = parse_length_spec(length)
+    if unit in ("h", "d"):
+        total_hours_int = count if unit == "h" else count * 24
+        if total_hours_int % timestep_hours != 0:
+            raise ValidationError(
+                f"--length {length!r} ({total_hours_int}h) is not an exact multiple of model step ({timestep_hours}h).",
+                field="length",
+            )
+        resolved_steps = total_hours_int // timestep_hours
+        end_dt = start_dt + (step_td * resolved_steps)
+        return resolved_steps, format_cftime(end_dt)
+
+    months = count if unit == "m" else count * 12
+    end_dt = add_calendar_months(start_dt, months, calendar)
+    delta = end_dt - start_dt
+    if delta % step_td != datetime.timedelta(0):
+        total_hours = delta.total_seconds() / 3600.0
+        raise ValidationError(
+            f"--length {length!r} from {format_cftime(start_dt)} to {format_cftime(end_dt)} "
+            f"({total_hours:g}h in calendar {calendar!r}) is not an exact multiple of model step ({timestep_hours}h); "
+            "use a divisible --length (e.g. days/years) or explicit --steps.",
+            field="length",
+        )
+    resolved_steps = int(delta // step_td)
+    return resolved_steps, format_cftime(end_dt)
