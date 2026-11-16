@@ -1169,6 +1169,7 @@ def test_exec_fme_overlay_2026_10_strict_version_check_and_ocean_ic_tamper_guard
     manifest_cm4 = json.loads((out_cm4 / "aimip-manifest.json").read_text(encoding="utf-8"))
     assert manifest_cm4["rc"] == 0
     assert manifest_cm4["fme_version_imported"] == "2026.5.1"
+    assert manifest_cm4["cudnn_benchmark"] is False  # coupled: autotuning pinned off
 
     # 3. Wrong overlay version (`2026.5.1` imported when `2026.10.0` required) fails BEFORE `runpy`!
     out_mismatch = runs_dir / "exec_ver_mismatch"

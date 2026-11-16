@@ -4,6 +4,6 @@ Note: Keep top-level imports strictly stdlib-only so commands such as
 `aimip models` and `aimip run --dry-run` work without importing `torch`.
 """
 
-__version__ = "1.3.0"
+__version__ = "1.3.1"
 
 __all__ = ["__version__"]

@@ -33,7 +33,7 @@ What `aimip` does for you:
 | best for | shared clusters, reproducibility, several users | a workstation or a cluster without containers |
 
 Both give the same `DIR/bin/aimip` command and the same run directories. In our tests four of the five models
-compared gave bit-identical results in both modes; for the coupled `samudrace-cm4` see
+compared gave bit-identical results in both modes, and since 1.3.1 so does the coupled `samudrace-cm4`. See
 [what was tested](docs/installation.md#what-was-tested).
 
 ### Container (Apptainer, Singularity, Docker or Podman)
@@ -49,7 +49,7 @@ machine. To look into the image without installing anything (this only lists the
 which writes the `aimip` command with your site settings):
 
 ```bash
-docker run --rm ghcr.io/clidyn/aimip-claima:<version> models   # e.g. 1.3.0, see container/VERSION
+docker run --rm ghcr.io/clidyn/aimip-claima:<version> models   # e.g. 1.3.1, see container/VERSION
 ```
 
 ### Native (no container)

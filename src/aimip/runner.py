@@ -1966,10 +1966,10 @@ def prepare_run(
 def pin_cudnn_benchmark_off() -> Any:
     """Keep `torch.backends.cudnn.benchmark` False while fme runs; return a restore callable.
 
-    fme's coupled inference sets `torch.backends.cudnn.benchmark = True` unconditionally
-    (`fme/coupled/inference/inference.py`). cuDNN then picks convolution algorithms by timing them, so the same
-    run can give one of several bit-different results. With benchmark off, cuDNN uses its fixed heuristics and
-    repeated runs on the same hardware and software are bit-identical. Set `AIMIP_CUDNN_BENCHMARK=1` to keep fme's
+    fme's inference sets `torch.backends.cudnn.benchmark = True` on GPUs. cuDNN then picks convolution algorithms
+    by timing them; for the coupled models (`fme/coupled/inference/inference.py`) the same run then gave one of
+    two bit-different results. `exec_fme` applies this pin to coupled models only. With benchmark off, cuDNN uses
+    its fixed heuristics and repeated runs are bit-identical. Set `AIMIP_CUDNN_BENCHMARK=1` to keep fme's
     upstream behaviour.
     """
     if os.environ.get("AIMIP_CUDNN_BENCHMARK") == "1":
@@ -2306,7 +2306,9 @@ def exec_fme(out_dir: str) -> dict[str, Any]:
         raise
 
     manifest["fme_version_imported"] = imported_fme_version
-    manifest["cudnn_benchmark"] = os.environ.get("AIMIP_CUDNN_BENCHMARK") == "1"
+    # cuDNN autotuning is turned off only for the coupled models (their runs were not reproducible with it on);
+    # uncoupled ACE runs keep fme's default (on), which has been bit-reproducible in all our tests.
+    manifest["cudnn_benchmark"] = (not is_coupled) or os.environ.get("AIMIP_CUDNN_BENCHMARK") == "1"
     manifest["fme_overlay_dir"] = active_overlay_dir
     _write_json_atomic(manifest_path, manifest)
 
@@ -2369,7 +2371,7 @@ def exec_fme(out_dir: str) -> dict[str, Any]:
             # Both `fme.ace.inference.__main__` and `fme.coupled.inference.__main__` parse a
             # single positional `yaml_config` argument (`fme/{ace,coupled}/inference/__main__.py`).
             sys.argv = [fme_module, config_path]
-            restore_cudnn = pin_cudnn_benchmark_off()
+            restore_cudnn = pin_cudnn_benchmark_off() if is_coupled else (lambda: None)
             try:
                 runpy.run_module(fme_module, run_name="__main__")
             finally:

@@ -143,25 +143,31 @@ reproduced exactly by a from-zero install in each mode (see [what was tested](#w
 ## What was tested
 
 Release 1.3.0 was installed from an empty directory in both modes on one Slurm GPU cluster (Apptainer 1.5, NVIDIA
-A100-80GB, Python 3.12 for native mode) with fresh downloads, and five models were run in each mode:
+A100-80GB, Python 3.12 for native mode) with fresh
+downloads, and five models were run in each mode (the `samudrace-cm4` runs with autotuning off were made later,
+for 1.3.1):
 `ace2-era5` (8 steps), `hiro-acev2` (2 members), `samudrace-cm4` (6 coupled steps), `dlesym-v1.1` (2 members, 62 days)
 and `archesclimate-ssp` (24 months).
 
 - `ace2-era5`, `hiro-acev2`, `dlesym-v1.1` and `archesclimate-ssp`: container and native outputs are bit-identical
   in all output variables. `ace2-era5` gives `TMP2m 285.1578 K` for January 1979 in both. For `dlesym-v1.1`, the
   2 m temperature of member 0 also equals, bit for bit, an earlier run made with a different installation.
-- `samudrace-cm4`: the coupled inference in `fme` switches on cuDNN autotuning
-  (`torch.backends.cudnn.benchmark`), which picks convolution algorithms by timing them. With autotuning on,
-  repeated runs of the same 6-step configuration gave one of two bit-different results: both appeared in five
-  native runs, and four container runs all gave the same one of the two. The two results differ by order one in
-  the winds after six coupled steps. `aimip` now keeps autotuning off while `fme` runs, and the run manifest
-  records the setting. With it off, six native runs on two GPU nodes were bit-identical. They differ from both
-  earlier results, so runs made before this change cannot be reproduced bit for bit with the default setting.
-  The container has not been run with autotuning off yet, and container and native results have not been
-  compared, so use one mode for all runs of an experiment. `AIMIP_CUDNN_BENCHMARK=1` restores `fme`'s behaviour
-  in native mode; a container run does not receive this variable. The same setting applies to
-  `samudrace-e3smv3`, which uses the same coupled inference and was not tested.
-- Not tested in 1.3.0: the other nine models were not compared between the two modes; Docker/Podman; aarch64
+- `samudrace-cm4`: `fme` switches on cuDNN autotuning (`torch.backends.cudnn.benchmark`) on GPUs, which picks
+  convolution algorithms by timing them. With autotuning on, repeated runs of the same 6-step configuration gave
+  one of two bit-different results: both appeared in five native runs, and four container runs all gave the same
+  one of the two. The two results differ by order one in the winds after six coupled steps. `aimip` keeps
+  autotuning off while `fme` runs a coupled model (`samudrace-cm4`, `samudrace-e3smv3`), and the run manifest
+  records the setting (`cudnn_benchmark`). With it off, six native runs on two GPU nodes and two container runs
+  were all bit-identical, so container and native agree for this model in this test. These results differ from
+  both earlier results: a coupled run whose manifest has no `cudnn_benchmark` entry, or has `true`, cannot be
+  reproduced bit for bit with the default setting. `AIMIP_CUDNN_BENCHMARK=1` restores `fme`'s behaviour in
+  native mode; a container run does not receive this variable. `samudrace-e3smv3` uses the same coupled
+  inference and was not tested.
+- The eight uncoupled `fme` models keep `fme`'s default, autotuning on. With it, `ace2-era5` gave
+  `TMP2m 285.1578 K` in every install we made, and container and native outputs were bit-identical for
+  `ace2-era5` and `hiro-acev2`. This is what we observed, not a guarantee: the same setting made the coupled
+  runs vary. With autotuning off, `ace2-era5` gave 285.1581 K.
+- Not tested in 1.3.x: the other nine models were not compared between the two modes; Docker/Podman; aarch64
   builds; local mode without a scheduler; schedulers other than Slurm.
 
 ## Uninstall

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aimip"
-version = "1.3.0"
+version = "1.3.1"
 description = "Run AI climate emulators as climate experiments on a GPU machine or an HPC cluster"
 license = { text = "MIT" }
 requires-python = ">=3.12"

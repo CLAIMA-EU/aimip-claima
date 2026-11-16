@@ -490,6 +490,9 @@ def test_exec_fme_status_submitted_txt_and_summary_custom_dims(
 
     seed_rec = json.loads((out_dir / "seed_recorded.json").read_text(encoding="utf-8"))
     assert seed_rec == {"seed": 314}
+    # Uncoupled ACE runs keep fme's cuDNN autotuning default; only coupled runs pin it off.
+    ace_manifest = json.loads((out_dir / "aimip-manifest.json").read_text(encoding="utf-8"))
+    assert ace_manifest["cudnn_benchmark"] is True
 
     # Test `summary` with non-`lat`/`lon` horizontal dim names (`grid_yt`/`grid_xt`) to prove
     # zero hardcoded dim names in `summarize_run`!
@@ -570,7 +573,7 @@ def test_python_dash_m_aimip_submitted_txt_sacct_and_failed_exec(
         check=False,
     )
     assert proc.returncode == 0
-    assert "aimip 1.3.0" in proc.stdout
+    assert "aimip 1.3.1" in proc.stdout
 
     # Verify `status` parses `submitted.txt` (`job=424242 submitted=... user=...`).
     runs_dir: pathlib.Path = playground_env["runs_dir"]
@@ -1191,7 +1194,7 @@ def test_manifest_version_lock_sha_walltime_capped_account_none_and_help(
     assert "exceeds site max_time (12:00:00) and was clamped to 12:00:00" in cap.err
 
     manifest = json.loads((capped_dir / "aimip-manifest.json").read_text(encoding="utf-8"))
-    assert manifest["aimip_version"] == "1.3.0"
+    assert manifest["aimip_version"] == "1.3.1"
     assert isinstance(manifest["aimip_lock_sha256"], str) and len(manifest["aimip_lock_sha256"]) == 64
     assert isinstance(manifest["ic_provenance"], str) and len(manifest["ic_provenance"]) > 0
     assert manifest["slurm"]["walltime_capped"] is True
