@@ -150,11 +150,17 @@ and `archesclimate-ssp` (24 months).
 - `ace2-era5`, `hiro-acev2`, `dlesym-v1.1` and `archesclimate-ssp`: container and native outputs are bit-identical
   in all output variables. `ace2-era5` gives `TMP2m 285.1578 K` for January 1979 in both. For `dlesym-v1.1`, the
   2 m temperature of member 0 also equals, bit for bit, an earlier run made with a different installation.
-- `samudrace-cm4`: two container runs on different nodes are identical. Container and native agree bit for bit
-  after one, two and three coupled steps and differ after six (differences of order one in the winds). The cause
-  is not established: the Python packages are byte-identical in both modes, the system libraries differ. We have
-  not tested whether the two modes give the same climate for this model, so use one mode for all runs of an
-  experiment.
+- `samudrace-cm4`: the coupled inference in `fme` switches on cuDNN autotuning
+  (`torch.backends.cudnn.benchmark`), which picks convolution algorithms by timing them. With autotuning on,
+  repeated runs of the same 6-step configuration gave one of two bit-different results: both appeared in five
+  native runs, and four container runs all gave the same one of the two. The two results differ by order one in
+  the winds after six coupled steps. `aimip` now keeps autotuning off while `fme` runs, and the run manifest
+  records the setting. With it off, six native runs on two GPU nodes were bit-identical. They differ from both
+  earlier results, so runs made before this change cannot be reproduced bit for bit with the default setting.
+  The container has not been run with autotuning off yet, and container and native results have not been
+  compared, so use one mode for all runs of an experiment. `AIMIP_CUDNN_BENCHMARK=1` restores `fme`'s behaviour
+  in native mode; a container run does not receive this variable. The same setting applies to
+  `samudrace-e3smv3`, which uses the same coupled inference and was not tested.
 - Not tested in 1.3.0: the other nine models were not compared between the two modes; Docker/Podman; aarch64
   builds; local mode without a scheduler; schedulers other than Slurm.
 

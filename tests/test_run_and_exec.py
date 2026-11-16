@@ -1447,3 +1447,52 @@ def test_exec_fme_private_aimip_tmp_dir_cleanup_restore_symlink_refusal_and_left
             mp_cfg.pop("tempdir", None)
         else:
             mp_cfg["tempdir"] = saved_mp_tempdir
+
+
+def test_pin_cudnn_benchmark_off_holds_against_fme_and_restores(monkeypatch):
+    """fme's coupled inference sets cudnn.benchmark=True; aimip keeps it off while fme runs, then restores."""
+    torch = pytest.importorskip("torch")
+    from aimip.runner import pin_cudnn_benchmark_off
+
+    monkeypatch.delenv("AIMIP_CUDNN_BENCHMARK", raising=False)
+    cls = type(torch.backends.cudnn)
+    before = cls.__dict__.get("benchmark")
+    restore = pin_cudnn_benchmark_off()
+    try:
+        torch.backends.cudnn.benchmark = True  # what fme.coupled.inference does
+        assert torch.backends.cudnn.benchmark is False
+    finally:
+        restore()
+    assert cls.__dict__.get("benchmark") is before
+    torch.backends.cudnn.benchmark = True
+    assert torch.backends.cudnn.benchmark is True
+    torch.backends.cudnn.benchmark = False
+
+    monkeypatch.setenv("AIMIP_CUDNN_BENCHMARK", "1")
+    restore = pin_cudnn_benchmark_off()
+    try:
+        torch.backends.cudnn.benchmark = True
+        assert torch.backends.cudnn.benchmark is True
+    finally:
+        restore()
+        torch.backends.cudnn.benchmark = False
+
+
+def test_pin_cudnn_benchmark_restores_a_prior_true_value_even_after_an_exception(monkeypatch):
+    torch = pytest.importorskip("torch")
+    from aimip.runner import pin_cudnn_benchmark_off
+
+    monkeypatch.delenv("AIMIP_CUDNN_BENCHMARK", raising=False)
+    torch.backends.cudnn.benchmark = True
+    try:
+        restore = pin_cudnn_benchmark_off()
+        with pytest.raises(RuntimeError):
+            try:
+                torch.backends.cudnn.benchmark = True
+                assert torch.backends.cudnn.benchmark is False
+                raise RuntimeError("fme failed")
+            finally:
+                restore()
+        assert torch.backends.cudnn.benchmark is True
+    finally:
+        torch.backends.cudnn.benchmark = False

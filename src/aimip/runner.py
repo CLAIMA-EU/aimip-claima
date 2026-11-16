@@ -1963,6 +1963,38 @@ def prepare_run(
     return manifest
 
 
+def pin_cudnn_benchmark_off() -> Any:
+    """Keep `torch.backends.cudnn.benchmark` False while fme runs; return a restore callable.
+
+    fme's coupled inference sets `torch.backends.cudnn.benchmark = True` unconditionally
+    (`fme/coupled/inference/inference.py`). cuDNN then picks convolution algorithms by timing them, so the same
+    run can give one of several bit-different results. With benchmark off, cuDNN uses its fixed heuristics and
+    repeated runs on the same hardware and software are bit-identical. Set `AIMIP_CUDNN_BENCHMARK=1` to keep fme's
+    upstream behaviour.
+    """
+    if os.environ.get("AIMIP_CUDNN_BENCHMARK") == "1":
+        return lambda: None
+    try:
+        import torch.backends.cudnn as cudnn_mod
+    except ImportError:
+        return lambda: None
+    cls = type(cudnn_mod)
+    had_own = "benchmark" in cls.__dict__
+    original = cls.__dict__.get("benchmark")
+    prior_value = bool(cudnn_mod.benchmark)
+    cudnn_mod.benchmark = False
+    cls.benchmark = property(lambda self: False, lambda self, value: None)
+
+    def restore() -> None:
+        if had_own:
+            cls.benchmark = original
+        else:
+            del cls.benchmark
+        cudnn_mod.benchmark = prior_value
+
+    return restore
+
+
 def _quiet_git_revision_short_hash() -> str | None:
     """Replacement for `fme.core.training_history.git_revision_short_hash` (`training_history.py:97-105`).
 
@@ -2274,6 +2306,7 @@ def exec_fme(out_dir: str) -> dict[str, Any]:
         raise
 
     manifest["fme_version_imported"] = imported_fme_version
+    manifest["cudnn_benchmark"] = os.environ.get("AIMIP_CUDNN_BENCHMARK") == "1"
     manifest["fme_overlay_dir"] = active_overlay_dir
     _write_json_atomic(manifest_path, manifest)
 
@@ -2336,7 +2369,11 @@ def exec_fme(out_dir: str) -> dict[str, Any]:
             # Both `fme.ace.inference.__main__` and `fme.coupled.inference.__main__` parse a
             # single positional `yaml_config` argument (`fme/{ace,coupled}/inference/__main__.py`).
             sys.argv = [fme_module, config_path]
-            runpy.run_module(fme_module, run_name="__main__")
+            restore_cudnn = pin_cudnn_benchmark_off()
+            try:
+                runpy.run_module(fme_module, run_name="__main__")
+            finally:
+                restore_cudnn()
         except SystemExit as sys_exit:
             if sys_exit.code is None:
                 rc = 0

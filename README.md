@@ -33,7 +33,7 @@ What `aimip` does for you:
 | best for | shared clusters, reproducibility, several users | a workstation or a cluster without containers |
 
 Both give the same `DIR/bin/aimip` command and the same run directories. In our tests four of the five models
-compared gave bit-identical results in both modes; the coupled `samudrace-cm4` did not. See
+compared gave bit-identical results in both modes; for the coupled `samudrace-cm4` see
 [what was tested](docs/installation.md#what-was-tested).
 
 ### Container (Apptainer, Singularity, Docker or Podman)
