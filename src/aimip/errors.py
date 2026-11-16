@@ -10,6 +10,7 @@ EXIT_EXECUTION = 1
 EXIT_USAGE = 2
 EXIT_MISSING_DATA = 3
 EXIT_APPROVAL = 4
+EXIT_UNSTABLE = 5
 EXIT_DEADLINE = 75
 
 EXIT_CODES: dict[str, int] = {
@@ -21,6 +22,7 @@ EXIT_CODES: dict[str, int] = {
     "registry_error": EXIT_USAGE,
     "missing_assets": EXIT_MISSING_DATA,
     "approval_error": EXIT_APPROVAL,
+    "unstable_rollout": EXIT_UNSTABLE,
     "deadline": EXIT_DEADLINE,
 }
 

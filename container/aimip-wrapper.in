@@ -52,28 +52,24 @@ read_expected_image_sha() {
   raw=${raw#sha256:}
   printf '%s\n' "${raw:-unknown}"
 }
-verify_container_image() {  # verify_container_image <strict|fast>
-  local mode=${1:-fast} exp_sha cur_stat got_sha live_id
+verify_container_image() {
+  local exp_sha got_sha live_id
+  [ -L "$PREFIX/image.sha256" ] && die "refusing symlinked $PREFIX/image.sha256"
+  [ -f "$PREFIX/image.sha256" ] || die "missing $PREFIX/image.sha256 (re-run install-container.sh)"
+  exp_sha=$(read_expected_image_sha)
+  case "$exp_sha" in ""|unknown|*[!0-9a-f]*) die "invalid $PREFIX/image.sha256";; esac
   case "$RUNTIME" in
     apptainer|singularity)
+      [ "${#exp_sha}" -eq 64 ] || die "invalid $PREFIX/image.sha256"
       [ -L "$IMAGE" ] && die "refusing symlinked container image: $IMAGE"
-      if [ -f "$PREFIX/image.sha256" ]; then
-        [ -f "$IMAGE" ] || die "container image missing: $IMAGE"
-        exp_sha=$(read_expected_image_sha)
-        [ -n "$exp_sha" ] && [ "$exp_sha" != "unknown" ] || die "invalid $PREFIX/image.sha256"
-        cur_stat=$(ls -ln "$IMAGE" 2>/dev/null | awk '{print $5"|"$6"|"$7"|"$8}')
-        if [ "$mode" = "strict" ] || [ ! -f "$PREFIX/image.stat" ] || [ "$cur_stat" != "$(cat "$PREFIX/image.stat" 2>/dev/null)" ]; then
-          got_sha=$(sha256_host_file "$IMAGE" 2>/dev/null || true)
-          [ "$got_sha" = "$exp_sha" ] || die "container image $IMAGE failed SHA-256 verification against $PREFIX/image.sha256"
-        fi
-      fi;;
+      [ -f "$IMAGE" ] || die "container image missing: $IMAGE"
+      got_sha=$(sha256_host_file "$IMAGE" 2>/dev/null || true)
+      [ "$got_sha" = "$exp_sha" ] || die "container image $IMAGE failed SHA-256 verification against $PREFIX/image.sha256";;
     docker|podman)
-      if [ -f "$PREFIX/image.sha256" ]; then
-        exp_sha=$(read_expected_image_sha)
-        [ -n "$exp_sha" ] && [ "$exp_sha" != "unknown" ] || die "invalid $PREFIX/image.sha256"
-        live_id=$("$RUNTIME_BIN" image inspect --format '{{.Id}}' "$IMAGE" 2>/dev/null | sed 's/^sha256://' | tr -d '[:space:]')
-        [ "$live_id" = "$exp_sha" ] || die "container image $IMAGE digest mismatch (expected $exp_sha, got ${live_id:-missing})"
-      fi;;
+      [ "${#exp_sha}" -ge 12 ] || die "invalid $PREFIX/image.sha256"
+      live_id=$("$RUNTIME_BIN" image inspect --format '{{.Id}}' "$IMAGE" 2>/dev/null | sed 's/^sha256://' | tr -d '[:space:]')
+      [ "$live_id" = "$exp_sha" ] || die "container image $IMAGE digest mismatch (expected $exp_sha, got ${live_id:-missing})";;
+    *) die "unknown runtime $RUNTIME";;
   esac
 }
 pid_start_id() {
@@ -87,6 +83,16 @@ pid_start_id() {
     set -- $ps_out
     printf 'ps:%s\n' "$*"
   fi
+}
+pid_pgid() {
+  local p=$1 g=""
+  if [ -r "/proc/$p/stat" ]; then
+    g=$(awk '{sub(/^.*\) /,""); if (NF>=3) print $3}' "/proc/$p/stat" 2>/dev/null || true)
+  fi
+  if [ -z "$g" ]; then
+    g=$(ps -o pgid= -p "$p" 2>/dev/null | tr -d '[:space:]' || true)
+  fi
+  case "$g" in ""|*[!0-9]*) ;; *) printf '%s\n' "$g";; esac
 }
 is_pid_zombie_sh() {
   local p=$1 st_ch
@@ -248,7 +254,7 @@ EOF
 verify_submit_in_container() {  # verify_submit_in_container <run_dir> <priv_dir> <priv_script> <expect_digest> <site_cfg>
   local d=$1 pd=$2 priv_s=$3 exp_dig=$4 scfg=${5:-} img_sha m v e
   local -a vmounts venvs vcmd vb ve vid
-  verify_container_image strict
+  verify_container_image
   vmounts=("$PREFIX:$PREFIX:ro" "$pd:$pd:ro")
   [ -d "$DATA" ] && vmounts+=("$DATA:$DATA:ro")
   [ -d "$RUN_ROOT" ] && vmounts+=("$RUN_ROOT:$RUN_ROOT:ro")
@@ -304,7 +310,7 @@ if [ "${1:-}" = "submit" ] && ! has_help_flag "${@:2}"; then
     safe_path "$SITE_CFG_ARG"
     [ -f "$SITE_CFG_ARG" ] && [ ! -L "$SITE_CFG_ARG" ] || die_cmd "$WANT_JSON" "CONFIG_ERROR" 2 "site_config" "site config not found: $SITE_CFG_ARG"
   fi
-  verify_container_image strict
+  verify_container_image
   D=$(resolve_target "$D") || die_cmd "$WANT_JSON" "VALIDATION_ERROR" 2 "out" "invalid run target"
   if ! ( trusted_dir "$D" ) 2>"${TMPDIR:-/tmp}/.aimip_tdir.$$"; then
     terr=$(cat "${TMPDIR:-/tmp}/.aimip_tdir.$$" 2>/dev/null || echo "untrusted run directory"); rm -f "${TMPDIR:-/tmp}/.aimip_tdir.$$"
@@ -436,20 +442,41 @@ if [ "${1:-}" = "submit" ] && ! has_help_flag "${@:2}"; then
       echo "submitted job $jid   (then: aimip status $D  or: aimip watch $RNAME)"
     fi
   else
-    PD_KEEP=$PD; PD=""   # local runs execute the private copy in a dedicated session/process group until completion
     [ -L "$D/local-run.log" ] && die_cmd "$WANT_JSON" "VALIDATION_ERROR" 2 "out" "refusing symlinked $D/local-run.log"
     if command -v setsid >/dev/null 2>&1; then
+      PD_KEEP=$PD; PD=""   # local runs execute the private copy in a dedicated session/process group until completion
       setsid bash "$PD_KEEP/job.sbatch" </dev/null > "$D/local-run.log" 2>&1 &
     elif command -v python3 >/dev/null 2>&1; then
+      PD_KEEP=$PD; PD=""
       python3 -c 'import os, sys; os.setsid(); os.execvp("bash", ["bash", sys.argv[1]])' "$PD_KEEP/job.sbatch" </dev/null > "$D/local-run.log" 2>&1 &
     else
-      nohup bash "$PD_KEEP/job.sbatch" </dev/null > "$D/local-run.log" 2>&1 &
+      die_cmd "$WANT_JSON" "EXECUTION_ERROR" 1 "" "detached local launch requires setsid or python3 to isolate the process group"
     fi
     lpid=$!
+    my_pgid=$(pid_pgid "$$")
+    lpgid=""
+    for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40; do
+      lpgid=$(pid_pgid "$lpid")
+      [ "$lpgid" = "$lpid" ] && break
+      kill -0 "$lpid" 2>/dev/null && ! is_pid_zombie_sh "$lpid" || break
+      sleep 0.05 2>/dev/null || break
+    done
     lstart=$(pid_start_id "$lpid")
+    if kill -0 "$lpid" 2>/dev/null && ! is_pid_zombie_sh "$lpid"; then
+      if [ -z "$lstart" ] || [ -z "$lpgid" ] || [ "$lpgid" -le 1 ] || [ "$lpgid" = "${my_pgid:-0}" ]; then
+        if [ -n "$lpgid" ] && [ "$lpgid" -gt 1 ] && [ "$lpgid" != "${my_pgid:-0}" ]; then
+          kill -TERM "-$lpgid" 2>/dev/null || true
+        else
+          kill -TERM "$lpid" 2>/dev/null || true
+        fi
+        rm -rf "$PD_KEEP" 2>/dev/null || true
+        die_cmd "$WANT_JSON" "EXECUTION_ERROR" 1 "" "failed to verify dedicated session group or start identity for local process $lpid"
+      fi
+    fi
+    [ -n "$lpgid" ] || lpgid=$lpid
     esc_lstart=$(json_escape "${lstart:-}")
     write_in_dir "$D" local.pid "$lpid"
-    write_in_dir "$D" submit-intent.json "{\"state\":\"submitted_local\",\"run_dir\":\"$D\",\"user\":\"$U\",\"local_pid\":$lpid,\"local_pgid\":$lpid,\"local_start_id\":\"$esc_lstart\"}"
+    write_in_dir "$D" submit-intent.json "{\"state\":\"submitted_local\",\"run_dir\":\"$D\",\"user\":\"$U\",\"local_pid\":$lpid,\"local_pgid\":$lpgid,\"local_start_id\":\"$esc_lstart\"}"
     if [ "$WANT_JSON" = 1 ]; then
       printf '{"aimip":"1","ok":true,"result":{"out_dir":"%s","run_dir":"%s","run_name":"%s","digest":%s,"scheduler":"none","attempt_id":"%s","slurm_job_id":null,"local_pid":%s,"log_path":"%s/local-run.log","state":"RUNNING_LOCAL","reconciled":false,"host_command":null}}\n' "$D" "$D" "$RNAME" "$DIG_JSON" "$lpid" "$lpid" "$D"
     else
@@ -500,41 +527,38 @@ if [ "${1:-}" = "cancel" ] && [ $# -ge 2 ] && ! has_help_flag "${@:2}"; then
     elif [ -f "$CD/local.pid" ]; then
       lpid=$(tr -dc '0-9' < "$CD/local.pid")
       [ -n "$lpid" ] && [ "$lpid" -gt 1 ] || die_cmd "$WANT_JSON" "VALIDATION_ERROR" 2 "local_pid" "invalid local.pid in $CD"
+      rec_pid=""
       rec_pgid=""
       rec_start=""
-      if [ -f "$CD/submit-intent.json" ]; then
+      if [ -f "$CD/submit-intent.json" ] && [ ! -L "$CD/submit-intent.json" ]; then
+        rec_pid=$(sed -n 's/.*"local_pid"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p' "$CD/submit-intent.json" | head -n 1)
         rec_pgid=$(sed -n 's/.*"local_pgid"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p' "$CD/submit-intent.json" | head -n 1)
         rec_start=$(sed -n 's/.*"local_start_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$CD/submit-intent.json" | head -n 1)
       fi
       if ! kill -0 "$lpid" 2>/dev/null || is_pid_zombie_sh "$lpid"; then
         die_cmd "$WANT_JSON" "EXECUTION_ERROR" 1 "" "local process $lpid for $CD not found (already exited)"
       fi
-      if [ -n "$rec_start" ]; then
-        live_start=$(pid_start_id "$lpid")
-        if [ -n "$live_start" ] && [ "$live_start" != "$rec_start" ]; then
-          die_cmd "$WANT_JSON" "EXECUTION_ERROR" 1 "" "refusing to signal local pid $lpid for $CD: process start identity changed"
-        fi
+      live_start=$(pid_start_id "$lpid")
+      if [ -n "$rec_start" ] && [ -n "$live_start" ] && [ "$live_start" != "$rec_start" ]; then
+        die_cmd "$WANT_JSON" "EXECUTION_ERROR" 1 "" "refusing to signal local pid $lpid for $CD: process start identity changed"
       fi
-      my_pgid=$(ps -o pgid= -p $$ 2>/dev/null | tr -d '[:space:]' || true)
+      if [ "$rec_pid" != "$lpid" ] || [ -z "$rec_start" ] || [ -z "$live_start" ] || [ "$live_start" != "$rec_start" ]; then
+        die_cmd "$WANT_JSON" "EXECUTION_ERROR" 1 "" "refusing to cancel local pid $lpid for $CD: cannot verify process start identity (not cancelled)"
+      fi
+      my_pgid=$(pid_pgid "$$")
+      live_pgid=$(pid_pgid "$lpid")
       tpgid=${rec_pgid:-}
-      if [ -n "$tpgid" ] && [ "$tpgid" -gt 1 ] && [ "$tpgid" != "${my_pgid:-0}" ]; then
-        kill -TERM "-$tpgid" 2>/dev/null || kill -TERM "$lpid" 2>/dev/null || die_cmd "$WANT_JSON" "EXECUTION_ERROR" 1 "" "local process $lpid for $CD not found"
-      else
-        kill -TERM "$lpid" 2>/dev/null || die_cmd "$WANT_JSON" "EXECUTION_ERROR" 1 "" "local process $lpid for $CD not found"
+      if [ -z "$tpgid" ] || [ "$tpgid" -le 1 ] || [ "$tpgid" = "${my_pgid:-0}" ] || [ -z "$live_pgid" ] || [ "$live_pgid" != "$tpgid" ]; then
+        die_cmd "$WANT_JSON" "EXECUTION_ERROR" 1 "" "refusing to cancel local pid $lpid for $CD: cannot verify dedicated session group (not cancelled)"
       fi
-      write_in_dir "$CD" cancel-requested.txt "pid=$lpid pgid=${tpgid:-$lpid} requested_by=$U"
+      kill -TERM "-$tpgid" 2>/dev/null || die_cmd "$WANT_JSON" "EXECUTION_ERROR" 1 "" "local process group $tpgid for $CD not found"
+      write_in_dir "$CD" cancel-requested.txt "pid=$lpid pgid=$tpgid requested_by=$U"
       for _ in 1 2 3 4 5 6 7 8 9 10; do
-        if [ -n "$tpgid" ] && [ "$tpgid" -gt 1 ] && [ "$tpgid" != "${my_pgid:-0}" ]; then
-          kill -0 "-$tpgid" 2>/dev/null || break
-        else
-          kill -0 "$lpid" 2>/dev/null && ! is_pid_zombie_sh "$lpid" || break
-        fi
+        kill -0 "-$tpgid" 2>/dev/null || break
         sleep 0.05 2>/dev/null || break
       done
-      if [ -n "$tpgid" ] && [ "$tpgid" -gt 1 ] && [ "$tpgid" != "${my_pgid:-0}" ] && kill -0 "-$tpgid" 2>/dev/null; then
+      if kill -0 "-$tpgid" 2>/dev/null; then
         kill -KILL "-$tpgid" 2>/dev/null || true
-      elif kill -0 "$lpid" 2>/dev/null && ! is_pid_zombie_sh "$lpid"; then
-        kill -KILL "$lpid" 2>/dev/null || true
       fi
       if [ "$WANT_JSON" = 1 ]; then
         printf '{"aimip":"1","ok":true,"result":{"run_name":"%s","run_dir":"%s","scheduler":"none","attempt_id":"%s","cancelled":true,"status":"cancel_requested"}}\n' "$CNAME" "$CD" "$lpid"
@@ -683,10 +707,10 @@ done
 if [ "${1:-}" = "exec-fme" ]; then
   [ -n "${2:-}" ] || die "usage: aimip exec-fme <run-dir>"
   safe_path "$2"; trusted_dir "${2%/}"
-  verify_container_image strict
+  verify_container_image
   RW+=("$2")
 else
-  verify_container_image fast
+  verify_container_image
   case "${1:-}" in status|watch|logs|cancel|summary|collect|ls) case "$TARGET_ARG" in /*) RW+=("$TARGET_ARG");; esac;; esac
 fi
 mkdir -p "$RUN_ROOT" 2>/dev/null || true

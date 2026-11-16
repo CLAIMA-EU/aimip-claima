@@ -16,16 +16,24 @@ import tomllib
 
 import pytest
 
-from aimip import services as svc
+from aimip import emu_job, services as svc
 from aimip.cli import build_parser, main
 from aimip.completion import render_completion
-from aimip.errors import ApprovalError, ConfigError, ExecutionError, ValidationError
+from aimip.errors import (
+    EXIT_APPROVAL,
+    EXIT_UNSTABLE,
+    ApprovalError,
+    ConfigError,
+    ExecutionError,
+    ValidationError,
+)
 from aimip.families import _hash_custom_forcing_dir_assets
 from aimip.mcp_server import McpToolset, build_fastmcp_server
 from aimip.services import approval
 from aimip.services.metadata import MODEL_CARDS, TIER_DEFINITIONS
 from aimip.services.types import Authorization, RunSpec
 from aimip.status import get_run_status
+from aimip.submit import read_pid_start_id
 from conftest import parse_cli_json, pty_responder, write_fake_ic_netcdf
 
 
@@ -766,6 +774,12 @@ def test_local_submit_cancels_process_group_descendants_and_refuses_reused_pid(
     # 2. Shell wrapper `submit` + `cancel` (`SCHEDULER=none`): also kills parent, child, AND grandchild.
     sh_prefix = tmp_path / "r5_sh_prefix"
     (sh_prefix / "bin").mkdir(parents=True)
+    sh_sif = sh_prefix / "img.sif"
+    sh_sif.write_bytes(b"R5_SHELL_WRAPPER_SIF_IMAGE")
+    (sh_prefix / "image.sha256").write_text(
+        f"{hashlib.sha256(sh_sif.read_bytes()).hexdigest()}\n",
+        encoding="utf-8",
+    )
     fakert = tmp_path / "r5_fakert"
     fakert.write_text(
         f'#!/bin/bash\nexec "{sys.executable}" -B -S "{tree_helper}" "${{@: -1}}" parent\n',
@@ -871,9 +885,174 @@ def test_local_submit_cancels_process_group_descendants_and_refuses_reused_pid(
         )
         assert sh_reused.returncode != 0
         assert bystander.poll() is None, "Shell cancel signalled a reused bystander PID!"
+
+        # 3b. Absent `submit-intent.json` (only `local.pid`): `status` sees running, `cancel` (Python & shell) REFUSES without signalling!
+        no_intent_run = runs_root / "absent_intent_run"
+        no_intent_run.mkdir()
+        (no_intent_run / "aimip-manifest.json").write_text(
+            (stale_run / "aimip-manifest.json").read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+        (no_intent_run / "local.pid").write_text(f"{bystander.pid}\n", encoding="utf-8")
+        assert get_run_status(str(no_intent_run))["state"] == "running"
+        with pytest.raises(ExecutionError, match="cannot verify"):
+            svc.cancel(str(no_intent_run))
+        assert bystander.poll() is None, "Python cancel signalled a PID with absent submit-intent.json!"
+
+        sh_no_intent = subprocess.run(
+            ["/bin/bash", str(sh_wrapper), "cancel", str(no_intent_run)], capture_output=True, text=True
+        )
+        assert sh_no_intent.returncode != 0
+        assert "cannot verify" in sh_no_intent.stderr
+        assert bystander.poll() is None, "Shell cancel signalled a PID with absent submit-intent.json!"
+
+        # 3c. Failed live-identity lookup: recorded `submit-intent.json` matches `bystander`, but live start lookup fails -> REFUSED!
+        live_fail_run = runs_root / "failed_live_lookup_run"
+        live_fail_run.mkdir()
+        (live_fail_run / "aimip-manifest.json").write_text(
+            (stale_run / "aimip-manifest.json").read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+        real_bystander_start = read_pid_start_id(bystander.pid) or "proc:123456"
+        real_bystander_pgid = int(os.getpgid(bystander.pid))
+        (live_fail_run / "local.pid").write_text(f"{bystander.pid}\n", encoding="utf-8")
+        (live_fail_run / "submit-intent.json").write_text(
+            json.dumps(
+                {
+                    "state": "submitted_local",
+                    "local_pid": bystander.pid,
+                    "local_pgid": real_bystander_pgid,
+                    "local_start_id": real_bystander_start,
+                }
+            ),
+            encoding="utf-8",
+        )
+        with monkeypatch.context() as mp_nolid:
+            mp_nolid.setattr("aimip.submit.read_pid_start_id", lambda _p: None)
+            with pytest.raises(ExecutionError, match="cannot verify"):
+                svc.cancel(str(live_fail_run))
+        assert bystander.poll() is None, "Python cancel signalled a PID when live start lookup failed!"
+
+        nolid_bin = tmp_path / "r5_nolid_bin"
+        nolid_bin.mkdir()
+        import shutil as _shutil
+
+        real_awk = _shutil.which("awk") or "/usr/bin/awk"
+        real_ps = _shutil.which("ps") or "/bin/ps"
+        (nolid_bin / "awk").write_text(
+            f'#!/bin/sh\ncase "$1" in *"proc:"*) exit 0;; esac\nexec "{real_awk}" "$@"\n',
+            encoding="utf-8",
+        )
+        (nolid_bin / "awk").chmod(0o755)
+        (nolid_bin / "ps").write_text(
+            f'#!/bin/sh\ncase "$*" in *lstart=*) exit 1;; esac\nexec "{real_ps}" "$@"\n',
+            encoding="utf-8",
+        )
+        (nolid_bin / "ps").chmod(0o755)
+        sh_nolid = subprocess.run(
+            ["/bin/bash", str(sh_wrapper), "cancel", str(live_fail_run)],
+            env={**os.environ, "PATH": f"{nolid_bin}:{os.environ.get('PATH', '')}"},
+            capture_output=True,
+            text=True,
+        )
+        assert sh_nolid.returncode != 0
+        assert "cannot verify" in sh_nolid.stderr
+        assert bystander.poll() is None, "Shell cancel signalled a PID when live start lookup failed!"
+
+        # 3d. Mismatched live PGID: recorded `local_start_id` matches, but `local_pgid` differs from live `os.getpgid` -> REFUSED!
+        bad_pgid_run = runs_root / "mismatched_pgid_run"
+        bad_pgid_run.mkdir()
+        (bad_pgid_run / "aimip-manifest.json").write_text(
+            (stale_run / "aimip-manifest.json").read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+        (bad_pgid_run / "local.pid").write_text(f"{bystander.pid}\n", encoding="utf-8")
+        (bad_pgid_run / "submit-intent.json").write_text(
+            json.dumps(
+                {
+                    "state": "submitted_local",
+                    "local_pid": bystander.pid,
+                    "local_pgid": real_bystander_pgid + 1000,
+                    "local_start_id": real_bystander_start,
+                }
+            ),
+            encoding="utf-8",
+        )
+        with pytest.raises(ExecutionError, match="cannot verify"):
+            svc.cancel(str(bad_pgid_run))
+        sh_bad_pgid = subprocess.run(
+            ["/bin/bash", str(sh_wrapper), "cancel", str(bad_pgid_run)], capture_output=True, text=True
+        )
+        assert sh_bad_pgid.returncode != 0
+        assert "cannot verify" in sh_bad_pgid.stderr
+        assert bystander.poll() is None, "Cancel signalled a PID with mismatched live PGID!"
     finally:
         bystander.kill()
         bystander.wait()
+
+    # 4. When BOTH `setsid` and `python3` are unavailable, shell local `submit` fails closed without launching or writing `local.pid`.
+    import shutil as _shutil
+
+    no_session_bin = tmp_path / "r5_no_session_bin"
+    no_session_bin.mkdir()
+    for tool in (
+        "bash",
+        "id",
+        "mkdir",
+        "head",
+        "tr",
+        "cut",
+        "dirname",
+        "ls",
+        "awk",
+        "sed",
+        "sha256sum",
+        "shasum",
+        "mktemp",
+        "cat",
+        "chmod",
+        "mv",
+        "rm",
+        "rmdir",
+        "basename",
+        "sleep",
+    ):
+        found_tool = _shutil.which(tool)
+        if found_tool:
+            os.symlink(found_tool, no_session_bin / tool)
+    noses_marker = tmp_path / "noses_should_not_run.flag"
+    noses_fakert = tmp_path / "r5_noses_fakert"
+    noses_fakert.write_text(f"#!/bin/sh\ntouch '{noses_marker}'\nexit 0\n", encoding="utf-8")
+    noses_fakert.chmod(0o755)
+    noses_wrapper = sh_prefix / "bin" / "aimip-noses"
+    noses_wrapper.write_text(
+        tpl.replace("@PREFIX@", str(sh_prefix))
+        .replace("@RUNTIME@", "apptainer")
+        .replace("@RUNTIME_BIN@", str(noses_fakert))
+        .replace("@IMAGE@", str(sh_prefix / "img.sif"))
+        .replace("@SCHEDULER@", "none")
+        .replace("@RUN_ROOT@", str(runs_root))
+        .replace("@EXTRA_RO@", ""),
+        encoding="utf-8",
+    )
+    noses_wrapper.chmod(0o755)
+    noses_run = runs_root / "no_session_helpers_run"
+    noses_run.mkdir()
+    (noses_run / "job.sbatch").write_text(
+        f'#!/bin/bash\n# aimip-generated v1\n\nset -euo pipefail\n"{sh_prefix}/bin/aimip" exec-fme "{noses_run}"\n',
+        encoding="utf-8",
+    )
+    sub_noses = subprocess.run(
+        ["/bin/bash", str(noses_wrapper), "submit", str(noses_run)],
+        env={"PATH": str(no_session_bin), "HOME": str(tmp_path), "TMPDIR": str(tmp_path)},
+        capture_output=True,
+        text=True,
+    )
+    assert sub_noses.returncode != 0
+    assert "setsid or python3" in sub_noses.stderr
+    assert not (noses_run / "local.pid").exists()
+    assert not (noses_run / "submit-intent.json").exists()
+    assert not noses_marker.exists()
 
 
 # ---------------------------------------------------------------------------
@@ -987,13 +1166,26 @@ def test_container_wrapper_enforces_immutable_docker_image_id_and_verifies_sif_s
     assert r_tamper_doc.returncode != 0
     assert "image" in r_tamper_doc.stderr.lower()
 
-    # SIF replacement check: replacing SIF bytes (even preserving exact file size and mtime!) refuses before exec-fme and submit!
+    # SIF replacement check: replacing SIF bytes (even preserving exact file size, mtime, AND matching `image.stat`!)
+    # refuses before `exec-fme`, `submit`, AND inline `run ... --local`, and missing `image.sha256` also fails closed!
     sif_pfx = tmp_path / "r6_sif_pfx"
     (sif_pfx / "bin").mkdir(parents=True)
     sif_file = sif_pfx / "aimip.sif"
     sif_file.write_bytes(b"ORIGINAL_SIF_IMAGE_BYTES_V1")
     sif_sha = hashlib.sha256(sif_file.read_bytes()).hexdigest()
     (sif_pfx / "image.sha256").write_text(f"{sif_sha}\n", encoding="utf-8")
+
+    def _ls_stat_tuple(path: Path) -> str:
+        res = subprocess.run(
+            ["/bin/sh", "-c", 'LC_ALL=C ls -ln "$1" | awk \'{print $5"|"$6"|"$7"|"$8}\'', "sh", str(path)],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return res.stdout.strip()
+
+    expected_stat_tuple = _ls_stat_tuple(sif_file)
+    (sif_pfx / "image.stat").write_text(f"{expected_stat_tuple}\n", encoding="utf-8")
 
     apptainer_ran = tmp_path / "apptainer_ran.flag"
     fake_app = fakebin / "apptainer"
@@ -1021,14 +1213,50 @@ def test_container_wrapper_enforces_immutable_docker_image_id_and_verifies_sif_s
     assert apptainer_ran.exists()
     apptainer_ran.unlink()
 
-    # Tamper SIF bytes while preserving exact size & mtime -> refused before invoking apptainer!
+    ok_inline_local = subprocess.run(
+        [str(sif_wrapper), "run", "ace2-era5", "--start", "1979-01-01", "--steps", "1", "--local"],
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    assert ok_inline_local.returncode == 0, ok_inline_local.stderr
+    assert apptainer_ran.exists()
+    apptainer_ran.unlink()
+
+    # Tamper SIF bytes while preserving exact size & mtime (so `image.stat` still matches!) -> refused on BOTH `exec-fme` and `run --local`!
     st_sif = sif_file.stat()
     sif_file.write_bytes(b"REPLACED_SIF_IMAGE_BYTES_V2")
     os.utime(sif_file, ns=(st_sif.st_atime_ns, st_sif.st_mtime_ns))
+    assert _ls_stat_tuple(sif_file) == expected_stat_tuple
 
     bad_exec = subprocess.run([str(sif_wrapper), "exec-fme", str(exec_dir)], env=env, capture_output=True, text=True)
     assert bad_exec.returncode != 0
     assert not apptainer_ran.exists()
+
+    bad_inline_local = subprocess.run(
+        [str(sif_wrapper), "run", "ace2-era5", "--start", "1979-01-01", "--steps", "1", "--local"],
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    assert bad_inline_local.returncode != 0
+    assert "sha-256" in bad_inline_local.stderr.lower()
+    assert not apptainer_ran.exists()
+
+    # Restore valid SIF bytes, remove `image.sha256` -> missing checksum MUST fail closed without calling container runtime!
+    sif_file.write_bytes(b"ORIGINAL_SIF_IMAGE_BYTES_V1")
+    (sif_pfx / "image.sha256").unlink()
+    for missing_sha_cmd in (
+        [str(sif_wrapper), "run", "ace2-era5", "--start", "1979-01-01", "--steps", "1", "--local"],
+        [str(sif_wrapper), "models"],
+        [str(doc_pfx / "bin" / "aimip"), "models"],
+    ):
+        if missing_sha_cmd[0] == str(doc_pfx / "bin" / "aimip"):
+            (doc_pfx / "image.sha256").unlink()
+        res_missing_sha = subprocess.run(missing_sha_cmd, env=env, capture_output=True, text=True)
+        assert res_missing_sha.returncode != 0
+        assert "image.sha256" in res_missing_sha.stderr
+        assert not apptainer_ran.exists()
 
 
 # ---------------------------------------------------------------------------
@@ -1047,8 +1275,10 @@ def test_hiro_ace_periods_tier_citation_honest_tiers_and_ic_provenance(
     monkeypatch.setenv("AIMIP_DATA", str(data_dir))
     monkeypatch.setenv("AIMIP_DEFAULT_OUT_ROOT", str(allow_tmp_run_root))
 
-    # Item 7: `hiro-ace` tier, training period (2014-2022), out-of-training 1994-2014 caveat, and arXiv:2512.18224 citation.
+    # Item 7: `hiro-ace` tier, title, training period (2014-2022), out-of-training 1994-2014 caveat, and arXiv:2512.18224 citation.
     hiro_card = svc.show("hiro-ace")
+    assert hiro_card["title"] == "HiRO-ACE (Ai2, experimental 1994-2014 extension)"
+    assert "1994-2024" not in hiro_card["title"]
     assert hiro_card["status"] == "experimental"
     assert hiro_card["verified_on"] is None
     assert "2014-2022" in hiro_card["limitations"] or "2014–2022" in hiro_card["limitations"]
@@ -1059,6 +1289,52 @@ def test_hiro_ace_periods_tier_citation_honest_tiers_and_ic_provenance(
         cite_doc = svc.cite(hiro_model)
         assert "2512.18224" in cite_doc["bibtex"]
         assert "Perkins" in cite_doc["bibtex"]
+
+    # `hiro-acev2` cites its own paper (Kwa et al. 2026, arXiv:2610.17693) and names it in `limitations`;
+    # `samudrace-e3smv3` cites both Wu et al. (arXiv:2608.10277) and SamudrACE GRL (doi:10.1029/2025GL119340).
+    hiro2_cite = svc.cite("hiro-acev2")
+    assert "2610.17693" in hiro2_cite["bibtex"]
+    assert "Extreme events and statistics" in hiro2_cite["bibtex"]
+    assert "2610.17693" in MODEL_CARDS["hiro-acev2"]["limitations"]
+
+    e3sm_cite = svc.cite("samudrace-e3smv3")
+    assert "10.1029/2025GL119340" in e3sm_cite["bibtex"]
+    assert "2608.10277" in e3sm_cite["bibtex"]
+
+    # Verbatim quoted `"Authors' limits"` vs `"AIMIP:"` caveats:
+    shieldp_lim = MODEL_CARDS["ace2s-shield-plus"]["limitations"]
+    assert '"inherits the biases relative to observations"' in shieldp_lim
+    assert '"generalization ability to unseen sea ice coverage is limited"' in shieldp_lim
+    assert '"abrupt regime shifts in stratospheric temperature and moisture can occur in inference runs"' in shieldp_lim
+    assert "AIMIP:" in shieldp_lim
+
+    som_lim = MODEL_CARDS["ace2-som"]["limitations"]
+    assert "idealized" not in som_lim.lower()
+    assert '"Sea-ice coverage, ocean heat transport, and ocean mixed layer depth are prescribed' in som_lim
+    assert '"Abrupt regime shifts in stratospheric temperature and moisture' in som_lim
+    assert '"Adjustment to an abrupt change in CO2 concentration occurs too quickly' in som_lim
+    assert "AIMIP:" in som_lim
+
+    cm4_lim = MODEL_CARDS["samudrace-cm4"]["limitations"]
+    assert "AIMIP:" in cm4_lim and "~1 K colder" in cm4_lim
+    assert cm4_lim.index("AIMIP:") < cm4_lim.index("~1 K colder")
+
+    eam_lim = MODEL_CARDS["ace2-eamv3"]["limitations"]
+    assert "1970-2020" in eam_lim
+    assert eam_lim.index("AIMIP:") < eam_lim.index("no CO2 input")
+
+    # Dedicated exit code 5 (`EXIT_UNSTABLE`) for unstable DLESyM rollouts (distinct from `EXIT_APPROVAL == 4`).
+    assert EXIT_APPROVAL == 4
+    assert EXIT_UNSTABLE == 5
+    assert emu_job.EXIT_UNSTABLE == 5
+    for dlesym_name in ("dlesym-v1.0", "dlesym-v1.1", "dlesym-v0-isccp"):
+        dlim = MODEL_CARDS[dlesym_name]["limitations"]
+        assert "exit code 5" in dlim
+        assert "exit code 4" not in dlim
+    repo_root = Path(__file__).resolve().parents[1]
+    assert "5 an unstable rollout" in (repo_root / "docs" / "console.md").read_text(encoding="utf-8")
+    assert "exit code 5" in (repo_root / "docs" / "models.md").read_text(encoding="utf-8")
+    assert "exit code 5" in (repo_root / "docs" / "troubleshooting.md").read_text(encoding="utf-8")
 
     # Item 9: Honest tiers — CI does NOT run model weights; only the 3 bit-identical fme models are `certified`.
     assert "AIMIP CI" not in TIER_DEFINITIONS["certified"]
@@ -1147,6 +1423,12 @@ def test_wrapper_approve_rw_config_mount_flag_order_json_envelopes_and_cli_parit
     prefix = tmp_path / "parity_pfx"
     (prefix / "bin").mkdir(parents=True)
     (prefix / "data").mkdir(parents=True)
+    parity_sif = prefix / "img.sif"
+    parity_sif.write_bytes(b"PARITY_TEST_SIF_IMAGE")
+    (prefix / "image.sha256").write_text(
+        f"{hashlib.sha256(parity_sif.read_bytes()).hexdigest()}\n",
+        encoding="utf-8",
+    )
     runs_root = Path(playground_env["default_out_root"])
     cap_argv = tmp_path / "cap.argv"
     fakert = tmp_path / "parity_fakert"

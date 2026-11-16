@@ -2142,46 +2142,60 @@ def cancel(
         raise ExecutionError(
             f"Local process {pid_int} for run {run_name!r} was not found (process already exited)."
         )
-    use_pgid = pgid is not None and pgid > 1 and pgid != os.getpgrp()
+    caller_pgid = os.getpgrp()
+    if reason is not None or pgid is None or pgid <= 1 or pgid == caller_pgid:
+        raise ExecutionError(
+            f"Refusing to cancel local PID {pid_int} for run {run_name!r}: "
+            "cannot verify process start identity or dedicated session group (not cancelled)."
+        )
     try:
-        if use_pgid and pgid is not None:
-            os.killpg(pgid, signal.SIGTERM)
-        else:
-            os.kill(pid_int, signal.SIGTERM)
+        live_pgid = int(os.getpgid(pid_int))
+    except ProcessLookupError as exc:
+        raise ExecutionError(
+            f"Local process {pid_int} for run {run_name!r} was not found (process already exited)."
+        ) from exc
+    except OSError as exc:
+        raise ExecutionError(
+            f"Refusing to cancel local PID {pid_int} for run {run_name!r}: "
+            f"cannot verify live process group ({exc}; not cancelled)."
+        ) from exc
+    if live_pgid != pgid:
+        raise ExecutionError(
+            f"Refusing to cancel local PID {pid_int} for run {run_name!r}: "
+            f"live process group {live_pgid} does not match recorded session group {pgid} (not cancelled)."
+        )
+    try:
+        os.killpg(pgid, signal.SIGTERM)
     except ProcessLookupError as exc:
         raise ExecutionError(
             f"Local process {pid_int} for run {run_name!r} was not found (process already exited)."
         ) from exc
     except PermissionError as exc:
-        raise ExecutionError(f"Permission denied signalling local PID {pid_int}: {exc}") from exc
+        raise ExecutionError(f"Permission denied signalling local process group {pgid}: {exc}") from exc
 
     write_in_trusted_dir(
         trusted,
         "cancel-requested.txt",
-        f"pid={pid_int} pgid={pgid or pid_int} requested_by={current_user()}",
+        f"pid={pid_int} pgid={pgid} requested_by={current_user()}",
     )
 
     deadline = time.monotonic() + 0.5
     while time.monotonic() < deadline:
-        still_alive, _, _ = inspect_local_process(trusted, pid_int)
+        still_alive, _, still_reason = inspect_local_process(trusted, pid_int)
         pg_alive = False
-        if use_pgid and pgid is not None:
-            try:
-                os.killpg(pgid, 0)
-                pg_alive = True
-            except ProcessLookupError:
-                pg_alive = False
-            except PermissionError:
-                pg_alive = True
-        if not still_alive and not pg_alive:
+        try:
+            os.killpg(pgid, 0)
+            pg_alive = True
+        except ProcessLookupError:
+            pg_alive = False
+        except PermissionError:
+            pg_alive = True
+        if (not still_alive or still_reason == "reused_pid") and not pg_alive:
             break
         time.sleep(0.025)
     else:
         try:
-            if use_pgid and pgid is not None:
-                os.killpg(pgid, signal.SIGKILL)
-            else:
-                os.kill(pid_int, signal.SIGKILL)
+            os.killpg(pgid, signal.SIGKILL)
         except OSError:
             pass
 

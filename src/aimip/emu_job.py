@@ -19,6 +19,7 @@ import time
 TIME_UNITS = "days since 1970-01-01 00:00:00"
 T2M_BAND_K = (200.0, 330.0)   # a global-mean 2-m temperature outside this band means the rollout has blown up
 TP6_EPS = 1e-8   # DLESyM v1.1 tp6 = log(P + eps) - log(eps), P = 6-h precipitation in m
+EXIT_UNSTABLE = 5
 
 
 def _log(msg: str) -> None:
@@ -531,7 +532,7 @@ def main(argv: list) -> int:
     else:
         raise SystemExit(f"unknown family {job['family']!r}")
     result["process_seconds"] = round(time.time() - t0, 1)
-    rc = 4 if result.get("unstable_from") else 0
+    rc = EXIT_UNSTABLE if result.get("unstable_from") else 0
     target = os.path.join(job["out_dir"], "emu-result.json")
     with open(target + ".part", "w", encoding="utf-8") as fh:
         json.dump(result, fh, indent=2)

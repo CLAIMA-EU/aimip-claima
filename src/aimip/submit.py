@@ -15,6 +15,7 @@ import pwd
 import re
 import secrets
 import shutil
+import signal
 import stat
 import subprocess
 import tempfile
@@ -501,9 +502,14 @@ def read_pid_start_id(pid: int) -> str | None:
 
 
 def inspect_local_process(run_dir: str, local_pid: int) -> tuple[bool, int | None, str | None]:
-    """Verify whether *local_pid* for *run_dir* is still alive and matches its recorded start identity.
+    """Verify whether *local_pid* for *run_dir* is still alive and matches its recorded start identity and session group.
 
-    Returns `(alive, pgid, reason)` where `reason` is `"reused_pid"`, `"not_found"`, or `None`.
+    Returns `(alive, verified_pgid, reason)` where `reason` is:
+    - `None`: process is alive and both `local_start_id` and `local_pgid` are present and match the live process
+    - `"not_found"`: process has exited or is a zombie
+    - `"reused_pid"`: recorded start identity (or UID) disagrees with the live process
+    - `"unverified_identity"`: process is alive on this UID, but recorded or live start identity / session group cannot be verified
+    - `"invalid_pid"`: `local_pid <= 1`
     """
     if local_pid <= 1:
         return False, None, "invalid_pid"
@@ -515,9 +521,9 @@ def inspect_local_process(run_dir: str, local_pid: int) -> tuple[bool, int | Non
         try:
             with open(intent_path, encoding="utf-8") as fh:
                 intent = json.load(fh)
-            if isinstance(intent, dict) and intent.get("local_pid") in (None, local_pid):
+            if isinstance(intent, dict) and intent.get("local_pid") == local_pid:
                 raw_pgid = intent.get("local_pgid")
-                if isinstance(raw_pgid, int) and raw_pgid > 1:
+                if isinstance(raw_pgid, int) and not isinstance(raw_pgid, bool) and raw_pgid > 1:
                     recorded_pgid = raw_pgid
                 raw_start = intent.get("local_start_id")
                 if isinstance(raw_start, str) and raw_start.strip():
@@ -530,27 +536,29 @@ def inspect_local_process(run_dir: str, local_pid: int) -> tuple[bool, int | Non
     except ProcessLookupError:
         return False, recorded_pgid, "not_found"
     except PermissionError:
-        if recorded_start_id:
-            return False, None, "reused_pid"
-        return True, recorded_pgid, None
+        return False, None, "reused_pid"
 
     if is_pid_zombie(local_pid):
         return False, recorded_pgid, "not_found"
 
-    if recorded_start_id:
-        live_start = read_pid_start_id(local_pid)
-        if live_start is not None and live_start != recorded_start_id:
-            return False, None, "reused_pid"
+    live_start = read_pid_start_id(local_pid)
+    if recorded_start_id is not None and live_start is not None and live_start != recorded_start_id:
+        return False, None, "reused_pid"
+    if not recorded_start_id or not live_start:
+        return True, None, "unverified_identity"
 
-    eff_pgid = recorded_pgid
-    if eff_pgid is None:
-        try:
-            cand_pgid = os.getpgid(local_pid)
-            if cand_pgid > 1 and cand_pgid == local_pid:
-                eff_pgid = cand_pgid
-        except OSError:
-            eff_pgid = None
-    return True, eff_pgid, None
+    if recorded_pgid is None or recorded_pgid <= 1:
+        return True, None, "unverified_identity"
+    try:
+        live_pgid = int(os.getpgid(local_pid))
+    except ProcessLookupError:
+        return False, recorded_pgid, "not_found"
+    except OSError:
+        return True, None, "unverified_identity"
+    if live_pgid <= 1 or live_pgid != recorded_pgid:
+        return True, None, "unverified_identity"
+
+    return True, recorded_pgid, None
 
 
 def submit_run(
@@ -819,13 +827,32 @@ def submit_run(
                 except OSError as exc:
                     raise ConfigError(f"failed to launch background bash job: {exc}") from exc
 
-            keep_priv_dir = True
             local_pid_int = int(bg_proc.pid)
             try:
                 local_pgid = int(os.getpgid(local_pid_int))
             except OSError:
-                local_pgid = local_pid_int
+                local_pgid = 0
             local_start_id = read_pid_start_id(local_pid_int)
+            caller_pgid = os.getpgrp()
+            if bg_proc.poll() is None and (
+                not local_start_id or local_pgid <= 1 or local_pgid == caller_pgid
+            ):
+                if local_pgid > 1 and local_pgid != caller_pgid:
+                    try:
+                        os.killpg(local_pgid, signal.SIGTERM)
+                    except OSError:
+                        pass
+                else:
+                    try:
+                        bg_proc.terminate()
+                    except OSError:
+                        pass
+                raise ExecutionError(
+                    f"Failed to verify dedicated session group or start identity for local PID {local_pid_int}; launch aborted."
+                )
+            if local_pgid <= 1:
+                local_pgid = local_pid_int
+            keep_priv_dir = True
             write_in_trusted_dir(d, "local.pid", str(local_pid_int))
             write_in_trusted_dir(
                 d,

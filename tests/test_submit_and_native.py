@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import pathlib
@@ -63,6 +64,13 @@ def _render_shell_wrapper(
 ) -> pathlib.Path:
     wrapper_out = prefix / "bin" / "aimip"
     wrapper_out.parent.mkdir(parents=True, exist_ok=True)
+    sif_path = prefix / "img.sif"
+    if not sif_path.exists():
+        sif_path.write_bytes(b"FAKE_SIF_IMAGE_FOR_GATE_TESTS\n")
+    (prefix / "image.sha256").write_text(
+        f"{hashlib.sha256(sif_path.read_bytes()).hexdigest()}\n",
+        encoding="utf-8",
+    )
     tpl = WRAPPER_TEMPLATE_PATH.read_text(encoding="utf-8")
     rendered = (
         tpl.replace("@PREFIX@", str(prefix))

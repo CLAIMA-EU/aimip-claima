@@ -23,6 +23,6 @@ It uses Google Gemini (default model `gemini-3.8-flash`, change with `AIMIP_AGEN
   the output of `gcloud auth print-access-token`, valid about one hour) or `GOOGLE_APPLICATION_CREDENTIALS` (a
   service-account JSON file). Vertex does not accept Gemini API keys.
 
-Your messages and the tool results the assistant reads (model lists, run plans, paths in your run root) are sent
-to Google's API. Keys are never put on a command line and never written to logs. Conversations are logged, without the key, in
+Everything the assistant reads is sent to Google's API: your messages, model cards, plan cards, run lists, run
+status, paths in your run root and the job log excerpts it looks at. Keys are never put on a command line and never written to logs. Conversations are logged, without the key, in
 `<run root>/chat-logs/`.

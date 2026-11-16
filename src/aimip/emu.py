@@ -37,7 +37,7 @@ from collections.abc import Sequence
 from typing import Any
 
 from . import __version__
-from .errors import ConfigError, MissingAssetsError, ValidationError
+from .errors import EXIT_UNSTABLE, ConfigError, MissingAssetsError, ValidationError
 from .emu_catalog import DLESYM_IC_WINDOW
 from .lora import sha256_file
 from .registry import ModelSpec, resolve_data_dir, resolve_playground_dir
@@ -650,7 +650,7 @@ def exec_emu(validated_out: str, manifest: dict[str, Any], manifest_path: str) -
         res = subprocess.run([py, "-I", "-m", EMU_JOB_MODULE, "run", validated_out],
                              env=_job_env(validated_out, py), check=False)
         rc = int(res.returncode)
-        if rc == 4:
+        if rc == EXIT_UNSTABLE:
             err = "the rollout became unstable (non-finite or out-of-band month): see result.unstable_from"
         elif rc != 0:
             err = f"emulator job exited with rc={rc} (see slurm-*.err)"

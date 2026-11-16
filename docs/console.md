@@ -32,7 +32,8 @@ Every command accepts `--json`: the result is printed on standard output as
 `{"aimip": "1", "ok": true, "result": …}` or `{"aimip": "1", "ok": false, "error": {"code", "message", "field",
 "allowed", "next_command", …}}`; progress and warnings go to standard error. Exit codes: 0 success, 1 a failed
 `doctor` check or a scheduler/execution failure, 2 a usage or validation error, 3 missing files with `--no-fetch`,
-4 an approval that was refused, expired or no longer matches the plan, 75 when `watch` reaches `--timeout` before the
+4 an approval that was refused, expired or no longer matches the plan, 5 an unstable rollout stopped cleanly
+(`unstable_from` in the manifest), 75 when `watch` reaches `--timeout` before the
 run finishes.
 
 ## Approval: the human confirms the exact plan

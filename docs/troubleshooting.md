@@ -18,6 +18,6 @@
 | `site preset needs --account` | give `--account <account>` or `--account none` to the installer |
 | the job ends as `TIMEOUT` | rerun the segment with a larger `--time` or fewer steps |
 | `State: failed` | read the end of `slurm-<jobid>.err` (or `local-run.log` with the `local` preset) and `inference_out.log` in the run directory |
-| exit code 4, `unstable_from` in the manifest (DLESyM) | the rollout became unstable; the months before it are kept ([models](models.md)) |
+| exit code 5, `unstable_from` in the manifest (DLESyM) | the rollout became unstable; the months before it are kept ([models](models.md)) |
 | every container command takes minutes | Apptainer unpacks the image on a slow file system: `export APPTAINER_TMPDIR=/tmp` |
 | image build stops at `mksquashfs` | too many threads on a shared login node; `AIMIP_BUILD_THREADS=2` before the installer |

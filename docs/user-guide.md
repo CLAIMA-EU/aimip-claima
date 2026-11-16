@@ -134,6 +134,7 @@ checkpoints from a source you trust.
 | file | content |
 |---|---|
 | `aimip-manifest.json` | the record of the run (see above) |
+| `plan.json` | the plan card and its digest; `aimip submit` checks the run against it |
 | `config.yaml` | the fme inference configuration (for DLESyM and ArchesClimate-SSP a JSON job description) |
 | `job.sbatch` | the job script |
 | `monthly_mean_predictions.nc` | **the main result**: monthly means of every output variable |

@@ -153,7 +153,7 @@ case "$RT" in
     fi
     grep -E "AIMIP_IMAGE_OK|passed" "$LOG" 2>/dev/null | tail -2 || true
     ( cd "$PREFIX/images" && sha256_file "aimip-$VERSION.sif" | awk '{print $1}' ) > "$PREFIX/image.sha256" || die "cannot hash $SIF"
-    ls -ln "$SIF" 2>/dev/null | awk '{print $5"|"$6"|"$7"|"$8}' > "$PREFIX/image.stat" || true
+    rm -f "$PREFIX/image.stat"
     IMAGE=$SIF;;
   docker|podman)
     if [ "$BUILD" = 0 ]; then
@@ -191,7 +191,7 @@ sed -e "s#@PREFIX@#$PREFIX#" -e "s#@RUNTIME@#$RT#" -e "s#@RUNTIME_BIN@#$RTB#" -e
   && mv "$PREFIX/bin/aimip.new" "$PREFIX/bin/aimip" \
   && cp "$REPO/container/VERSION" "$PREFIX/VERSION" \
   || die "cannot write $PREFIX/bin/aimip"
-chmod -R a+rX "$PREFIX/bin" "$PREFIX/images" "$PREFIX/site.json" "$PREFIX/VERSION" "$PREFIX/image.sha256" "$PREFIX/image.ref" "$PREFIX/image.stat" 2>/dev/null || true
+chmod -R a+rX "$PREFIX/bin" "$PREFIX/images" "$PREFIX/site.json" "$PREFIX/VERSION" "$PREFIX/image.sha256" "$PREFIX/image.ref" 2>/dev/null || true
 echo "install-container: self-test"
 # The self-test runs small fake executables and submits trial run directories through the wrapper. Its working directory
 # must allow execution (TMPDIR may be mounted noexec) and must satisfy the wrapper's ancestry rule: no parent directory

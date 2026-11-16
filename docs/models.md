@@ -54,7 +54,7 @@ A continued run takes the scenario from the previous run's manifest, and refuses
 the public ARCO-ERA5 bucket (about one minute, 0.4 GB, into the run directory). A run cannot be continued: write the
 whole period in one job (`--steps 29220` = 20 years, about 15 GPU-minutes per member). The authors built `dlesym-v1.0`
 and `dlesym-v1.1` for forecasts of weeks to months; multi-year runs are outside what they validated, so check long runs for drift. `dlesym-v0-isccp` is
-the checkpoint Earth2Studio documents for 100–1000-year climate runs. A run stops with exit code 4 at the first month
+the checkpoint Earth2Studio documents for 100–1000-year climate runs. A run stops with exit code 5 at the first month
 with non-finite values or a global-mean 2 m temperature outside 200–330 K, records `unstable_from` and keeps the
 months before it. DLESyM's `sst` has values over land: mask land before use. `dlesym-v1.1` writes
 `atmosphere/monthly_precip.nc`; its `tp06` (6-hour precipitation) is derived with ε = 1e-8, inferred from the

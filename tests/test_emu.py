@@ -151,6 +151,16 @@ def test_arches_prepare_records_failure_rc(emu_env, monkeypatch):
     rec = json.loads((out / "aimip-manifest.json").read_text())
     assert rec["rc"] == 3 and "rc=3" in rec["error"]
 
+    # Unstable DLESyM rollout uses dedicated exit code 5 (distinct from approval error 4).
+    out_unstable = emu_env["runs"] / "d11_unstable"
+    _prepare(emu_env, "dlesym-v1.1", out_unstable, members=1)
+    monkeypatch.setenv("AIMIP_FAKE_RC", "5")
+    with pytest.raises(SystemExit) as exc_u:
+        exec_fme(str(out_unstable))
+    assert exc_u.value.code == 5
+    rec_u = json.loads((out_unstable / "aimip-manifest.json").read_text())
+    assert rec_u["rc"] == 5 and "unstable" in rec_u["error"]
+
 
 def test_cli_refuses_ic_commands_and_missing_runtime(emu_env, monkeypatch, capsys):
     from aimip.cli import main

@@ -17,6 +17,8 @@ cat > "$W/fakebin/fakert" <<'S'
 printf '%s\n' "$@" > "$FAKE_LOG.argv"; env > "$FAKE_LOG.env"; echo FAKERT_OK
 S
 chmod +x "$W/fakebin/sbatch" "$W/fakebin/fakert"
+printf 'INITIAL_SIF_IMAGE' > "$P/img.sif"
+if command -v sha256sum >/dev/null 2>&1; then sha256sum "$P/img.sif" | awk '{print $1}' > "$P/image.sha256"; else shasum -a 256 "$P/img.sif" | awk '{print $1}' > "$P/image.sha256"; fi
 sed -e "s#@PREFIX@#$P#" -e "s#@RUNTIME@#apptainer#" -e "s#@RUNTIME_BIN@#$W/fakebin/fakert#" -e "s#@IMAGE@#$P/img.sif#" \
     -e "s#@SCHEDULER@#slurm#" -e "s#@RUN_ROOT@#$W/runs#" -e "s#@EXTRA_RO@##" "$H/container/aimip-wrapper.in" > "$P/bin/aimip"; chmod +x "$P/bin/aimip"
 export PATH=$W/fakebin:$PATH FAKE_LOG=$W/log HOME=$W/home
@@ -111,8 +113,8 @@ grep -q "^APPTAINERENV_GEMINI_API_KEY=SYNTHETIC_SECRET_123" "$FAKE_LOG.env" && o
 # Empty arrays under set -u (bash 3.2)
 "$P/bin/aimip" --version >/dev/null 2>&1 && ok "--version with no arrays filled" || bad "--version failed under $BASH_VERSION"
 # Apptainer --env values must never contain commas (apptainer splits --env KEY=VAL on commas)
-mkdir -p "$W/docbin"; : > "$P/img.sif"
-for ucmd in id mkdir head tr cut dirname ls awk; do
+mkdir -p "$W/docbin"
+for ucmd in id mkdir head tr cut dirname ls awk sed sha256sum shasum; do
   upath=$(command -v "$ucmd" 2>/dev/null || true)
   [ -n "$upath" ] && ln -s "$upath" "$W/docbin/$ucmd"
 done
@@ -174,11 +176,40 @@ mkdir -p "$W/cfgdir"; echo "model: ace2-era5" > "$W/cfgdir/exp.yaml"
 grep -q "^$W/cfgdir/exp.yaml:$W/cfgdir/exp.yaml:ro$" "$FAKE_LOG.argv" && ok "relative --config resolved and mounted :ro" || bad "relative --config not mounted :ro"
 printf 'SIF_BYTES_ONE' > "$P/img.sif"
 if command -v sha256sum >/dev/null 2>&1; then sha256sum "$P/img.sif" | awk '{print $1}' > "$P/image.sha256"; else shasum -a 256 "$P/img.sif" | awk '{print $1}' > "$P/image.sha256"; fi
+ls -ln "$P/img.sif" 2>/dev/null | awk '{print $5"|"$6"|"$7"|"$8}' > "$P/image.stat"
+cp -p "$P/img.sif" "$W/sif.ref"
 mkdir -p "$W/runs/r_sif_ok"
 "$P/bin/aimip" exec-fme "$W/runs/r_sif_ok" >/dev/null 2>&1 && ok "matching SIF sha256 accepted on exec-fme" || bad "matching SIF sha256 refused"
+"$P/bin/aimip" run ace2-era5 --start 1979-01-01 --steps 1 --local >/dev/null 2>&1 && ok "matching SIF sha256 accepted on run --local" || bad "matching SIF sha256 refused on run --local"
 printf 'SIF_BYTES_TWO' > "$P/img.sif"
+touch -r "$W/sif.ref" "$P/img.sif" 2>/dev/null || true
+rm -f "$FAKE_LOG.argv"
 "$P/bin/aimip" exec-fme "$W/runs/r_sif_ok" >/dev/null 2>&1 && bad "replaced SIF accepted on exec-fme" || ok "replaced SIF refused on exec-fme"
-rm -f "$P/image.sha256"
+"$P/bin/aimip" run ace2-era5 --start 1979-01-01 --steps 1 --local >/dev/null 2>&1 && bad "same-size/mtime replaced SIF accepted on run --local" || ok "same-size/mtime replaced SIF refused on run --local despite image.stat"
+[ ! -e "$FAKE_LOG.argv" ] && ok "runtime never called on replaced SIF" || bad "runtime was called on replaced SIF"
+printf 'SIF_BYTES_ONE' > "$P/img.sif"
+rm -f "$P/image.sha256" "$FAKE_LOG.argv"
+"$P/bin/aimip" run ace2-era5 --start 1979-01-01 --steps 1 --local >/dev/null 2>&1 && bad "missing image.sha256 accepted on run --local" || ok "missing image.sha256 refused on run --local"
+[ ! -e "$FAKE_LOG.argv" ] && ok "runtime never called when image.sha256 is missing" || bad "runtime called when image.sha256 missing"
+# Local detached submit fails closed when neither setsid nor python3 is available
+if command -v sha256sum >/dev/null 2>&1; then sha256sum "$P/img.sif" | awk '{print $1}' > "$P/image.sha256"; else shasum -a 256 "$P/img.sif" | awk '{print $1}' > "$P/image.sha256"; fi
+sed -e "s#@PREFIX@#$P#" -e "s#@RUNTIME@#apptainer#" -e "s#@RUNTIME_BIN@#$W/fakebin/fakert#" -e "s#@IMAGE@#$P/img.sif#" \
+    -e "s#@SCHEDULER@#none#" -e "s#@RUN_ROOT@#$W/runs#" -e "s#@EXTRA_RO@##" "$H/container/aimip-wrapper.in" > "$P/bin/aimip-local"
+chmod +x "$P/bin/aimip-local"
+mkdir -p "$W/nosesbin"
+for ucmd in bash id mkdir head tr cut dirname ls awk sed sha256sum shasum mktemp cat chmod mv rm rmdir basename sleep; do
+  upath=$(command -v "$ucmd" 2>/dev/null || true)
+  [ -n "$upath" ] && ln -s "$upath" "$W/nosesbin/$ucmd"
+done
+mkdir -p "$W/runs/r_noses"
+printf '#!/bin/bash\n# aimip-generated v1\n\nset -euo pipefail\n"%s/bin/aimip" exec-fme "%s/runs/r_noses"\n' "$P" "$W" > "$W/runs/r_noses/job.sbatch"
+noses_err=$(PATH="$W/nosesbin" "$P/bin/aimip-local" submit "$W/runs/r_noses" 2>&1); noses_rc=$?
+if [ $noses_rc != 0 ] && case "$noses_err" in *"setsid or python3"*) true;; *) false;; esac; then
+  ok "local submit fails closed without setsid/python3"
+else
+  bad "local submit without setsid/python3 rc=$noses_rc err=$noses_err"
+fi
+[ ! -e "$W/runs/r_noses/local.pid" ] && ok "no local.pid written when session launcher is missing" || bad "local.pid written despite missing session launcher"
 echo "WRAPPER_TESTS pass=$pass fail=$fail bash=$BASH_VERSION"
 case "$W" in */aimip-wtest.*) rm -rf "$W";; esac
 [ $fail = 0 ]
