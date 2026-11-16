@@ -576,6 +576,8 @@ def test_install_native_dry_run_launcher_env_and_emu_discovery(
     assert emu_python() == str(emu_py)
 
     emu_py.unlink()
+    # Inside the image the default `/opt/aimip/venv-emu` exists; point the default elsewhere for this check.
+    monkeypatch.setattr("aimip.emu.DEFAULT_EMU_PYTHON", str(prefix / "no-default-venv-emu" / "bin" / "python"))
     with pytest.raises(ConfigError, match="install-native.sh --with-emu"):
         emu_python()
 
@@ -983,9 +985,11 @@ def test_install_native_fails_on_step_or_version_errors_without_launcher_and_use
     assert str(bad_tmp) not in logged
     assert str(shared_parent) not in logged
 
-    # 3. CI workflow `tests.yml` sets `TMPDIR: /tmp` for the pytest step as well as the wrapper step.
-    tests_yml = (REPO_ROOT / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
-    assert tests_yml.count("TMPDIR: /tmp") >= 2
+    # 3. CI workflow `tests.yml` sets `TMPDIR: /tmp` for the pytest step as well as the wrapper step
+    #    (only in a source checkout; the image ships no `.github/`).
+    tests_yml_path = REPO_ROOT / ".github" / "workflows" / "tests.yml"
+    if tests_yml_path.is_file():
+        assert tests_yml_path.read_text(encoding="utf-8").count("TMPDIR: /tmp") >= 2
 
 
 def test_install_container_version_checks_aarch64_autobuild_image_ref_and_error_hints(
@@ -1342,6 +1346,8 @@ def test_image_workflow_push_gate_version_validation_env_passing_and_digest_summ
     import yaml
 
     wf_path = REPO_ROOT / ".github" / "workflows" / "image.yml"
+    if not wf_path.is_file():
+        pytest.skip("workflow files are not shipped in the image; this test runs in a source checkout")
     wf = yaml.safe_load(wf_path.read_text(encoding="utf-8"))
     steps = wf["jobs"]["image"]["steps"]
 
