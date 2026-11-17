@@ -27,7 +27,7 @@ PACKAGE_DEFAULT_REGISTRY_PATH = os.path.join(
 PLAYGROUND_PLACEHOLDER = "${PLAYGROUND}"
 DATA_PLACEHOLDER = "${DATA}"
 
-SUPPORTED_FAMILIES: tuple[str, ...] = ("fme", "e2s-dlesym", "arches", "geoarches")
+SUPPORTED_FAMILIES: tuple[str, ...] = ("fme", "e2s-dlesym", "arches", "geoarches", "md")
 ALLOWED_FME_MODULES: tuple[str, ...] = (
     "fme.ace.inference",
     "fme.coupled.inference",
@@ -118,6 +118,8 @@ MODEL_IC_PROVENANCE: dict[str, str] = {
     "archesclimate-ssp": "IPSL-CM6A-LR r1i1p1f1 scenario state of 2015-02 (previous state 2015-01) from gclyne/ArchesClimate-data.",
     "archesweather": "ERA5 daily-mean state of 1978-09-30 (previous state 1978-09-29) from Zenodo 22795233 era5_1978_00h_sliced.nc.",
     "archesweathergen": "ERA5 daily-mean state of 1978-09-30 (previous state 1978-09-29) from Zenodo 22795233 era5_1978_00h_sliced.nc.",
+    "md-1.5": "ERA5 monthly mean of October 1978 on the model's 1.5-degree grid (rebuilt from ERA5 with the authors' "
+              "regridding; md15_era5_ic_197810_1p5.nc).",
 }
 
 SAMUDRACE_CM4_IC_SLUGS: tuple[tuple[str, str], ...] = (
@@ -756,7 +758,7 @@ def build_default_registry_payload(
     *,
     root_placeholder: str = DATA_PLACEHOLDER,
 ) -> dict[str, Any]:
-    """Construct the canonical registry JSON payload (10 fme models + 7 DLESyM/ArchesClimate/ArchesWeather models) with `${DATA}/...` paths and SHA-256s."""
+    """Construct the canonical registry JSON payload (10 fme models + 8 DLESyM/ArchesClimate/ArchesWeather/MD-1.5 models) with `${DATA}/...` paths and SHA-256s."""
     p = root_placeholder.rstrip("/")
 
     era5_hist_rels = [f"inputs/ace2-era5/amip-hist/forcing_{y}.nc" for y in range(1979, 2015)]

@@ -136,6 +136,15 @@ def _planned_outputs(model_spec: Any, *, monthly: bool, prediction: bool) -> dic
                 "restart.nc",
             ],
         }
+    if model_spec.family == "md":
+        return {
+            "monthly": True,
+            "prediction": False,
+            "files": [
+                "atmosphere/monthly_mean_predictions.nc",
+                "atmosphere/monthly_levels.nc",
+            ],
+        }
     if model_spec.family in ("e2s-dlesym", "arches"):
         return {
             "monthly": True,
@@ -208,6 +217,15 @@ def _manifest_outputs(manifest: dict[str, Any]) -> dict[str, Any]:
                 "atmosphere/monthly_mean_predictions.nc",
                 "atmosphere/monthly_levels.nc",
                 "restart.nc",
+            ],
+        }
+    if manifest.get("family") == "md":
+        return {
+            "monthly": True,
+            "prediction": False,
+            "files": [
+                "atmosphere/monthly_mean_predictions.nc",
+                "atmosphere/monthly_levels.nc",
             ],
         }
     if manifest.get("family") in ("e2s-dlesym", "arches"):

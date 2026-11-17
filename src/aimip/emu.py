@@ -56,6 +56,13 @@ from .emu_catalog import (
     DLESYM_AIMIP_FORCING_END,
     DLESYM_AIMIP_WINDOW,
     DLESYM_IC_WINDOW,
+    MD_CODE,
+    MD_CONFIG,
+    MD_IC,
+    MD_MAX_STEPS,
+    MD_START,
+    MD_STATS,
+    MD_WEIGHTS,
     aw_package_digest,
 )
 from .lora import sha256_file
@@ -75,7 +82,7 @@ from .validators import (
     validate_visible_input_path,
 )
 
-EMU_FAMILIES: tuple[str, ...] = ("e2s-dlesym", "arches", "geoarches")
+EMU_FAMILIES: tuple[str, ...] = ("e2s-dlesym", "arches", "geoarches", "md")
 EMU_JOB_MODULE = "aimip.emu_job"
 DEFAULT_EMU_PYTHON = "/opt/aimip/venv-emu/bin/python"
 
@@ -100,9 +107,22 @@ ARCHES_DOMAIN = {"ssp434": "val", "ssp585": "test"}   # the checkpoint config's 
 DLESYM_SECONDS_PER_YEAR = 40.0
 ARCHES_SECONDS_PER_MONTH = 2.0
 AW_SECONDS_PER_DAY = {"archesweather": 1.1, "archesweathergen": 4.6}   # per member (A100-80GB, measured)
+MD_SECONDS_PER_MONTH = 1.0   # per member; measured 0.9 s on 8 CPU cores, a GPU is faster
 EMU_FIXED_SECONDS = 900
 EMU_SAFETY = 3.0
 EMU_MIN_WALLTIME = 2700
+
+
+def job_python(family: str) -> str:
+    """Interpreter of the job: MD-1.5 runs in aimip's main environment (torch and torch-harmonics from the fme
+    install), the other families in the emulator environment."""
+    if family != "md":
+        return emu_python()
+    raw = os.environ.get("AIMIP_MD_PYTHON") or sys.executable
+    path = validate_safe_path(raw, label="MD-1.5 python")
+    if not os.path.isabs(path) or not os.access(path, os.X_OK):
+        raise ConfigError(f"The Python environment for MD-1.5 is missing ({path}).")
+    return path
 
 
 def emu_python() -> str:
@@ -158,6 +178,8 @@ def _work_seconds(family: str, steps: int, members: int, model: str | None) -> f
         return steps * 6 / (365.25 * 24) * DLESYM_SECONDS_PER_YEAR * members
     if family == "geoarches":
         return steps * AW_SECONDS_PER_DAY.get(str(model), max(AW_SECONDS_PER_DAY.values())) * members
+    if family == "md":
+        return (steps + 1) * MD_SECONDS_PER_MONTH * members
     return steps * ARCHES_SECONDS_PER_MONTH * members
 
 
@@ -342,8 +364,24 @@ def precheck_emu_request(
                               f"{', '.join(names)}.")
         start_dt = datetime.datetime.fromisoformat(norm_start)
         end_iso = (start_dt + datetime.timedelta(days=n_steps)).strftime("%Y-%m-%dT%H:%M:%S")
+    elif model.family == "md":
+        if norm_start != MD_START:
+            raise ConfigError(
+                f"{model.name} starts from the ERA5 monthly mean of October 1978 only: use --start {MD_START} "
+                "(the first output month is that state decoded by the model, as in the authors' submission)."
+            )
+        if n_steps > MD_MAX_STEPS:
+            raise ConfigError(f"--steps {n_steps} exceeds the forcing: at most {MD_MAX_STEPS} monthly steps "
+                              "(November 1978 .. December 2024).")
+        names = [fs.name for fs in model.forcing_sets]
+        scenario = names[0]
+        if forcing_set_name is not None and validate_forcing_set_name(forcing_set_name) not in names:
+            raise ConfigError(f"Unknown --forcing-set {forcing_set_name!r} for {model.name}: choose one of "
+                              f"{', '.join(names)}.")
+        k = 9 + n_steps                    # months since January 1978
+        end_iso = f"{1978 + k // 12:04d}-{k % 12 + 1:02d}-01T00:00:00"
     else:
-        raise ConfigError(f"Model {model.name!r} is not a DLESyM/ArchesClimate/ArchesWeather model.")
+        raise ConfigError(f"Model {model.name!r} is not a DLESyM/ArchesClimate/ArchesWeather/MD model.")
     return {"start": norm_start, "steps": n_steps, "members": n_members, "scenario": scenario, "end": end_iso}
 
 
@@ -621,6 +659,13 @@ def prepare_emu_run(
             first_day = datetime.datetime.fromisoformat(req["start"]) + datetime.timedelta(days=1)
             ic_provenance = (f"continues {aw_restart['path']} (states of {req['start'][:10]} and the day before, step "
                              f"{aw_restart['step_index']} from 1978-09-30); first output day {first_day:%Y-%m-%d}")
+    elif model.family == "md":
+        job = {"family": model.family, "model": model.name, "code_dir": os.path.join(data_root, MD_CODE),
+               "config_file": os.path.join(data_root, MD_CONFIG), "ic_file": os.path.join(data_root, MD_IC),
+               "stats_file": os.path.join(data_root, MD_STATS),
+               "sst_forcing": os.path.join(data_root, AIMIP_SST_REL)}
+        ic_provenance = ("ERA5 monthly mean of October 1978 on the 1.5-degree grid (md15_era5_ic_197810_1p5.nc); the "
+                         "first output month is its decoding; forcing: AIMIP SST and sea ice (Zenodo 17065758)")
     else:
         scen = req["scenario"]
         scenario_rows = _scenario_files(model, data_root, scen)
@@ -653,6 +698,8 @@ def prepare_emu_run(
         ic_file = _stage_dlesym_ic(validated_out)
     elif model.family == "geoarches":
         ic_file = job["restart_file"] or job["ic_file"]
+    elif model.family == "md":
+        ic_file = job["ic_file"]
     else:
         ic_file = os.path.join(data_root, f"inputs/archesclimate-ssp/memmap_filled_in/r1i1p1f1_{req['scenario']}_interpolation.memmap/meta.json")
     ic_sha = sha256_file(ic_file)
@@ -728,8 +775,8 @@ def prepare_emu_run(
         },
         "slurm_job_id": None,
         "image_sha": (os.environ.get("AIMIP_IMAGE_SHA") or "")[:256],
-        "runtime_env": os.path.dirname(os.path.dirname(emu_python())),
-        "runtime_python": emu_python(),
+        "runtime_env": os.path.dirname(os.path.dirname(job_python(model.family))),
+        "runtime_python": job_python(model.family),
         "config_sha256": _config_sha(config_path),
         "created_utc": _now_utc(),
     }
@@ -819,6 +866,18 @@ def _check_job_matches_manifest(job: dict[str, Any], manifest: dict[str, Any]) -
         if digest != manifest.get("package_digest") or digest != aw_package_digest(
                 (manifest.get("package_files_sha256") or {}).values()):
             fail("package_digest")
+    elif job["family"] == "md":
+        root = job["checkpoint"][: -len(MD_WEIGHTS)] if job["checkpoint"].endswith("/" + MD_WEIGHTS) else None
+        if root is None:
+            fail("checkpoint")
+        want = {"config_file": MD_CONFIG, "ic_file": MD_IC, "stats_file": MD_STATS, "sst_forcing": AIMIP_SST_REL}
+        for key, rel in want.items():
+            if job.get(key) != root + rel or job[key] not in pinned:
+                fail(key)
+        if job.get("code_dir") != root + MD_CODE or root + MD_CODE + "/md/__init__.py" not in pinned:
+            fail("code_dir")
+        if str(manifest.get("ic_path")) != job["ic_file"]:
+            fail("initial state")
     else:
         fail("family")
 
@@ -882,7 +941,7 @@ def exec_emu(validated_out: str, manifest: dict[str, Any], manifest_path: str) -
     rc = 1
     err: str | None = None
     try:
-        py = emu_python()
+        py = job_python(str(job.get("family")))
         res = subprocess.run([py, "-I", "-m", EMU_JOB_MODULE, "run", validated_out],
                              env=_job_env(validated_out, py), check=False)
         rc = int(res.returncode)

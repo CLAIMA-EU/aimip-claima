@@ -44,7 +44,9 @@ prescribed from the AIMIP forcing, --start 1978-10-03 .. 2024-12-28, the authors
 1978-10-03 .. 07 at 00 UTC, steps are 6 h up to the end of 2024); archesclimate-ssp (monthly IPSL emulator, --start
 2015-01-01T00:00:00 only, steps are months up to 1029, forcing set ssp434 or ssp585);
 archesweather and archesweathergen (AIMIP ERA5 emulators on 1 degree, --start 1978-09-30T00:00:00
-only, steps are days up to 16894, forced by monthly SST/sea ice; only archesweathergen takes --members).
+only, steps are days up to 16894, forced by monthly SST/sea ice; only archesweathergen takes --members);
+md-1.5 (AIMIP monthly latent-diffusion model on 1.5 degrees, --start 1978-10-01T00:00:00 only, steps are
+months up to 554, forced by the AIMIP SST/sea ice, --members gives noise seeds).
 Call list_models or show_model for the current catalogue, forcing windows, calendars, and limits.
 If a model's files are missing and automatic download is disabled, tell the user to run
 `aimip fetch -m <model>` on the host or approve the host download prompt.

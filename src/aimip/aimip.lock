@@ -3060,6 +3060,226 @@
           "raw/zenodo-22795233/model_checkpoints.zip": "db57d2bbbb1784a568f941dd7a3e437672cedd59cbaba10a313d21025a4d229d"
         }
       }
+    },
+    "raw/zenodo-21430292/monthly-diffusion-MDv0.9-1.5-licensed.zip": {
+      "size": 63775851,
+      "sha256": "73f2d88e43ceb6f3e9a2a164ce3649ebaef0c9abbe7a359cf4ad2a805476ed58",
+      "source": {
+        "kind": "zenodo",
+        "record": "21430292",
+        "file": "kjhall01/monthly-diffusion-MDv0.9-1.5-licensed.zip",
+        "url": "https://zenodo.org/records/21430292/files/kjhall01/monthly-diffusion-MDv0.9-1.5-licensed.zip?download=1",
+        "md5": "3c568f95e6151a0704e84ae7a8d2cd5c"
+      }
+    },
+    "models/md-1.5/code/md/__init__.py": {
+      "size": 587,
+      "sha256": "3c9ad85f5487bfa92f9b6f04b3d6e823f38f9c6ee8fd74f6be6608cb384ec699",
+      "source": {
+        "kind": "derived",
+        "builder": "extract_zip_member",
+        "inputs": {
+          "raw/zenodo-21430292/monthly-diffusion-MDv0.9-1.5-licensed.zip": "73f2d88e43ceb6f3e9a2a164ce3649ebaef0c9abbe7a359cf4ad2a805476ed58"
+        }
+      }
+    },
+    "models/md-1.5/code/md/blocks.py": {
+      "size": 8898,
+      "sha256": "818b05c5ddd904160d86aa2f7465dfcf725d40f9187c9490135191497ddb75e8",
+      "source": {
+        "kind": "derived",
+        "builder": "extract_zip_member",
+        "inputs": {
+          "raw/zenodo-21430292/monthly-diffusion-MDv0.9-1.5-licensed.zip": "73f2d88e43ceb6f3e9a2a164ce3649ebaef0c9abbe7a359cf4ad2a805476ed58"
+        }
+      }
+    },
+    "models/md-1.5/code/md/cvae.py": {
+      "size": 22997,
+      "sha256": "d633e79d7ba427915b7e28f30370a08f4573374462f9a93cc5eff674d7dee5f4",
+      "source": {
+        "kind": "derived",
+        "builder": "extract_zip_member",
+        "inputs": {
+          "raw/zenodo-21430292/monthly-diffusion-MDv0.9-1.5-licensed.zip": "73f2d88e43ceb6f3e9a2a164ce3649ebaef0c9abbe7a359cf4ad2a805476ed58"
+        }
+      }
+    },
+    "models/md-1.5/code/md/data_utils.py": {
+      "size": 4868,
+      "sha256": "f3f028e630f1debaa511e02b79be315ecc95af121f847351b2ae9da6744738fe",
+      "source": {
+        "kind": "derived",
+        "builder": "extract_zip_member",
+        "inputs": {
+          "raw/zenodo-21430292/monthly-diffusion-MDv0.9-1.5-licensed.zip": "73f2d88e43ceb6f3e9a2a164ce3649ebaef0c9abbe7a359cf4ad2a805476ed58"
+        }
+      }
+    },
+    "models/md-1.5/code/md/decoder.py": {
+      "size": 2634,
+      "sha256": "d60f2060b90e5e4b6df5b286215be42c15c85548896f0f3534c96cbb3b8aac98",
+      "source": {
+        "kind": "derived",
+        "builder": "extract_zip_member",
+        "inputs": {
+          "raw/zenodo-21430292/monthly-diffusion-MDv0.9-1.5-licensed.zip": "73f2d88e43ceb6f3e9a2a164ce3649ebaef0c9abbe7a359cf4ad2a805476ed58"
+        }
+      }
+    },
+    "models/md-1.5/code/md/diffusion.py": {
+      "size": 8919,
+      "sha256": "10ea2a022bb9cb10edfa475b82742f6d0b665cdba15552753851d687c08a0654",
+      "source": {
+        "kind": "derived",
+        "builder": "extract_zip_member",
+        "inputs": {
+          "raw/zenodo-21430292/monthly-diffusion-MDv0.9-1.5-licensed.zip": "73f2d88e43ceb6f3e9a2a164ce3649ebaef0c9abbe7a359cf4ad2a805476ed58"
+        }
+      }
+    },
+    "models/md-1.5/code/md/encoder.py": {
+      "size": 3562,
+      "sha256": "7b7922277ee3d7ae1f70a50d58c69842d45e30d689fd90f9be6f2f4f50ec5313",
+      "source": {
+        "kind": "derived",
+        "builder": "extract_zip_member",
+        "inputs": {
+          "raw/zenodo-21430292/monthly-diffusion-MDv0.9-1.5-licensed.zip": "73f2d88e43ceb6f3e9a2a164ce3649ebaef0c9abbe7a359cf4ad2a805476ed58"
+        }
+      }
+    },
+    "models/md-1.5/code/md/positional.py": {
+      "size": 4236,
+      "sha256": "1d9a0ba6e41689f6d991eb1861eaa1fe6a3a76eba50d4ff9a4fd24ca258b4f41",
+      "source": {
+        "kind": "derived",
+        "builder": "extract_zip_member",
+        "inputs": {
+          "raw/zenodo-21430292/monthly-diffusion-MDv0.9-1.5-licensed.zip": "73f2d88e43ceb6f3e9a2a164ce3649ebaef0c9abbe7a359cf4ad2a805476ed58"
+        }
+      }
+    },
+    "models/md-1.5/code/md/prep_data.py": {
+      "size": 2711,
+      "sha256": "e2f784ff4f18731c0529785c1a155342f686adee2ff9156f9c05579526da4e35",
+      "source": {
+        "kind": "derived",
+        "builder": "extract_zip_member",
+        "inputs": {
+          "raw/zenodo-21430292/monthly-diffusion-MDv0.9-1.5-licensed.zip": "73f2d88e43ceb6f3e9a2a164ce3649ebaef0c9abbe7a359cf4ad2a805476ed58"
+        }
+      }
+    },
+    "models/md-1.5/code/md/preprocessing.py": {
+      "size": 11313,
+      "sha256": "a45f149c2f614c09df21344ce09a63825b420f29d7962b618d3a4185528d3903",
+      "source": {
+        "kind": "derived",
+        "builder": "extract_zip_member",
+        "inputs": {
+          "raw/zenodo-21430292/monthly-diffusion-MDv0.9-1.5-licensed.zip": "73f2d88e43ceb6f3e9a2a164ce3649ebaef0c9abbe7a359cf4ad2a805476ed58"
+        }
+      }
+    },
+    "models/md-1.5/code/md/saveload.py": {
+      "size": 1482,
+      "sha256": "16b1f26241ae11bf992208d9f143381c50d4a880adb7434d668cbb5ef0e9a0e5",
+      "source": {
+        "kind": "derived",
+        "builder": "extract_zip_member",
+        "inputs": {
+          "raw/zenodo-21430292/monthly-diffusion-MDv0.9-1.5-licensed.zip": "73f2d88e43ceb6f3e9a2a164ce3649ebaef0c9abbe7a359cf4ad2a805476ed58"
+        }
+      }
+    },
+    "models/md-1.5/code/md/spatial_conditional_norm.py": {
+      "size": 2256,
+      "sha256": "62557b7fd9789447d27fe674b50ae9d433256e23c86eca174522eabf72848e95",
+      "source": {
+        "kind": "derived",
+        "builder": "extract_zip_member",
+        "inputs": {
+          "raw/zenodo-21430292/monthly-diffusion-MDv0.9-1.5-licensed.zip": "73f2d88e43ceb6f3e9a2a164ce3649ebaef0c9abbe7a359cf4ad2a805476ed58"
+        }
+      }
+    },
+    "models/md-1.5/code/md/spectral_conv.py": {
+      "size": 7275,
+      "sha256": "b2eb642eca58a8eea6f506db181ae610c7ae72b0fc7f468630314ba7ca0551df",
+      "source": {
+        "kind": "derived",
+        "builder": "extract_zip_member",
+        "inputs": {
+          "raw/zenodo-21430292/monthly-diffusion-MDv0.9-1.5-licensed.zip": "73f2d88e43ceb6f3e9a2a164ce3649ebaef0c9abbe7a359cf4ad2a805476ed58"
+        }
+      }
+    },
+    "models/md-1.5/code/md/spectral_fc.py": {
+      "size": 2434,
+      "sha256": "ed76af0bde88a5a196f2f0ad01109df3450eba698454b8a082c20ad1e4efe51b",
+      "source": {
+        "kind": "derived",
+        "builder": "extract_zip_member",
+        "inputs": {
+          "raw/zenodo-21430292/monthly-diffusion-MDv0.9-1.5-licensed.zip": "73f2d88e43ceb6f3e9a2a164ce3649ebaef0c9abbe7a359cf4ad2a805476ed58"
+        }
+      }
+    },
+    "models/md-1.5/MD-1p5/weights.pt": {
+      "size": 28998624,
+      "sha256": "7a217274bcb83d2d262412ccf21358d45dac4d4bac6fdb37c42da7f7339e2da2",
+      "source": {
+        "kind": "derived",
+        "builder": "extract_zip_member",
+        "inputs": {
+          "raw/zenodo-21430292/monthly-diffusion-MDv0.9-1.5-licensed.zip": "73f2d88e43ceb6f3e9a2a164ce3649ebaef0c9abbe7a359cf4ad2a805476ed58"
+        }
+      }
+    },
+    "models/md-1.5/MD-1p5/config.pkl": {
+      "size": 582489,
+      "sha256": "c652426f3f425221b9105db42e34848a6f51e7da552c3c2362f0476e8328d29b",
+      "source": {
+        "kind": "derived",
+        "builder": "extract_zip_member",
+        "inputs": {
+          "raw/zenodo-21430292/monthly-diffusion-MDv0.9-1.5-licensed.zip": "73f2d88e43ceb6f3e9a2a164ce3649ebaef0c9abbe7a359cf4ad2a805476ed58"
+        }
+      }
+    },
+    "models/md-1.5/LICENSE": {
+      "size": 1066,
+      "sha256": "36f9042913f5f3f042a98961c649a16ef795d10da00ca71b595b936ef7e9960f",
+      "source": {
+        "kind": "derived",
+        "builder": "extract_zip_member",
+        "inputs": {
+          "raw/zenodo-21430292/monthly-diffusion-MDv0.9-1.5-licensed.zip": "73f2d88e43ceb6f3e9a2a164ce3649ebaef0c9abbe7a359cf4ad2a805476ed58"
+        }
+      }
+    },
+    "inputs/md-1.5/md15_era5_ic_197810_1p5.nc": {
+      "size": 6772776,
+      "sha256": "cb38ff2fb434735b815c72adfe6151fcdf1e406effe95b884604629c1abc03da",
+      "source": {
+        "kind": "zenodo",
+        "record": "PENDING",
+        "file": "md15_era5_ic_197810_1p5.nc",
+        "url": "https://zenodo.org/records/PENDING/files/md15_era5_ic_197810_1p5.nc?download=1",
+        "md5": "8c52ebcfa73646ecb88f3732c7b9783d"
+      }
+    },
+    "inputs/md-1.5/md15_variable_statistics_198501-201412.json": {
+      "size": 3651,
+      "sha256": "007d471b0187fb63ee2a8e1ed0ae8486eb5761e8958bc1d1d0d2933602a367d6",
+      "source": {
+        "kind": "zenodo",
+        "record": "PENDING",
+        "file": "md15_variable_statistics_198501-201412.json",
+        "url": "https://zenodo.org/records/PENDING/files/md15_variable_statistics_198501-201412.json?download=1",
+        "md5": "d8b17c0dff9f6a79b98ad1425900fd16"
+      }
     }
   }
 }

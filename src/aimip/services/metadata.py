@@ -117,6 +117,14 @@ ARCHESWEATHER_BIBTEX = """@article{singh2026archesweather,
   eprint  = {2605.29976}
 }"""
 
+MD_BIBTEX = """@article{hall2026monthlydiffusion,
+  title   = {Monthly Diffusion v0.9: A Latent Diffusion Model for the First {AI-MIP}},
+  author  = {Hall, Kyle J. C. and Molina, Maria J.},
+  journal = {arXiv preprint},
+  year    = {2026},
+  eprint  = {2604.13481}
+}"""
+
 AIMIP_BIBTEX = """@article{henn2026aimip,
   title   = {{AIMIP} Phase 1: Systematic Evaluations of {AI} Weather and Climate Models},
   author  = {Henn, Brian and Bretherton, Christopher S. and Koldunov, Nikolay and Lessig, Christian and Molina, Maria J. and Arcomano, Troy and Watt-Meyer, Oliver and Couairon, Guillaume and Singh, Renu and Brunstein, Robert and Hasson, Yana and Jost, Antonia and Brenowitz, Noah and Manshausen, Peter and Cresswell-Clay, Nathaniel and Durran, Dale and Hall, Kyle Joseph Chen and Yuval, Janni and Kochkov, Dmitrii and Hoyer, Stephan and Lopez-Gomez, Ignacio},
@@ -573,6 +581,34 @@ MODEL_CARDS: dict[str, dict[str, Any]] = {
             "aimip run archesweathergen --start 1978-09-30 --length 30d --members 2 --name awgen-30d",
         ],
         "bibtex": [ARCHESWEATHER_BIBTEX, AIMIP_BIBTEX, ERA5_BIBTEX],
+    },
+    "md-1.5": {
+        "title": "MD-1.5 / Monthly Diffusion v0.9, AIMIP Phase 1 (UMD PARETO)",
+        "task": "amip",
+        "status": "runs",
+        "verified_on": "1x NVIDIA GH200 (aarch64 image; 5 members x 555 months against the authors' submission)",
+        "licence": "Code and checkpoint MIT (Zenodo 21430292); rebuilt initial state and statistics from ERA5",
+        "upstream_url": "https://github.com/kjhall01/monthly-diffusion",
+        "grid": "1.5 deg lat-lon (121 x 240, poles included), monthly steps",
+        "outputs": ["atmosphere/tas", "atmosphere/pr", "atmosphere/ta (monthly_levels.nc)"],
+        "cost_note": "About one second per simulated month and member on one GPU or 8 CPU cores; the full "
+                     "1978-10 .. 2024-12 period takes minutes.",
+        "limitations": (
+            "The published code cannot read the checkpoint's own config (MD-1p5.pth was saved by earlier, "
+            "unpublished code); aimip builds the published CVAE with the settings the checkpoint's tensors imply. "
+            "The authors' initial state and normalization statistics are not published: aimip uses ERA5 rebuilt "
+            "with their regridding (statistics over 1985-2014, the training period). Global-mean 2 m temperature "
+            "1979-2024 is 287.28-287.30 K (submission: 287.32-287.33 K), its trend 0.07-0.08 K per decade "
+            "(0.06-0.07), and the first (decoded) month differs from theirs by about 15 % of the spatial standard "
+            "deviation in 2 m temperature. A seed gives the same member only on the same device type (CUDA and CPU "
+            "draw different noise). No +2 K / +4 K experiments yet. zg500 is geopotential height (the submission's "
+            "zg holds geopotential)."
+        ),
+        "examples": [
+            "aimip plan md-1.5 --start 1978-10-01 --steps 554 --members 5 --name md15-aimip",
+            "aimip run md-1.5 --start 1978-10-01 --length 1y --name md15-1y",
+        ],
+        "bibtex": [MD_BIBTEX, AIMIP_BIBTEX, ERA5_BIBTEX],
     },
 }
 

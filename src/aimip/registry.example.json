@@ -952,6 +952,51 @@
       "stochastic": true,
       "default_n_ensemble_per_ic": 1,
       "notes": "ArchesWeatherGen, AIMIP version (INRIA): a flow-matching model that samples the next state around the ArchesWeather-Mx4 prediction (25 sampler steps per day); stochastic, --members gives distinct noise seeds (seed + k). 1-degree grid, 6 surface variables and 6 variables on 13 pressure levels as daily means, forced by monthly ERA5 SST and sea-ice cover (Zenodo 22795233). Starts from the ERA5 daily-mean state of 1978-09-30 only (--start 1978-09-30T00:00:00; first output day 1978-10-01, like the authors' AIMIP member r2); --steps counts days (at most 16894, to 2024-12-31). aimip's rollout follows the paper (Singh et al. 2026, arXiv:2605.29976, section 2.3); the authors' rollout script is not published."
+    },
+    {
+      "name": "md-1.5",
+      "family": "md",
+      "fme_module": "aimip.emu_job",
+      "calendar": "proleptic_gregorian",
+      "checkpoint": "${DATA}/models/md-1.5/MD-1p5/weights.pt",
+      "checkpoint_sha256": "7a217274bcb83d2d262412ccf21358d45dac4d4bac6fdb37c42da7f7339e2da2",
+      "ic_files": [],
+      "forcing_sets": [
+        {
+          "name": "aimip",
+          "dir": "${DATA}/raw/zenodo-17065758",
+          "window": [
+            "1978-10-01T00:00:00",
+            "2024-12-01T00:00:00"
+          ]
+        }
+      ],
+      "required_files": [
+        "inputs/md-1.5/md15_era5_ic_197810_1p5.nc",
+        "inputs/md-1.5/md15_variable_statistics_198501-201412.json",
+        "models/md-1.5/LICENSE",
+        "models/md-1.5/MD-1p5/config.pkl",
+        "models/md-1.5/MD-1p5/weights.pt",
+        "models/md-1.5/code/md/__init__.py",
+        "models/md-1.5/code/md/blocks.py",
+        "models/md-1.5/code/md/cvae.py",
+        "models/md-1.5/code/md/data_utils.py",
+        "models/md-1.5/code/md/decoder.py",
+        "models/md-1.5/code/md/diffusion.py",
+        "models/md-1.5/code/md/encoder.py",
+        "models/md-1.5/code/md/positional.py",
+        "models/md-1.5/code/md/prep_data.py",
+        "models/md-1.5/code/md/preprocessing.py",
+        "models/md-1.5/code/md/saveload.py",
+        "models/md-1.5/code/md/spatial_conditional_norm.py",
+        "models/md-1.5/code/md/spectral_conv.py",
+        "models/md-1.5/code/md/spectral_fc.py",
+        "raw/zenodo-17065758/ERA5-0.25deg-monthly-mean-forcing-1978-2024.nc"
+      ],
+      "timestep_hours": 730,
+      "stochastic": true,
+      "default_n_ensemble_per_ic": 1,
+      "notes": "MD-1.5 (Monthly Diffusion v0.9, UMD PARETO; Hall and Molina 2026), the AIMIP Phase 1 entry: latent diffusion in a conditional VAE with spherical-Fourier blocks, one step per month on a 1.5-degree grid (37 channels: 8 surface fields, T/q/u/v on 7 pressure levels, z500), forced by the AIMIP SST and sea ice. Starts from the ERA5 monthly mean of October 1978 only (--start 1978-10-01T00:00:00; the first output month is the decoded initial state, as in the authors' submission); --steps counts months (at most 554, to December 2024); --members gives noise seeds (seed + k). The published code cannot load the checkpoint's own config; aimip reads the architecture from its tensors (global-mean 2 m temperature 1979-2024 about 0.035 K below the authors' submission)."
     }
   ]
 }

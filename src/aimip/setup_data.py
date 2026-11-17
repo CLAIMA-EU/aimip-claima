@@ -77,6 +77,7 @@ CANONICAL_MODELS: tuple[str, ...] = (
     "archesclimate-ssp",
     "archesweather",
     "archesweathergen",
+    "md-1.5",
 )
 
 # Default pinned Hugging Face commit revisions (overrideable per file in `aimip.lock`).
@@ -468,8 +469,8 @@ def build_artifact_catalog(
         ArtifactSpec(
             rel_path=ZENODO_AIMIP_REL_PATH,
             role="raw",
-            models_output=("dlesym-aimip",),      # read directly by dlesym-aimip (prescribed SST)
-            models_needed=oos_models + ("dlesym-aimip",),
+            models_output=("dlesym-aimip", "md-1.5"),      # read directly by dlesym-aimip and md-1.5
+            models_needed=oos_models + ("dlesym-aimip", "md-1.5"),
             source_kind="zenodo",
             zenodo_record=ZENODO_AIMIP_RECORD,
             zenodo_file=ZENODO_AIMIP_FILENAME,
@@ -815,6 +816,48 @@ def build_artifact_catalog(
                 source_kind="derived",
                 builder="extract_zip_member",
                 input_refs=(AW_ZIP_REL,),
+            )
+        )
+
+    # 11. MD-1.5: Zenodo 21430292 zip (code and checkpoint, extracted), rebuilt initial state and statistics
+    from .emu_catalog import (MD_INPUT_FILES, MD_INPUTS_RECORD, MD_RECORD, MD_ZIP_FILE, MD_ZIP_MEMBERS,
+                              MD_ZIP_REL)
+
+    _add(
+        ArtifactSpec(
+            rel_path=MD_ZIP_REL,
+            role="raw",
+            models_output=(),
+            models_needed=("md-1.5",),
+            source_kind="zenodo",
+            zenodo_record=MD_RECORD,
+            zenodo_file=MD_ZIP_FILE,
+            zenodo_url=f"https://zenodo.org/records/{MD_RECORD}/files/{MD_ZIP_FILE}?download=1",
+        )
+    )
+    for rel in MD_ZIP_MEMBERS:
+        _add(
+            ArtifactSpec(
+                rel_path=rel,
+                role="output",
+                models_output=("md-1.5",),
+                models_needed=("md-1.5",),
+                source_kind="derived",
+                builder="extract_zip_member",
+                input_refs=(MD_ZIP_REL,),
+            )
+        )
+    for rel, (fname, _size, _md5, _sha) in MD_INPUT_FILES.items():
+        _add(
+            ArtifactSpec(
+                rel_path=rel,
+                role="output",
+                models_output=("md-1.5",),
+                models_needed=("md-1.5",),
+                source_kind="zenodo",
+                zenodo_record=MD_INPUTS_RECORD,
+                zenodo_file=fname,
+                zenodo_url=f"https://zenodo.org/records/{MD_INPUTS_RECORD}/files/{fname}?download=1",
             )
         )
 
@@ -2297,14 +2340,16 @@ def run_setup(
                 resolved_dest, rel_p, lock_files.get(rel_p)
             )
 
-        from .emu_catalog import AW_ZIP_MEMBERS, AW_ZIP_REL
+        from .emu_catalog import AW_ZIP_MEMBERS, AW_ZIP_REL, MD_ZIP_MEMBERS, MD_ZIP_REL
 
-        for aw_rel, (aw_member, _size, _sha, aw_models) in AW_ZIP_MEMBERS.items():
-            if set(aw_models) & wanted and _needs_build(aw_rel):
+        zip_jobs = [(AW_ZIP_REL, rel, member, models) for rel, (member, _s, _h, models) in AW_ZIP_MEMBERS.items()]
+        zip_jobs += [(MD_ZIP_REL, rel, member, ("md-1.5",)) for rel, (member, _s, _h) in MD_ZIP_MEMBERS.items()]
+        for zip_rel, member_rel, member, member_models in zip_jobs:
+            if set(member_models) & wanted and _needs_build(member_rel):
                 extract_zip_member(
-                    os.path.join(resolved_dest, AW_ZIP_REL),
-                    aw_member,
-                    os.path.join(resolved_dest, aw_rel),
+                    os.path.join(resolved_dest, zip_rel),
+                    member,
+                    os.path.join(resolved_dest, member_rel),
                 )
                 built_count += 1
 

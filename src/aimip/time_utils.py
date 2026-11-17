@@ -349,11 +349,11 @@ def resolve_horizon(
     validate_int_range(timestep_hours, "timestep_hours", min_value=1, max_value=24 * 366)
     step_td = datetime.timedelta(hours=timestep_hours)
 
-    # Monthly-stepping models (`archesclimate-ssp`) integrate whole calendar months.
-    # Starting at 2015-01-01 uses 2015-01 and 2015-02 as lagged states so step 1 outputs 2015-03-01
-    # (`start_dt + 2 months`) and step N outputs `start_dt + (N + 1) months`.
-    if family == "arches":
-        first_output_dt = add_calendar_months(start_dt, 2, calendar)
+    # Monthly-stepping models integrate whole calendar months. `archesclimate-ssp`: starting at 2015-01-01 uses
+    # 2015-01 and 2015-02 as lagged states, so step 1 outputs 2015-03-01 (`start_dt + 2 months`) and step N outputs
+    # `start_dt + (N + 1) months`. `md-1.5`: step N outputs `start_dt + N months` (step 0 is the decoded start month).
+    if family in ("arches", "md"):
+        first_output_dt = add_calendar_months(start_dt, 2 if family == "arches" else 1, calendar)
         if steps is not None:
             resolved_steps = validate_int_range(steps, "steps", min_value=1, max_value=10_000_000)
             end_dt = add_calendar_months(first_output_dt, resolved_steps - 1, calendar)
@@ -362,7 +362,7 @@ def resolve_horizon(
             count, unit = parse_length_spec(length)
             if unit not in ("m", "y"):
                 raise ValidationError(
-                    f"Model {model_name or 'arches'!r} integrates in whole calendar monthly steps; "
+                    f"Model {model_name or family!r} integrates in whole calendar monthly steps; "
                     f"--length {length!r} with unit {unit!r} is not integral (use '<N>m' or '<N>y').",
                     field="length",
                     allowed=["<N>m", "<N>y"],
@@ -375,7 +375,7 @@ def resolve_horizon(
         if end_dt < first_output_dt:
             raise ValidationError(
                 f"--end {format_cftime(end_dt)} must be at or after the first output month "
-                f"{format_cftime(first_output_dt)} for {model_name or 'arches'!r}.",
+                f"{format_cftime(first_output_dt)} for {model_name or family!r}.",
                 field="end",
             )
         if (
@@ -386,7 +386,7 @@ def resolve_horizon(
         ):
             raise ValidationError(
                 f"Span from {format_cftime(start_dt)} to {format_cftime(end_dt)} is not an exact whole number "
-                f"of calendar monthly steps for {model_name or 'arches'!r}.",
+                f"of calendar monthly steps for {model_name or family!r}.",
                 field="end",
             )
         resolved_steps = (

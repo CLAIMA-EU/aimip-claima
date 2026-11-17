@@ -1,4 +1,4 @@
-"""Installed model-family adapter protocol and allow-listed adapters (`fme`, `e2s-dlesym`, `arches`, `geoarches`).
+"""Installed model-family adapter protocol and allow-listed adapters (`fme`, `e2s-dlesym`, `arches`, `geoarches`, `md`).
 
 Registry entries may reference ONLY installed adapter identifiers in `INSTALLED_ADAPTERS`;
 arbitrary import paths, shell fragments, or external commands in registry JSON are refused.
@@ -769,7 +769,7 @@ class FmeFamilyAdapter:
 
 
 class EmuFamilyAdapter:
-    """Adapter wrapping `aimip.emu` for the `e2s-dlesym`, `arches` and `geoarches` families."""
+    """Adapter wrapping `aimip.emu` for the `e2s-dlesym`, `arches`, `geoarches` and `md` families."""
 
     def __init__(self, family_id: str) -> None:
         self.family_id = family_id
@@ -842,6 +842,14 @@ class EmuFamilyAdapter:
                 if total_members > 1
                 else "Rollout from the ERA5 daily-mean state of 1978-09-30 (Zenodo 22795233)."
             )
+        elif model.family == "md":
+            selected_name = scenario or model.forcing_sets[0].name
+            ensemble_strategy = "stochastic_noise_from_era5_ic" if total_members > 1 else "single_era5_ic"
+            ensemble_note = (
+                f"{total_members} stochastic member(s) from the ERA5 monthly mean of October 1978 (seed + member_id)."
+                if total_members > 1
+                else "Rollout from the ERA5 monthly mean of October 1978 (one diffusion sample per month)."
+            )
         else:
             selected_name = "era5-initial-state"
             ensemble_strategy = (
@@ -871,7 +879,8 @@ class EmuFamilyAdapter:
             "ensemble_strategy": ensemble_strategy,
             "ensemble_note": ensemble_note,
             "ic_source": (aw_restart["path"] if aw_restart is not None else
-                          {"arches": None, "geoarches": "zenodo-22795233@1978-09-30"}.get(
+                          {"arches": None, "geoarches": "zenodo-22795233@1978-09-30",
+                           "md": "md15-era5-ic@1978-10"}.get(
                               model.family, f"arco-era5@{norm_start}")),
             "ic_sha256": sha256_file(aw_restart["path"]) if aw_restart is not None else None,
             "ocean_ic_source": None,
@@ -898,6 +907,8 @@ class EmuFamilyAdapter:
         elif model.family == "geoarches":
             basis = (f"{model.name} 1x A100-80GB (~{AW_SECONDS_PER_DAY.get(model.name, 0):g} s / simulated day"
                      + (" / member)" if model.stochastic else ")"))
+        elif model.family == "md":
+            basis = "MD-1.5 one GPU or 8 CPU cores (~1 s / simulated month / member)"
         else:
             basis = "ArchesClimate-SSP 1x A100-80GB (~2 s / simulated month)"
         return {
@@ -931,7 +942,7 @@ class EmuFamilyAdapter:
             role = "forcing" if "memmap" in rel or rel.startswith("inputs/") else "package"
             fallback = model.checkpoint_sha256 if abs_p == model.checkpoint else None
             is_selected = (
-                role == "package" or model.family == "geoarches" or (scen_tag is not None and scen_tag in rel)
+                role == "package" or model.family in ("geoarches", "md") or (scen_tag is not None and scen_tag in rel)
             )
             assets.append(
                 _asset_from_rel(
@@ -991,6 +1002,8 @@ class EmuFamilyAdapter:
                         cached=os.path.isfile(restart),
                     )
                 )
+        elif model.family == "md":
+            pass    # the initial state, statistics, code and checkpoint are all pinned files (listed above)
         else:
             out_cand = validated.get("output_dir")
             staged_ic = os.path.join(str(out_cand), "ic_era5.pt") if out_cand else ""
@@ -1079,6 +1092,7 @@ INSTALLED_ADAPTERS: dict[str, FamilyAdapter] = {
     "e2s-dlesym": EmuFamilyAdapter("e2s-dlesym"),
     "arches": EmuFamilyAdapter("arches"),
     "geoarches": EmuFamilyAdapter("geoarches"),
+    "md": EmuFamilyAdapter("md"),
     "emu": EmuFamilyAdapter("e2s-dlesym"),
 }
 

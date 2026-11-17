@@ -313,7 +313,7 @@ def test_registry_default_and_lock_contract_for_all_models(
     tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Verify all 17 models in `registry.default.json` and their lock pins in `aimip.lock`."""
+    """Verify all 18 models in `registry.default.json` and their lock pins in `aimip.lock`."""
     data_dir = tmp_path / "data"
     data_dir.mkdir()
     monkeypatch.delenv("AIMIP_REGISTRY", raising=False)
@@ -330,7 +330,7 @@ def test_registry_default_and_lock_contract_for_all_models(
 
     reg = load_registry(data_dir=str(data_dir))
     assert tuple(reg.keys()) == CANONICAL_MODELS
-    assert len(reg) == 17   # 10 fme + 5 DLESyM / ArchesClimate-SSP + 2 ArchesWeather
+    assert len(reg) == 18   # 10 fme + 5 DLESyM / ArchesClimate-SSP + 2 ArchesWeather + MD-1.5
 
     expected_meta = {
         "ace2-era5": ("2026.5.1", "fme.ace.inference", "proleptic_gregorian", 6, False),
@@ -349,6 +349,7 @@ def test_registry_default_and_lock_contract_for_all_models(
         "dlesym-v1.1": ("e2s-dlesym", 6, True, ["era5-initial-state"]),
         "dlesym-v0-isccp": ("e2s-dlesym", 6, False, ["era5-initial-state"]),
         "dlesym-aimip": ("e2s-dlesym", 6, False, ["aimip"]),
+        "md-1.5": ("md", 730, True, ["aimip"]),
         "archesclimate-ssp": ("arches", 730, False, ["ssp434", "ssp585"]),
         "archesweather": ("geoarches", 24, False, ["aimip"]),
         "archesweathergen": ("geoarches", 24, True, ["aimip"]),
@@ -363,7 +364,7 @@ def test_registry_default_and_lock_contract_for_all_models(
             assert (model.family, model.timestep_hours, model.stochastic) == (fam, step, stoch)
             assert model.fme_module == "aimip.emu_job" and model.ic_files == () and not model.is_coupled
             assert [fs.name for fs in model.forcing_sets] == sets
-            assert model.checkpoint.endswith((".mdlus", "model.ckpt", "checkpoint.ckpt"))
+            assert model.checkpoint.endswith((".mdlus", "model.ckpt", "checkpoint.ckpt", "MD-1p5/weights.pt"))
             for req_rel in model.required_files:
                 le = lock_files[req_rel]
                 assert hex64_re.match(le["sha256"]) and le["size"] > 0
@@ -378,8 +379,16 @@ def test_registry_default_and_lock_contract_for_all_models(
                         assert src["inputs"]["raw/zenodo-22795233/model_checkpoints.zip"] == (
                             lock_files["raw/zenodo-22795233/model_checkpoints.zip"]["sha256"])
                     continue
-                if name == "dlesym-aimip" and req_rel.startswith("raw/zenodo-17065758/"):   # the AIMIP SST forcing
+                if name in ("dlesym-aimip", "md-1.5") and req_rel.startswith("raw/zenodo-17065758/"):   # AIMIP SST
                     assert le["source"]["kind"] == "zenodo" and le["source"]["record"] == "17065758", req_rel
+                    continue
+                if fam == "md":   # code and checkpoint extracted from Zenodo 21430292's zip; the rebuilt inputs
+                    src = le["source"]
+                    if src["kind"] == "derived":
+                        assert src["builder"] == "extract_zip_member", req_rel
+                        assert list(src["inputs"]) == ["raw/zenodo-21430292/monthly-diffusion-MDv0.9-1.5-licensed.zip"]
+                    else:
+                        assert src["kind"] == "zenodo" and req_rel.startswith("inputs/md-1.5/"), req_rel
                     continue
                 assert le["source"]["kind"] == "hf"
                 assert re.match(r"^[0-9a-f]{40}$", le["source"]["revision"]), req_rel

@@ -1018,6 +1018,283 @@ class _MeanOf:
 
 # ------------------------------------------------------------------ entry point
 
+# ------------------------------------------------------------------ MD-1.5 (Monthly Diffusion v0.9)
+
+# The checkpoint's tensors fit the published CVAE with these settings; its config.pkl was written by earlier code whose
+# arguments the published constructor does not take (kl_weight1, rank, conditioning_rank, ...). Read from the shapes:
+# encoder rank 64 / embed 128 / Driscoll-Healy conditioning, decoder rank 256 / embed 1024 / conditioning rank 4,
+# diffusion rank 256 / embed 512 / Driscoll-Healy conditioning, seasonality basis 3.
+MD_ARCH = {
+    "seasonality_basis": 3,
+    "encoder_sfno_embed_dim": 128, "encoder_rank": 64, "encoder_operator_type": "spectral_fc",
+    "encoder_conditioning_operator_type": "driscoll-healy", "encoder_conditioning_rank": 4,
+    "decoder_sfno_embed_dim": 1024, "decoder_rank": 256, "decoder_operator_type": "spectral_fc",
+    "decoder_conditioning_operator_type": "spectral_fc", "decoder_conditioning_rank": 4,
+    "diffusion_sfno_embed_dim": 512, "diffusion_rank": 256, "diffusion_operator_type": "spectral_fc",
+    "diffusion_conditioning_operator_type": "driscoll-healy", "diffusion_conditioning_rank": 4,
+}
+MD_CONFIG_KEYS = ("forcing_dim", "data_dimensions", "activation", "n_statics", "statics", "hidden_channels",
+                  "squeeze_factors", "variable_names", "seasonality_dim")
+MD_LEVELS = [1000.0, 850.0, 700.0, 500.0, 250.0, 100.0, 50.0]
+MD_SURFACE = {"tas": "VAR_2TSFC", "ts": "SKTSFC", "ps": "SPSFC", "psl": "MSLSFC", "uas": "VAR_10USFC",
+              "vas": "VAR_10VSFC", "tdps": "VAR_2DSFC", "pr": "MTPRSFC", "zg500": "z500.0"}
+MD_UNITS = {"tas": "K", "ts": "K", "ps": "Pa", "psl": "Pa", "uas": "m s-1", "vas": "m s-1", "tdps": "K",
+            "pr": "kg m-2 s-1", "zg500": "m", "ta": "K", "hus": "kg kg-1", "ua": "m s-1", "va": "m s-1"}
+GRAVITY = 9.80665
+
+
+def _md_edges(c, clip):
+    """The authors' `edges_from_centers` (data-pipeline notebooks): midpoints, half a cell beyond the ends, clipped."""
+    import numpy as np
+
+    c = np.asarray(c, dtype="f8")
+    d = np.diff(c)
+    e = np.concatenate(([c[0] - d[0] / 2], (c[:-1] + c[1:]) / 2, [c[-1] + d[0] / 2]))
+    return np.clip(e, *clip)
+
+
+def _md_overlap(dst_edges, src_edges, f):
+    """Overlap weights (n_dst, n_src) of 1-D cells; f maps a coordinate to its cumulative measure."""
+    import numpy as np
+
+    lo = np.maximum(dst_edges[:-1, None], src_edges[None, :-1])
+    hi = np.minimum(dst_edges[1:, None], src_edges[None, 1:])
+    return np.where(hi > lo, f(hi) - f(lo), 0.0)
+
+
+class MDForcing:
+    """AIMIP SST, sea-ice cover and land-sea mask (Zenodo 17065758, 0.25 deg) on MD-1.5's grid, regridded as the
+    authors' regrid_forcings.ipynb: first-order conservative with the valid fraction normalized (xESMF
+    conservative_normed; mask of the first month for SST and sea ice), cell edges from `edges_from_centers`. On regular
+    grids this is separable: area in sin(latitude) times longitude overlap."""
+
+    def __init__(self, path: str):
+        import netCDF4
+        import numpy as np
+
+        self.ds = netCDF4.Dataset(path)
+        lat = np.asarray(self.ds["latitude"][:], "f8")
+        lon = np.asarray(self.ds["longitude"][:], "f8")
+        self.flip = lat[0] > lat[-1]
+        lat = lat[::-1] if self.flip else lat
+        self.lat_out, self.lon_out = np.linspace(-90, 90, 121), np.arange(0, 360, 1.5)
+        sinf = lambda x: np.sin(np.deg2rad(x))  # noqa: E731
+        self.wlat = _md_overlap(_md_edges(self.lat_out, (-90, 90)), _md_edges(lat, (-90, 90)), sinf)
+        self.wlon = _md_overlap(_md_edges(self.lon_out, (0, 360)), _md_edges(lon, (0, 360)), lambda x: x)
+        tv = self.ds["time"]
+        dates = netCDF4.num2date(tv[:], tv.units, getattr(tv, "calendar", "standard"),
+                                 only_use_cftime_datetimes=False, only_use_python_datetimes=True)
+        self.months = [f"{d.year:04d}-{d.month:02d}" for d in dates]
+        self.masks = {v: np.isfinite(self._raw(v, 0)).astype("f8") for v in ("sea_surface_temperature", "sea_ice_cover")}
+
+    def _raw(self, var, i):
+        import numpy as np
+
+        v = self.ds[var]
+        x = np.ma.filled(v[i] if v.ndim == 3 else v[:], np.nan).astype("f8")
+        return x[::-1] if self.flip else x
+
+    def _regrid(self, x, m):
+        """Like ESMF's sparse weights: a NaN inside the mask makes only the destination cells it overlaps NaN (a dense
+        product would spread it everywhere, since 0 * NaN = NaN)."""
+        import numpy as np
+
+        ok = (m > 0) & np.isfinite(x)
+        num = self.wlat @ np.where(ok, x, 0.0) @ self.wlon.T
+        den = self.wlat @ m @ self.wlon.T
+        out = np.where(den > 0, num / np.where(den > 0, den, 1.0), np.nan)
+        bad = (m > 0) & ~np.isfinite(x)
+        if bad.any():
+            out[(self.wlat @ bad.astype("f8") @ self.wlon.T) > 0] = np.nan
+        return out
+
+    def fields(self, months: list):
+        """(len(months), 3, 121, 240): SSTKSFC, CISFC, LSMSFC (physical, NaN where no ocean cell overlaps)."""
+        import numpy as np
+
+        lsm = self._raw("land_sea_mask", 0)
+        lsm_r = self._regrid(lsm, np.isfinite(lsm).astype("f8"))
+        out = np.empty((len(months), 3, 121, 240))
+        for k, mo in enumerate(months):
+            i = self.months.index(mo)
+            for j, v in enumerate(("sea_surface_temperature", "sea_ice_cover")):
+                out[k, j] = self._regrid(self._raw(v, i), self.masks[v])
+            out[k, 2] = lsm_r
+        return out
+
+
+class _MDConfigUnpickler:
+    """config.pkl through an allow-list: the classes and functions of plain tensors, a GELU class and a device; the
+    statics tensor nested in it is read with torch.load(weights_only=True)."""
+
+    @staticmethod
+    def load(path: str, device: str):
+        import collections
+        import io
+        import pickle
+
+        import numpy as np
+        import torch
+
+        allowed = {
+            ("collections", "OrderedDict"): collections.OrderedDict,
+            ("torch.nn.modules.activation", "GELU"): torch.nn.GELU,
+            ("torch", "device"): torch.device,
+            ("torch._utils", "_rebuild_tensor_v2"): torch._utils._rebuild_tensor_v2,
+            ("torch.storage", "_load_from_bytes"):
+                lambda b: torch.load(io.BytesIO(b), map_location=device, weights_only=True),
+            ("numpy", "dtype"): np.dtype,
+        }
+
+        class U(pickle.Unpickler):
+            def find_class(self, module, name):
+                if (module, name) in allowed:
+                    return allowed[(module, name)]
+                if module in ("numpy._core.multiarray", "numpy.core.multiarray") and name == "scalar":
+                    try:
+                        from numpy._core.multiarray import scalar
+                    except ImportError:            # numpy < 2
+                        from numpy.core.multiarray import scalar
+                    return scalar
+                raise SystemExit(f"{path} refers to {module}.{name}, which is not allowed")
+
+        with open(path, "rb") as fh:
+            return U(fh).load()
+
+
+def _md_module(code_dir: str):
+    """Import the published `md` package from the pinned files without writing bytecode next to them."""
+    import importlib
+    import types
+
+    sys.dont_write_bytecode = True
+    sys.modules.setdefault("src", types.ModuleType("src"))     # md/prep_data.py imports a module named `src`
+    sys.path.insert(0, code_dir)
+    md = importlib.import_module("md")
+    if os.path.realpath(os.path.dirname(md.__file__)) != os.path.realpath(os.path.join(code_dir, "md")):
+        raise SystemExit(f"imported md from {md.__file__}, not from {code_dir}")
+    return md
+
+
+def _md_model(md, job: dict, device: str):
+    import contextlib
+
+    import torch
+
+    config = _MDConfigUnpickler.load(job["config_file"], device)
+    kw = {k: config[k] for k in MD_CONFIG_KEYS}
+    kw.update(MD_ARCH, device=torch.device(device), loading=True)
+    with contextlib.redirect_stdout(sys.stderr):
+        model = md.CVAE(**kw)
+    state = torch.load(job["checkpoint"], map_location=device, weights_only=True)
+    unused = sorted(k for k in state if k.endswith("l2loss_sphere.quad_weights"))   # loss buffers of the old code
+    res = model.load_state_dict({k: v for k, v in state.items() if k not in unused}, strict=False)
+    if res.unexpected_keys or set(res.missing_keys) - {"predictor.latent_mu", "predictor.latent_log_sigma"}:
+        raise SystemExit(f"checkpoint does not fit MD_ARCH: missing {res.missing_keys[:5]}, unexpected "
+                         f"{res.unexpected_keys[:5]}")
+    model.eval()
+    return model, list(config["variable_names"][: config["data_dimensions"][0]]), unused
+
+
+def run_md(out_dir: str, job: dict) -> dict:
+    """The authors' scripts/run_aimip_runs.py and CVAE.forced_run, one member at a time (torch.manual_seed(seed + k);
+    the authors ran five unseeded members in one batch): encode the October 1978 state, then every month sample the
+    next latent mean with the diffusion model and decode it under that month's forcing. Step 0 is the decoded initial
+    state; forcing normalization statistics are fitted on 1985-2014 of the forcing itself, as the authors did."""
+    import json as _json
+
+    import numpy as np
+    import torch
+    import xarray as xr
+
+    dev = "cuda" if torch.cuda.is_available() else "cpu"
+    md = _md_module(job["code_dir"])
+    model, state_names, unused = _md_model(md, job, dev)
+    stats = _json.load(open(job["stats_file"], encoding="utf-8"))
+    n_out = int(job["steps"]) + 1
+    months = [str(np.datetime64("1978-10", "M") + np.timedelta64(i, "M")) for i in range(n_out)]
+
+    forcing = MDForcing(job["sst_forcing"])
+    lat, lon = forcing.lat_out, forcing.lon_out
+    all_months = forcing.months[: forcing.months.index("2024-12") + 1]
+    f_da = xr.DataArray(forcing.fields(all_months), dims=("time", "varlev", "lat", "lon"),
+                        coords={"time": np.array([np.datetime64(m + "-01", "ns") for m in all_months]),
+                                "varlev": ["SSTKSFC", "CISFC", "LSMSFC"], "lat": lat, "lon": lon})
+    _, f_params, _ = md.preprocess_by_variables(f_da.sel(time=slice("1985-01-01", "2014-12-01")), group_levels=False)
+    f_norm, _, _ = md.preprocess_by_variables(f_da, dict_to_undo=f_params, group_levels=False)
+    f_norm = f_norm.fillna(0).transpose("time", "varlev", "lat", "lon").sel(time=f_da.time.values[:n_out])
+    forcings = torch.tensor(f_norm.values, dtype=torch.float32, device=dev)
+
+    with xr.open_dataset(job["ic_file"]) as icds:
+        ic = icds["era5"].sel(varlev=state_names).load()
+    if not np.allclose(ic.lat.values, lat) or not np.allclose(ic.lon.values, lon):
+        raise SystemExit(f"{job['ic_file']}: grid differs from the model grid")
+    ic_norm, _, _ = md.preprocess_by_variables(ic.expand_dims(time=[np.datetime64("1978-10-01", "ns")]),
+                                               dict_to_undo=stats, group_levels=False)
+    ic_t = torch.tensor(ic_norm.fillna(0).transpose("time", "varlev", "lat", "lon").values, dtype=torch.float32,
+                        device=dev)
+    month_no = torch.tensor([[float(np.datetime64(m, "M").astype(object).month)] for m in months], device=dev)
+    template = xr.DataArray(np.zeros((1, len(state_names), len(lat), len(lon)), "f4"),
+                            dims=("time", "varlev", "lat", "lon"),
+                            coords={"varlev": state_names, "lat": lat, "lon": lon})
+
+    attrs = {"source": "MD-1.5 (Monthly Diffusion v0.9, MD-1p5.pth; UMD PARETO), aimip", "start": job["start"],
+             "aimip_family": "md",
+             "comment": "monthly-mean states; the first month is the model's decoding of the ERA5 initial state; zg500 "
+                        "= z500 / 9.80665; ta, hus, ua, va on 7 pressure levels in monthly_levels.nc"}
+    n_members = int(job["members"])
+    ws = MonthlyWriter(os.path.join(out_dir, "atmosphere", "monthly_mean_predictions.nc"), list(MD_SURFACE), lat,
+                       lon, n_members, attrs=attrs, extra={k: {"units": MD_UNITS[k]} for k in MD_SURFACE})
+    wl = MonthlyWriter(os.path.join(out_dir, "atmosphere", "monthly_levels.nc"), ["ta", "hus", "ua", "va"], lat, lon,
+                       n_members, attrs=attrs, extra={k: {"units": MD_UNITS[k]} for k in ("ta", "hus", "ua", "va")},
+                       levels=MD_LEVELS, level_units="hPa")
+    idx = {n: i for i, n in enumerate(state_names)}
+    w = np.cos(np.deg2rad(lat))[:, None] * np.ones((1, len(lon)))
+    unstable = None
+
+    def emit(member, step, decoded):
+        phys = md.undo_preprocess_by_variables(template.copy(data=decoded), dict_to_undo=stats, group_levels=False)
+        a = phys.transpose("time", "varlev", "lat", "lon").values[0]
+        if not np.isfinite(a).all():
+            raise Unstable(months[step], member, "non-finite values")
+        g = float((a[idx["VAR_2TSFC"]] * w).sum() / w.sum())
+        if not T2M_BAND_K[0] <= g <= T2M_BAND_K[1]:
+            raise Unstable(months[step], member, f"global-mean tas {g:.1f} K outside the plausible band")
+        fields = {k: a[idx[v]] for k, v in MD_SURFACE.items()}
+        fields["zg500"] = fields["zg500"] / GRAVITY
+        ws.write(member, months[step], fields, 1)
+        wl.write(member, months[step], {n: np.stack([a[idx[f"{s}{lev}"]] for lev in MD_LEVELS])
+                                        for n, s in (("ta", "t"), ("hus", "q"), ("ua", "u"), ("va", "v"))}, 1)
+
+    try:
+        with torch.no_grad():
+            for k in range(n_members):
+                seed = int(job["seed"]) + k
+                torch.manual_seed(seed)
+                tw = time.time()
+                f0 = forcings[0:1]
+                cond = torch.cat([f0, model.seasonality_embedding(month_no[0:1])], dim=1)
+                mu, _, cs = model.encoder(ic_t, cond)
+                emit(k, 0, model.decoder(mu, cs).cpu().numpy())
+                for step in range(1, n_out):
+                    mu = model.predictor(mu, cs[-1])
+                    cond = torch.cat([forcings[step:step + 1], model.seasonality_embedding(month_no[step:step + 1])],
+                                     dim=1)
+                    cs = model.encoder.embed_conditions(cond)
+                    emit(k, step, model.decoder(mu, cs).cpu().numpy())
+                _log(f"member {k} seed {seed}: {n_out} months in {time.time() - tw:.1f}s")
+    except Unstable as exc:
+        unstable = exc
+        _log(f"UNSTABLE {exc}: the run stops; months before it are written")
+    ws.close()
+    wl.close()
+    out = {"members": n_members, "months_per_member": n_out, "device": dev, "unused_checkpoint_keys": unused,
+           "forcing_normalization": f_params}
+    if unstable is not None:
+        out.update({"unstable_from": unstable.month, "unstable_member": unstable.member, "unstable_reason": unstable.why})
+    return out
+
+
 def main(argv: list) -> int:
     if len(argv) != 2 or argv[0] not in ("stage", "run"):
         print(__doc__, file=sys.stderr)
@@ -1037,6 +1314,8 @@ def main(argv: list) -> int:
         result = run_arches(job["out_dir"], job)
     elif job["family"] == "geoarches":
         result = run_geoarches(job["out_dir"], job)
+    elif job["family"] == "md":
+        result = run_md(job["out_dir"], job)
     else:
         raise SystemExit(f"unknown family {job['family']!r}")
     result["process_seconds"] = round(time.time() - t0, 1)

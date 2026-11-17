@@ -491,6 +491,19 @@ def _create_synthetic_upstream_mirrors(
         else:
             p_aw.write_bytes(f"FAKE_AW {fname}".encode("ascii"))
 
+    # MD-1.5 (Zenodo 21430292 zip with code and checkpoint; the rebuilt inputs from their own record)
+    from aimip.emu_catalog import MD_INPUT_FILES, MD_INPUTS_RECORD, MD_RECORD, MD_ZIP_FILE, MD_ZIP_MEMBERS
+
+    p_md = zenodo_mirror / MD_RECORD / MD_ZIP_FILE
+    p_md.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(p_md, "w") as zf:
+        for member, *_m in MD_ZIP_MEMBERS.values():
+            zf.writestr(member, f"FAKE_MD {member}".encode("ascii"))
+    for fname, *_rest in MD_INPUT_FILES.values():
+        p_in = zenodo_mirror / MD_INPUTS_RECORD / fname
+        p_in.parent.mkdir(parents=True, exist_ok=True)
+        p_in.write_bytes(f"FAKE_MD {fname}".encode("ascii"))
+
 
 def _synthetic_co2_reader(year: int) -> xr.DataArray:
     """Return a synthetic 6-hourly 1D `global_mean_co2` DataArray for *year*."""
@@ -1243,8 +1256,9 @@ def test_shipped_aimip_lock_covers_all_models_with_pinned_revisions_and_output_s
         "models/samudrace-e3smv3/SamudrACE-E3SMv3-ocean.tar",
     }
     assert set(files.keys()) == set(catalog.keys()) | extra_aux
-    assert len(catalog) == 212 + 49 + 16   # 212 fme + 49 DLESyM / ArchesClimate-SSP (emu_sources.json) + 16 ArchesWeather
-    assert len(files) == 215 + 49 + 16   # + 3 companion checkpoints pinned in aimip.lock
+    assert len(catalog) == 212 + 49 + 16 + 20   # 212 fme + 49 DLESyM / ArchesClimate-SSP (emu_sources.json)
+    #                                              + 16 ArchesWeather + 20 MD-1.5 (zip, 17 members, 2 inputs)
+    assert len(files) == 215 + 49 + 16 + 20   # + 3 companion checkpoints pinned in aimip.lock
 
     hex64_re = re.compile(r"^[0-9a-f]{64}$")
     hex40_re = re.compile(r"^[0-9a-f]{40}$")
@@ -1262,7 +1276,11 @@ def test_shipped_aimip_lock_covers_all_models_with_pinned_revisions_and_output_s
             assert hex40_re.match(src["revision"]), f"Unpinned HF revision on {rel_path}"
             assert isinstance(entry["size"], int) and entry["size"] > 0
         elif spec.source_kind == "zenodo":
-            want_size = AW_ZENODO_FILES[rel_path][1] if rel_path in AW_ZENODO_FILES else 4622266486
+            from aimip.emu_catalog import MD_INPUT_FILES, MD_ZIP_REL, MD_ZIP_SIZE
+
+            want_size = (AW_ZENODO_FILES[rel_path][1] if rel_path in AW_ZENODO_FILES
+                         else MD_ZIP_SIZE if rel_path == MD_ZIP_REL
+                         else MD_INPUT_FILES[rel_path][1] if rel_path in MD_INPUT_FILES else 4622266486)
             assert isinstance(entry["size"], int) and entry["size"] == want_size
             assert hex32_re.match(src["md5"]), f"Unpinned Zenodo md5 on {rel_path}"
         elif spec.source_kind == "derived":
@@ -1280,8 +1298,8 @@ def test_shipped_aimip_lock_covers_all_models_with_pinned_revisions_and_output_s
         assert isinstance(aux_entry["size"], int) and aux_entry["size"] > 0
         assert hex40_re.match(aux_entry["source"]["revision"]), aux_rel
 
-    assert output_count == 206 + 49 + 15   # 206 fme + 49 DLESyM / ArchesClimate-SSP + 15 ArchesWeather outputs
-    assert raw_count == 7   # + the ArchesWeather checkpoint zip
+    assert output_count == 206 + 49 + 15 + 19   # 206 fme + 49 DLESyM / ArchesClimate-SSP + 15 ArchesWeather + 19 MD-1.5
+    assert raw_count == 8   # + the ArchesWeather checkpoint zip + the MD-1.5 zip
     assert files[ZENODO_AIMIP_REL_PATH]["sha256"] == (
         "a52caf3722bc85a58075118fa06f0c6cce5ace279458edda0a2c9d68ec179fb7"
     )

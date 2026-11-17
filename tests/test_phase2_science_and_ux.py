@@ -182,6 +182,7 @@ def test_all_canonical_models_plan_through_services_and_check_ic_and_arches_card
         "dlesym-v1.1": {"start": "1995-01-01", "steps": 4, "members": 2},
         "dlesym-v0-isccp": {"start": "1995-01-01", "steps": 4},
         "dlesym-aimip": {"start": "1978-10-03", "steps": 16},
+        "md-1.5": {"start": "1978-10-01", "steps": 12, "members": 2},
         "archesclimate-ssp": {"start": "2015-01-01", "length": "1y", "forcing_set": "ssp585"},
         "archesweather": {"start": "1978-09-30", "steps": 4},
         "archesweathergen": {"start": "1978-09-30", "length": "30d", "members": 2},

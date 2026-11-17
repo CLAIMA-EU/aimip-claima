@@ -303,6 +303,12 @@ def render_plan_card(plan: ResolvedPlan, *, is_tty: bool = False) -> str:
             if plan.spec.ic
             else "ERA5 daily-mean state of 1978-09-30 (previous 1978-09-29), Zenodo 22795233"
         )
+    elif plan.family == "md":
+        period_line = (
+            f"outputs {plan.start_time[:7]} .. {plan.end_time[:7]}  (the decoded start month + {plan.steps} monthly "
+            f"steps, calendar={plan.calendar})"
+        )
+        ic_line = "ERA5 monthly mean of October 1978 on the 1.5-degree grid (rebuilt with the authors' regridding)"
     else:
         period_line = (
             f"{plan.start_time} -> {plan.end_time}  "
@@ -327,6 +333,8 @@ def render_plan_card(plan: ResolvedPlan, *, is_tty: bool = False) -> str:
         outputs_line = "full step predictions only (--prediction: large output; monthly means disabled)"
     elif plan.spec.monthly and plan.family == "geoarches":
         outputs_line = "monthly means (monthly_mean_predictions.nc; pressure levels in monthly_levels.nc) + restart.nc"
+    elif plan.spec.monthly and plan.family == "md":
+        outputs_line = "monthly states (monthly_mean_predictions.nc; pressure levels in monthly_levels.nc)"
     elif plan.spec.monthly:
         outputs_line = "monthly means (monthly_mean_predictions.nc)"
     else:
@@ -371,7 +379,7 @@ def render_show_card(card: dict[str, Any], *, include_examples: bool = False) ->
         f"{fs['name']} ({fs['window'][0][:10]}..{fs['window'][1][:10]})"
         for fs in card.get("forcing_sets", [])
     )
-    step_label = "1mo step" if card.get("family") == "arches" else f"{card['timestep_hours']}h step"
+    step_label = "1mo step" if card.get("family") in ("arches", "md") else f"{card['timestep_hours']}h step"
     ver_note = f", verified on {card['verified_on']}" if card.get("verified_on") else ""
     lines = [
         f"{card['name']} — {card['title']}",

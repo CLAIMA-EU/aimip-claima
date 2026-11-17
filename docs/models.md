@@ -17,6 +17,7 @@
 | `dlesym-v1.0` | **coupled** atmosphere–ocean (HEALPix-64, output 0.25°), deterministic; Earth2Studio | not forced; any 6-hourly start 1940-01-04 … 2023-12-31 | ERA5 at `--start`, downloaded by `aimip run` | — |
 | `dlesym-v1.1` | coupled, stochastic; adds 6-hour precipitation | as above | as above | `--members K` (noise seed + k) |
 | `dlesym-v0-isccp` | coupled, deterministic | as above | as above | — |
+| `md-1.5` | MD-1.5 (Monthly Diffusion v0.9), AIMIP version: latent diffusion, stochastic, monthly steps on 1.5° | AIMIP SST and sea ice 1978-10 … 2024-12 | ERA5 monthly mean of October 1978 (`--start 1978-10-01T00:00:00`) | `--members K` (noise seed + k) |
 | `dlesym-aimip` | AIMIP version: `dlesym-v0-isccp` with the SST prescribed from the AIMIP forcing, deterministic | AIMIP SST 1978-10 … 2024-12; `--start` 1978-10-03 … 2024-12-28 | ERA5 at `--start` (the authors' members: 1978-10-03 … 07, 00 UTC) | one run per start |
 | `archesclimate-ssp` | monthly emulator of IPSL-CM6A-LR (144 × 144: 1.25° lat × 2.5° lon; atmosphere and upper-ocean temperature), deterministic | scenarios `ssp434` (default) and `ssp585`; outputs March 2015 … November 2100 | the scenario's 2015 state (`--start 2015-01-01T00:00:00`) | — |
 | `archesweather` | ArchesWeather-Mx4, AIMIP version: four networks averaged at every step, deterministic, trained on ERA5 (1°, 13 pressure levels, daily means) | monthly ERA5 SST and sea ice, 1978-10-01 … 2024-12-31 | the ERA5 daily mean of 1978-09-30 (`--start 1978-09-30T00:00:00`) | — |
@@ -74,6 +75,26 @@ from 1978-10-03 is their run length (to 2024-12-28; at most 67568, to 2025-01-01
 1979–2024 the global-mean 2-m temperature is 287.32 K (their four members: 287.32–287.33 K), its trend 0.167 K per
 decade (theirs: 0.165–0.172), and the mean seasonal cycle differs by at most 0.04 K. A full run takes about 36 minutes
 on one GH200. The model was trained on 1983–2016, part of the AIMIP evaluation period. No +2 K / +4 K experiments yet.
+
+**MD-1.5** (Monthly Diffusion v0.9; Hall and Molina 2026, arXiv:2604.13481; code and checkpoint: Zenodo 21430292,
+MIT). A conditional variational autoencoder with spherical-Fourier blocks and a diffusion model in its latent space,
+one step per month on a 1.5° grid with poles (121 × 240): 8 surface fields, temperature, humidity and wind on 7
+pressure levels, and z500. It is forced by the AIMIP SST and sea ice (Zenodo 17065758; aimip regrids them as the
+authors' pipeline does: conservative, normalized by the ocean fraction) and a land–sea mask. `--start
+1978-10-01T00:00:00` only; the first output month is the model's decoding of the ERA5 state of October 1978, as in the
+authors' submission; `--steps 554` reaches December 2024. Members differ by noise seed (seed + k).
+Two things are not as published:
+- The checkpoint the authors ran (`MD-1p5.pth`) was saved by earlier, unpublished code, and the published code cannot
+  read its config. aimip builds the published model classes with the settings the checkpoint's tensors imply; every
+  tensor loads.
+- The initial state and the normalization statistics (1985–2014, the training period) are not published; aimip uses
+  ERA5 monthly means rebuilt with the authors' regridding (`tools/md15`).
+Against the authors' submission (five members each): global-mean 2 m temperature 1979–2024 287.28–287.30 K (theirs
+287.32–287.33 K), trend 0.071–0.078 K per decade (theirs 0.058–0.069); the first, decoded month differs from theirs by
+about 15 % of the spatial standard deviation in 2 m temperature, so the reconstruction is close but not exact. A seed
+reproduces a member only on the same device type: CUDA and CPU draw different noise. Outputs: `atmosphere/monthly_mean_predictions.nc`
+(`tas`, `ts`, `ps`, `psl`, `uas`, `vas`, `tdps`, `pr`, `zg500`) and `atmosphere/monthly_levels.nc` (`ta`, `hus`, `ua`,
+`va`). Runs on a GPU or on CPUs: five members of the whole period take about 8 minutes on one GH200.
 
 **ArchesClimate-SSP.** `--steps` counts months. The run always starts from the scenario's 2015 state; the first
 output month is March 2015. It emulates one climate model (IPSL-CM6A-LR) under one scenario forcing, not observed
