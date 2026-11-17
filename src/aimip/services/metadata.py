@@ -464,6 +464,34 @@ MODEL_CARDS: dict[str, dict[str, Any]] = {
         ],
         "bibtex": [DLESYM_BIBTEX, ERA5_BIBTEX],
     },
+    "dlesym-aimip": {
+        "title": "DLESyM, AIMIP Phase 1 version (UW / NVIDIA)",
+        "task": "amip",
+        "status": "runs",
+        "verified_on": "1x NVIDIA GH200 (aarch64 image; 1978-10-03 .. 2024-12-28 against the authors' submission)",
+        "licence": "Apache-2.0",
+        "upstream_url": "https://github.com/nathanielcresswellclay/DLESyM_aimip-2026",
+        "grid": "HEALPix-64 native -> 0.25 deg lat-lon output",
+        "outputs": ["atmosphere/t2m", "ocean/sst"],
+        "cost_note": DLESYM_COST_NOTE,
+        "limitations": (
+            "AIMIP Phase 1 setup of Cresswell-Clay et al. (2025): the dlesym-v0-isccp checkpoints with the SST "
+            "prescribed from the AIMIP forcing (Zenodo 17065758, linear in time between the monthly stamps) instead of "
+            "predicted; the authors' five members start from ERA5 at 1978-10-03 .. 07 00 UTC, one run each. The "
+            "initial ERA5 OLR is converted by Earth2Studio's day-of-year moment matching (the authors describe an "
+            "affine fit) and land SST is filled by the model's own interpolation, so runs match the authors' to "
+            "about 0.1 K in 2-m temperature for the first days, then diverge as weather does; over 1979-2024 the "
+            "global-mean 2-m temperature (287.32 K) and its trend (0.17 K per decade) match the authors' members "
+            "within 0.01 K and 0.005 K per decade. Trained on 1983-2016 "
+            "(part of the AIMIP evaluation period). No +2 K / +4 K experiments yet; `ocean/sst` is the prescribed "
+            "SST with values over land."
+        ),
+        "examples": [
+            "aimip plan dlesym-aimip --start 1978-10-03 --steps 67552 --name dlesym-aimip-r1",
+            "aimip run dlesym-aimip --start 1978-10-03 --length 1y --name dlesym-aimip-1y",
+        ],
+        "bibtex": [DLESYM_BIBTEX, ERA5_BIBTEX],
+    },
     "archesclimate-ssp": {
         "title": "ArchesClimate-SSP Deterministic (INRIA / Mila)",
         "task": "scenario",

@@ -73,6 +73,7 @@ CANONICAL_MODELS: tuple[str, ...] = (
     "dlesym-v1.0",
     "dlesym-v1.1",
     "dlesym-v0-isccp",
+    "dlesym-aimip",
     "archesclimate-ssp",
     "archesweather",
     "archesweathergen",
@@ -467,8 +468,8 @@ def build_artifact_catalog(
         ArtifactSpec(
             rel_path=ZENODO_AIMIP_REL_PATH,
             role="raw",
-            models_output=(),
-            models_needed=oos_models,
+            models_output=("dlesym-aimip",),      # read directly by dlesym-aimip (prescribed SST)
+            models_needed=oos_models + ("dlesym-aimip",),
             source_kind="zenodo",
             zenodo_record=ZENODO_AIMIP_RECORD,
             zenodo_file=ZENODO_AIMIP_FILENAME,

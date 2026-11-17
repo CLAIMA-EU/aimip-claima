@@ -11,7 +11,7 @@ the site settings at `<prefix>/site.json` and the model data at `<prefix>/data/`
   state). Compute nodes need no internet.
 - `bash`, `python3` (3.8+ for the installers themselves), `tar`, `sha256sum` or `shasum`.
 - Disk: about 25 GB for the software (image and build cache, or the virtual environments), plus the model data:
-  0.04–34 GB per model, about 219 GB for all sixteen.
+  0.04–34 GB per model, about 219 GB for all seventeen.
 - Container mode: one of Apptainer, Singularity, Docker or Podman; Docker and Podman need the NVIDIA Container Toolkit
   for `--gpus all`. Native mode: Python 3.12 (the pins were made for 3.12; newer versions are untested), and for
   `--with-emu` also a C/C++ compiler.
@@ -119,6 +119,7 @@ Two ways, in both modes:
 | `ace2-shield`, `ace2s-shield-plus`, `hiro-ace`, `ace2-eamv3` | checkpoints 1.7–3.0 GiB each, plus the downloads their forcing is built from (SHiELD+ forcing 20.3 GiB, AIMIP SST 4.3 GiB, EAMv3 raw files 4.3 GiB) and the built forcing files |
 | `ace2-som` 8.7 · `ace2s` 7.6 · `hiro-acev2` 8.9 · `samudrace-cm4` 3.1 · `samudrace-e3smv3` 2.5 GiB | |
 | `dlesym-v1.0` 0.16 · `dlesym-v1.1` 0.04 · `dlesym-v0-isccp` 0.29 GiB | plus the ERA5 initial state per run (0.4 GB) |
+| `dlesym-aimip` | the `dlesym-v0-isccp` files plus the AIMIP SST forcing (4.3 GiB, Zenodo 17065758; shared with the ACE models that use it) |
 | `archesclimate-ssp` | 33.5 GiB (both scenarios) |
 | `archesweather`, `archesweathergen` | 2.0 GiB from Zenodo 22795233 (the checkpoint zip, the initial state, the forcing, statistics), plus 1.3 or 1.8 GiB of checkpoints extracted from the zip |
 
@@ -139,7 +140,7 @@ in `container/Dockerfile` (then `--build`) or in `install/install-native.sh`.
 ```bash
 A=DIR/bin/aimip
 $A --version
-$A models                       # sixteen models
+$A models                       # seventeen models
 $A run -m ace2-era5 --start 1979-01-01T00:00:00 --steps 8 --out <run root>/check --submit   # prepares the run
 $A submit <run root>/check                                                     # queues it (or use --local above instead)
 ```

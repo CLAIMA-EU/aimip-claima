@@ -17,6 +17,7 @@
 | `dlesym-v1.0` | **coupled** atmosphere–ocean (HEALPix-64, output 0.25°), deterministic; Earth2Studio | not forced; any 6-hourly start 1940-01-04 … 2023-12-31 | ERA5 at `--start`, downloaded by `aimip run` | — |
 | `dlesym-v1.1` | coupled, stochastic; adds 6-hour precipitation | as above | as above | `--members K` (noise seed + k) |
 | `dlesym-v0-isccp` | coupled, deterministic | as above | as above | — |
+| `dlesym-aimip` | AIMIP version: `dlesym-v0-isccp` with the SST prescribed from the AIMIP forcing, deterministic | AIMIP SST 1978-10 … 2024-12; `--start` 1978-10-03 … 2024-12-28 | ERA5 at `--start` (the authors' members: 1978-10-03 … 07, 00 UTC) | one run per start |
 | `archesclimate-ssp` | monthly emulator of IPSL-CM6A-LR (144 × 144: 1.25° lat × 2.5° lon; atmosphere and upper-ocean temperature), deterministic | scenarios `ssp434` (default) and `ssp585`; outputs March 2015 … November 2100 | the scenario's 2015 state (`--start 2015-01-01T00:00:00`) | — |
 | `archesweather` | ArchesWeather-Mx4, AIMIP version: four networks averaged at every step, deterministic, trained on ERA5 (1°, 13 pressure levels, daily means) | monthly ERA5 SST and sea ice, 1978-10-01 … 2024-12-31 | the ERA5 daily mean of 1978-09-30 (`--start 1978-09-30T00:00:00`) | — |
 | `archesweathergen` | ArchesWeatherGen, AIMIP version: stochastic (flow matching around ArchesWeather-Mx4) | as above | as above | `--members K` (noise seed + k) |
@@ -62,6 +63,17 @@ with non-finite values or a global-mean 2 m temperature outside 200–330 K, rec
 months before it. DLESyM's `sst` has values over land: mask land before use. `dlesym-v1.1` writes
 `atmosphere/monthly_precip.nc`; its `tp06` (6-hour precipitation) is derived with ε = 1e-8, inferred from the
 authors' pipeline, and its 3-hour OLR input is built as Earth2Studio does.
+
+`dlesym-aimip` is the AIMIP Phase 1 setup of the same authors (code: `nathanielcresswellclay/DLESyM_aimip-2026`): the
+`dlesym-v0-isccp` checkpoints, but the ocean model's SST is replaced at every step by the AIMIP forcing (Zenodo
+17065758), interpolated linearly in time between its monthly stamps (the first of each month), as their "ground-truth"
+ocean does. Land cells get the model's own SST interpolation and the field is mapped to HEALPix like the initial state.
+The authors' five members start from ERA5 at 00 UTC on 1978-10-03, 04, 05, 06 and 07, one run each; `--steps 67552`
+from 1978-10-03 is their run length (to 2024-12-28; at most 67568, to 2025-01-01). Checked against their submission:
+2-m temperature within 0.1 K (RMSE) of their member r1 on days 2–3, diverging afterwards as weather does; over
+1979–2024 the global-mean 2-m temperature is 287.32 K (their four members: 287.32–287.33 K), its trend 0.167 K per
+decade (theirs: 0.165–0.172), and the mean seasonal cycle differs by at most 0.04 K. A full run takes about 36 minutes
+on one GH200. The model was trained on 1983–2016, part of the AIMIP evaluation period. No +2 K / +4 K experiments yet.
 
 **ArchesClimate-SSP.** `--steps` counts months. The run always starts from the scenario's 2015 state; the first
 output month is March 2015. It emulates one climate model (IPSL-CM6A-LR) under one scenario forcing, not observed

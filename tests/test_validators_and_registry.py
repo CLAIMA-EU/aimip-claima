@@ -165,7 +165,7 @@ def test_example_registry_loads_all_models_and_forcing_sets(
     monkeypatch.setenv("AIMIP_PLAYGROUND", "/opt/aimip/playground")
 
     catalog = load_registry()
-    assert len(catalog) == 16
+    assert len(catalog) == 17
     assert list(catalog.keys())[:5] == [
         "ace2-era5",
         "ace2-shield",

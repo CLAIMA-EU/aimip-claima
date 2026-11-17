@@ -66,6 +66,7 @@ def test_import_aimip_families_first_in_isolated_subprocess() -> None:
         ("dlesym-v1.0", "1995-01-01", 1460),
         ("dlesym-v1.1", "1995-01-01", 1460),
         ("dlesym-v0-isccp", "1995-01-01", 1460),
+        ("dlesym-aimip", "1978-10-03", 1460),
         ("archesclimate-ssp", "2015-01-01", 12),
     ],
 )
@@ -132,7 +133,7 @@ def test_logs_follow_keeps_printing_after_max_bytes(tmp_path: Path, monkeypatch:
     assert any("ERR-LINE" in chunk for chunk in seen[1:]), seen
 
 
-def test_all_16_canonical_models_plan_through_services_and_check_ic_and_arches_card(
+def test_all_canonical_models_plan_through_services_and_check_ic_and_arches_card(
     tmp_path: Path, allow_tmp_run_root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     data_dir = tmp_path / "empty_data"
@@ -180,6 +181,7 @@ def test_all_16_canonical_models_plan_through_services_and_check_ic_and_arches_c
         "dlesym-v1.0": {"start": "1995-01-01", "steps": 4},
         "dlesym-v1.1": {"start": "1995-01-01", "steps": 4, "members": 2},
         "dlesym-v0-isccp": {"start": "1995-01-01", "steps": 4},
+        "dlesym-aimip": {"start": "1978-10-03", "steps": 16},
         "archesclimate-ssp": {"start": "2015-01-01", "length": "1y", "forcing_set": "ssp585"},
         "archesweather": {"start": "1978-09-30", "steps": 4},
         "archesweathergen": {"start": "1978-09-30", "length": "30d", "members": 2},

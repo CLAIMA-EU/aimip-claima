@@ -200,6 +200,86 @@ def _dlesym_model(job: dict, device: str):
     return model.to(device)
 
 
+def month_weights(t, starts) -> tuple[int, float]:
+    """(k, w): the value at time *t* is (1 - w) * month[k] + w * month[k + 1], linear in time between the month-start
+    stamps *starts* (numpy datetime64, ascending), as the authors' DLESyM AIMIP forcing (monthly -> daily `interp`)."""
+    import numpy as np
+
+    t = np.datetime64(t, "ns")
+    starts = np.asarray(starts).astype("datetime64[ns]")
+    k = int(np.searchsorted(starts, t, side="right")) - 1
+    if k == len(starts) - 1 and k >= 1 and t == starts[-1]:
+        return k - 1, 1.0                   # exactly the last stamp
+    if k < 0 or k + 1 >= len(starts):
+        raise SystemExit(f"the prescribed SST does not cover {t} (forcing {starts[0]} .. {starts[-1]})")
+    return k, float((t - starts[k]) / (starts[k + 1] - starts[k]))
+
+
+class PrescribedSST:
+    """AIMIP SST (Zenodo 17065758, 0.25 deg monthly, stamped at the first of each month) on DLESyM's HEALPix grid.
+
+    Land cells are filled with the model's own SST NaN interpolation and the field is mapped with the model's own
+    lat-lon -> HEALPix regridder, exactly as Earth2Studio prepares the SST of the ERA5 initial state. As a front and
+    rear hook it replaces the SST of every input and output lead time, so the atmosphere and the ocean coupling see the
+    prescribed SST (the authors' "ground-truth" ocean model) and the ocean output is the prescribed SST."""
+
+    def __init__(self, model, path: str, device: str):
+        import netCDF4
+        import numpy as np
+
+        self.model, self.device = model, device
+        self.ds = netCDF4.Dataset(path)
+        lat = np.asarray(self.ds["latitude"][:], "f8")
+        lon = np.asarray(self.ds["longitude"][:], "f8")
+        if lat.shape != (721,) or lon.shape != (1440,) or abs(lat[0] - 90) > 1e-6 or abs(lon[1] - 0.25) > 1e-6:
+            raise SystemExit(f"{path}: expected the 0.25-degree grid 90..-90, 0..359.75")
+        tv = self.ds["time"]
+        dates = netCDF4.num2date(tv[:], tv.units, getattr(tv, "calendar", "standard"),
+                                 only_use_cftime_datetimes=False, only_use_python_datetimes=True)
+        self.starts = np.array([np.datetime64(d.replace(tzinfo=None), "ns") for d in dates])
+        if not all(np.datetime64(s, "D") == np.datetime64(np.datetime64(s, "M"), "D") for s in self.starts):
+            raise SystemExit(f"{path}: SST time stamps are not month starts")
+        self.lat, self.lon = lat, lon
+        self.cache: dict = {}
+        self.used: set = set()
+
+    def _month(self, k: int):
+        from collections import OrderedDict
+
+        import numpy as np
+        import torch
+
+        if k not in self.cache:
+            v = np.ma.filled(self.ds["sea_surface_temperature"][k], np.nan).astype("f4")
+            x = torch.from_numpy(v)[None, None, None, None]
+            coords = OrderedDict(batch=np.zeros(1), time=np.zeros(1), lead_time=np.zeros(1),
+                                 variable=np.array(["sst"]), lat=self.lat, lon=self.lon)
+            filled = self.model._nan_interpolate_sst(x, coords)
+            hpx = self.model.to_hpx(filled.to(self.device))[0, 0, 0, 0]
+            if not torch.isfinite(hpx).all():
+                raise SystemExit(f"prescribed SST month {self.starts[k]} has non-finite values on HEALPix")
+            self.cache = {kk: vv for kk, vv in self.cache.items() if kk >= k - 1}   # the two months in use
+            self.cache[k] = hpx
+            self.used.add(k)
+        return self.cache[k]
+
+    def at(self, t):
+        k, w = month_weights(t, self.starts)
+        return (1.0 - w) * self._month(k) + w * self._month(k + 1)
+
+    def hook(self, x, coords):
+        import numpy as np
+        import torch
+
+        if x.is_inference() and not torch.is_inference_mode_enabled():
+            x = x.clone()   # Earth2Studio's tensors come from inference mode; in-place updates need a normal tensor
+        vi = list(coords["variable"]).index("sst")
+        for ti, t0 in enumerate(coords["time"]):
+            for li, lt in enumerate(coords["lead_time"]):
+                x[:, ti, li, vi] = self.at(np.datetime64(t0) + lt)
+        return x, coords
+
+
 def stage_dlesym(out_dir: str, job: dict) -> None:
     import numpy as np
     import torch
@@ -235,6 +315,12 @@ def run_dlesym(out_dir: str, job: dict) -> dict:
 
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     model = _dlesym_model(job, dev)
+    sst = None
+    if job.get("sst_forcing"):
+        sst = PrescribedSST(model, job["sst_forcing"], dev)
+        model.front_hook = sst.hook      # Earth2Studio applies both on the HEALPix grid around every coupled step
+        model.rear_hook = sst.hook
+        _log(f"prescribed SST from {job['sst_forcing']} ({sst.starts[0]} .. {sst.starts[-1]})")
     staged = torch.load(os.path.join(out_dir, "ic_era5.pt"), weights_only=False)
     start = np.datetime64(job["start"])
     end = start + np.timedelta64(6 * int(job["steps"]), "h")
@@ -243,6 +329,9 @@ def run_dlesym(out_dir: str, job: dict) -> dict:
     n_members = int(job["members"])
     attrs = {"source": f"{job['model']} (Earth2Studio DLESyM, checkpoint {job['version']})", "start": job["start"],
              "aimip_family": "e2s-dlesym"}
+    if sst is not None:
+        attrs["sst"] = ("prescribed: AIMIP Phase 1 forcing (Zenodo 17065758), linear in time between the monthly "
+                        "stamps, land filled by the model's SST interpolation; ocean files hold the prescribed SST")
     files = {"atmosphere": "atmosphere/monthly_mean_predictions.nc", "ocean": "ocean/monthly_mean_predictions.nc",
              "precip": "atmosphere/monthly_precip.nc"}
     precip_meta = {"tp6": {"long_name": "monthly mean of tp6 = log(P + eps) - log(eps)"},
@@ -272,6 +361,11 @@ def run_dlesym(out_dir: str, job: dict) -> dict:
         w.close()
     out = {"iterations_per_member": n_iter, "hours_per_iteration": hours_per_step, "months_written": written,
            "members": n_members, "healpix_pad_backend": _healpix_pad_backend()}
+    if sst is not None:
+        used = sorted(sst.used)
+        out["prescribed_sst"] = {"file": job["sst_forcing"], "months_used": len(used),
+                                 "first": str(sst.starts[used[0]])[:10] if used else None,
+                                 "last": str(sst.starts[used[-1]])[:10] if used else None}
     if unstable is not None:
         out.update({"unstable_from": unstable.month, "unstable_member": unstable.member, "unstable_reason": unstable.why})
     return out
