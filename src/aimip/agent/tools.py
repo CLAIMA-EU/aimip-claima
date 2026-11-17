@@ -133,6 +133,7 @@ def _planned_outputs(model_spec: Any, *, monthly: bool, prediction: bool) -> dic
             "files": [
                 "atmosphere/monthly_mean_predictions.nc",
                 "atmosphere/monthly_levels.nc",
+                "restart.nc",
             ],
         }
     if model_spec.family == "samudra":
@@ -239,6 +240,7 @@ def _manifest_outputs(manifest: dict[str, Any]) -> dict[str, Any]:
             "files": [
                 "atmosphere/monthly_mean_predictions.nc",
                 "atmosphere/monthly_levels.nc",
+                "restart.nc",
             ],
         }
     if manifest.get("family") == "samudra":

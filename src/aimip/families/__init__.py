@@ -34,6 +34,9 @@ from ..emu import (
     ARCHES_START,
     _gpu_hours as _emu_gpu_hours,
     _walltime as _emu_walltime,
+    aw_restart_info,
+    aw_restart_path,
+    check_aw_restart,
     precheck_emu_request,
 )
 from ..errors import ConfigError, RegistryError, ValidationError
@@ -815,17 +818,21 @@ class EmuFamilyAdapter:
             family=model.family,
             model_name=model.name,
         )
+        aw_restart = None
+        if model.family == "geoarches" and spec.ic is not None:
+            # Continuation: --members and --seed default to the restart's (see emu.check_aw_restart).
+            aw_restart = aw_restart_info(aw_restart_path(spec.ic), model.name)
         seed = (
             validate_int_range(spec.seed, "seed", min_value=0, max_value=MAX_SEED)
             if spec.seed is not None
-            else 0
+            else (aw_restart["seed"] if aw_restart is not None else 0)
         )
 
         checked = precheck_emu_request(
             model,
             start_iso=norm_start,
             steps=steps,
-            members=spec.members,
+            members=spec.members if (spec.members is not None or aw_restart is None) else aw_restart["members"],
             ic_path=spec.ic,
             ocean_ic_path=spec.ocean_ic,
             lora_path=spec.lora,
@@ -836,6 +843,9 @@ class EmuFamilyAdapter:
         scenario: str | None = checked.get("scenario")
         emu_ic_sha: str | None = None
         emu_ic_custom = False
+        if aw_restart is not None:
+            check_aw_restart(aw_restart, model_name=model.name, start=checked["start"], members=total_members,
+                             seed=seed)
         if model.family == "arches":
             selected_name = scenario or ARCHES_SCENARIOS[0]
             if norm_start != ARCHES_START:
@@ -855,11 +865,18 @@ class EmuFamilyAdapter:
                 "stochastic_noise_from_era5_ic" if (model.stochastic and total_members > 1) else "single_era5_ic"
             )
             ensemble_note = (
-                f"{total_members} stochastic member(s) from the ERA5 daily-mean state of 1978-09-30 (seed + member_id)."
+                f"Continues {total_members} member(s) from {aw_restart['path']} (state of {checked['start'][:10]})."
+                if aw_restart is not None
+                else f"{total_members} stochastic member(s) from the ERA5 daily-mean state of 1978-09-30 (seed + member_id)."
                 if total_members > 1
                 else "Rollout from the ERA5 daily-mean state of 1978-09-30 (Zenodo 22795233)."
             )
-            ic_src = "zenodo-22795233@1978-09-30"
+            if aw_restart is not None:
+                ic_src = aw_restart["path"]
+                emu_ic_sha = sha256_file(aw_restart["path"])
+                emu_ic_custom = True
+            else:
+                ic_src = "zenodo-22795233@1978-09-30"
         elif model.family == "samudra":
             selected_name = scenario or "om4-jra55do-replay"
             ensemble_strategy = "single_om4_replay"
@@ -1112,7 +1129,20 @@ class EmuFamilyAdapter:
                     )
                 )
         elif model.family == "geoarches":
-            pass   # the initial state and the forcing are pinned files under inputs/; geoarches is part of the install
+            # The initial state and the forcing are pinned files under inputs/; geoarches is part of the install.
+            # A continuation also binds the restart it reads.
+            restart = validated.get("ic_source")
+            if isinstance(restart, str) and os.path.isabs(restart):
+                assets.append(
+                    AssetRef(
+                        rel_path=os.path.basename(restart),
+                        path=restart,
+                        role="custom_ic",
+                        sha256=validated.get("ic_sha256"),
+                        size_bytes=os.path.getsize(restart) if os.path.isfile(restart) else None,
+                        cached=os.path.isfile(restart),
+                    )
+                )
         elif model.family == "samudra":
             out_cand = validated.get("output_dir")
             staged_win = os.path.join(str(out_cand), "window") if out_cand else ""

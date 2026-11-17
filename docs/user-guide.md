@@ -98,6 +98,28 @@ $A run -m ace2-era5 --start 1979-01-03T00:00:00 --steps 8 --ic $R/first/restart.
 - For a stochastic model give each segment a **different** `--seed`; the same seed replays the noise.
 - For a coupled model pass the previous run directory: `--ic $R/cm4-y1`.
 - Long runs are best split into segments: the job wall time is capped, and a failed segment costs one segment.
+- ArchesWeather and ArchesWeatherGen: pass the previous run directory and keep `--members` and `--seed` (leave them
+  out; they come from `restart.nc`). The segments then give the same result as one run, for ArchesWeatherGen
+  because step i of member k always draws its noise with seed + k + 1000 i. When a segment ends inside a month,
+  its last monthly mean is partial (`counts` = the days it has) and the next segment writes that month again,
+  complete: take it from the later segment. A segment reads `restart.nc` when it is prepared, so start it after
+  the previous one has finished, and it writes its files only when it ends, so it must fit in one job (`aimip`
+  warns when the expected time exceeds the wall time).
+- ArchesWeatherGen members can also run as separate runs at the same time: member k of a run with `--seed s` is the
+  same as the one member of a run with `--seed s+k --members 1`. 1978–2024 for one member in three segments of
+  about 7 hours each (15–16 years at about 28 minutes per year on an A100):
+
+  ```bash
+  $A run -m archesweathergen --start 1978-09-30 --end 1993-12-31 --seed 0 --out $R/awgen-s0-1 --submit
+  # after it has finished:
+  $A run -m archesweathergen --start 1993-12-31 --end 2009-12-31 --ic $R/awgen-s0-1 --out $R/awgen-s0-2 --submit
+  # after that one:
+  $A run -m archesweathergen --start 2009-12-31 --end 2024-12-31 --ic $R/awgen-s0-2 --out $R/awgen-s0-3 --submit
+  ```
+
+  Repeat with `--seed 1`, `2`, … for more members. The segments end on the last day of a year, so no month is split.
+  The wall-time estimate (three times the expected time) exceeds 12 hours here, so `aimip` asks for the 12-hour
+  limit and warns.
 
 ## Scenarios (`ace2-som`, `archesclimate-ssp`)
 
@@ -139,7 +161,7 @@ checkpoints from a source you trust.
 | `job.sbatch` | the job script |
 | `monthly_mean_predictions.nc` | **the main result**: monthly means of every output variable |
 | `autoregressive_predictions.nc` | every step; only with `--prediction` |
-| `restart.nc` | the state after the last step (fme models) |
+| `restart.nc` | the state after the last step (fme models; ArchesWeather: the last two days and the sums of an unfinished month) |
 | `slurm-<jobid>.out/.err`, `inference_out.log` | logs; look here first when a run fails |
 | `slurm.jobid`, `sacct.txt` | the job id and the last scheduler record, used by `status` |
 | `local.pid`, `local-run.log` | with the `local` preset: the process id and the log, instead of the Slurm files |

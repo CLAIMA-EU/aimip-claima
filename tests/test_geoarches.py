@@ -1,6 +1,6 @@
 """ArchesWeather / ArchesWeatherGen (`geoarches` family): request rules, prepare -> job config/manifest, job-time binding,
 the pinned geoarches source (download check, safe unpacking, tree digest), checkpoint extraction from the Zenodo zip,
-the pressure-level writer, and the recipes that install everything. The emulator environment is the fake interpreter
+the pressure-level writer, continuation from restart.nc, and the recipes that install everything. The emulator environment is the fake interpreter
 of test_emu.py, so no torch, geoarches or network is needed."""
 from __future__ import annotations
 
@@ -37,12 +37,20 @@ def test_geoarches_request_rules_without_disk(emu_env):  # noqa: F811
         ("archesweather", dict(steps=16895), "at most 16894 daily steps"),
         ("archesweather", dict(members=2), "deterministic"),
         ("archesweathergen", dict(forcing_set_name="aimip-p4k"), "choose one of aimip"),
-        ("archesweathergen", dict(ic_path="/scratch/x/restart.nc"), "cannot be continued yet"),
+        # a continuation (--ic) starts at 00 UTC after 1978-09-30, and its steps end by 2024-12-31
+        ("archesweathergen", dict(ic_path="/scratch/x/restart.nc"), "continuation starts at 00 UTC"),
+        ("archesweathergen", dict(start_iso="1987-09-30T12:00:00", ic_path="/x"), "continuation starts at 00 UTC"),
+        ("archesweathergen", dict(start_iso="1987-09-30T00:00:00", steps=13608, ic_path="/x"),
+         "at most 13607 daily steps from 1987-09-30"),
+        ("archesweather", dict(ocean_ic_path="/x"), "--ocean-ic is not supported"),
     ):
         args = dict(start_iso=AW_START, steps=10, members=None, forcing_set_name=None, ic_path=None)
         args.update(kw)
         with pytest.raises(ConfigError, match=msg):
             precheck_emu_request(s[name], **args)
+    cont = precheck_emu_request(s["archesweathergen"], start_iso="1987-09-30T00:00:00", steps=13607, members=2,
+                                forcing_set_name=None, ic_path="/x/restart.nc")
+    assert cont["end"] == "2024-12-31T00:00:00" and cont["members"] == 2
 
 
 def test_geoarches_prepare_exec_and_job_binding(emu_env, monkeypatch, tmp_path):  # noqa: F811
@@ -102,6 +110,138 @@ def test_geoarches_prepare_exec_and_job_binding(emu_env, monkeypatch, tmp_path):
     (pathlib.Path(job_g["gen_dir"]) / "config.yaml").write_bytes(b"tampered")
     with pytest.raises(ValidationError, match="SHA-256 mismatch at job time"):
         exec_fme(str(out_g))
+
+
+AW_SV = ["10m_u_component_of_wind", "10m_v_component_of_wind", "2m_temperature", "mean_sea_level_pressure",
+         "sea_surface_temperature", "sea_ice_cover"]
+AW_LV = ["geopotential", "u_component_of_wind", "v_component_of_wind", "temperature", "specific_humidity",
+         "vertical_velocity"]
+AW_LEVELS = [50.0, 100.0, 150.0, 200.0, 250.0, 300.0, 400.0, 500.0, 600.0, 700.0, 850.0, 925.0, 1000.0]
+
+
+def write_test_restart(path, *, model="archesweathergen", step=20, members=2, seed=0, digest="0" * 64, month=None):
+    """A small restart as run_geoarches writes it (3 x 4 grid); *month* None = the month of the state time."""
+    import datetime
+
+    from aimip.emu_job import _aw_write_restart
+
+    rng = np.random.default_rng(step)
+    valid = datetime.datetime(1978, 9, 30) + datetime.timedelta(days=step)
+    month = valid.strftime("%Y-%m") if month is None else month
+    saved = []
+    for _ in range(members):
+        m = {"state_surface": rng.standard_normal((6, 1, 3, 4)).astype("f4"),
+             "prev_state_surface": rng.standard_normal((6, 1, 3, 4)).astype("f4"),
+             "state_level": rng.standard_normal((6, 13, 3, 4)).astype("f4"),
+             "prev_state_level": rng.standard_normal((6, 13, 3, 4)).astype("f4"),
+             "month_days": valid.day if month else 0}
+        if month:
+            m["month_sum_surface"] = rng.standard_normal((6, 1, 3, 4)) * 1e3
+            m["month_sum_surface"][4:, 0, 0, 0] = np.nan          # SST / sea ice over land
+            m["month_sum_level"] = rng.standard_normal((6, 13, 3, 4)) * 1e5
+        saved.append(m)
+    job = {"model": model, "seed": seed, "package_digest": digest}
+    _aw_write_restart(str(path), job, saved, valid_time=valid.strftime("%Y-%m-%dT%H:%M:%S"), step_index=step,
+                      month=month, sv=AW_SV, lv=AW_LV, levels=AW_LEVELS, lat_internal=[60.0, 0.0, -60.0],
+                      lon_internal=[180.0, 270.0, 0.0, 90.0])
+    return saved, job
+
+
+def test_geoarches_restart_roundtrip_is_exact(tmp_path):
+    from aimip.emu_job import _aw_read_restart
+
+    shapes = {"state_surface": (6, 1, 3, 4), "state_level": (6, 13, 3, 4)}
+    saved, job = write_test_restart(tmp_path / "restart.nc", step=20, members=2, seed=3, digest="ab" * 32)
+    job = dict(job, start="1978-10-20T00:00:00", members=2)
+    got = _aw_read_restart(str(tmp_path / "restart.nc"), job, sv=AW_SV, lv=AW_LV, levels=AW_LEVELS, shapes=shapes)
+    assert got["month"] == "1978-10" and got["step_index"] == 20
+    for want, have in zip(saved, got["members"]):
+        assert have["month_days"] == 20
+        for name, arr in want.items():
+            if name != "month_days":
+                assert have[name].dtype == arr.dtype and have[name].tobytes() == arr.tobytes(), name
+    for bad, field in ((dict(seed=4), "seed"), (dict(members=1), "sample"), (dict(start="1978-10-21T00:00:00"),
+                                                                              "valid_time")):
+        with pytest.raises(SystemExit, match=f"does not match this run: .*{field}"):
+            _aw_read_restart(str(tmp_path / "restart.nc"), dict(job, **bad), sv=AW_SV, lv=AW_LV, levels=AW_LEVELS,
+                             shapes=shapes)
+    # A run that ends on the last day of a month carries no sums.
+    write_test_restart(tmp_path / "r2.nc", step=31, members=1, month="")
+    import netCDF4
+
+    with netCDF4.Dataset(tmp_path / "r2.nc") as ds:
+        assert "month_sum_level" not in ds.variables and int(ds["month_days"][0]) == 0 and ds.month == ""
+    got2 = _aw_read_restart(str(tmp_path / "r2.nc"), {"model": "archesweathergen", "seed": 0, "members": 1,
+                                                       "package_digest": "0" * 64, "start": "1978-10-31T00:00:00"},
+                            sv=AW_SV, lv=AW_LV, levels=AW_LEVELS, shapes=shapes)
+    assert got2["month"] == "" and "month_sum_level" not in got2["members"][0]
+
+
+def test_geoarches_continuation_prepare_binding_and_refusals(emu_env, monkeypatch, tmp_path):  # noqa: F811
+    import shutil
+
+    from aimip import emu
+    from aimip.runner import exec_fme
+
+    code = tmp_path / "geoarches-src"
+    (code / "geoarches").mkdir(parents=True)
+    monkeypatch.setenv("AIMIP_GEOARCHES_CODE", str(code))
+    runs = emu_env["runs"]
+    seg1 = runs / "seg1"
+    first = _prepare(emu_env, "archesweathergen", seg1, start_iso=AW_START, steps=20, members=2, seed=5)
+    assert len(first["package_digest"]) == 64 and not first["ic_is_custom"]
+    assert json.loads((seg1 / "config.yaml").read_text())["restart_file"] is None
+    write_test_restart(seg1 / "restart.nc", step=20, members=2, seed=5, digest=first["package_digest"])
+
+    # --members and --seed default to the restart's; --start must be its state time.
+    seg2 = runs / "seg2"
+    m = _prepare(emu_env, "archesweathergen", seg2, start_iso="1978-10-20T00:00:00", steps=11, ic_path=str(seg1))
+    assert (m["members"], m["member_seeds"], m["seed_explicit"]) == (2, [5, 6], False)
+    assert m["ic_path"] == str(seg1 / "restart.nc") and m["ic_is_custom"] and m["end_time"] == "1978-10-31T00:00:00"
+    assert "first output day 1978-10-21" in m["ic_provenance"] and "continue their own states" in m["ensemble_note"]
+    job = json.loads((seg2 / "config.yaml").read_text())
+    assert job["restart_file"] == str(seg1 / "restart.nc") and job["package_digest"] == first["package_digest"]
+    emu._check_job_matches_manifest(job, m)
+    for bad_job, bad_man in ((dict(job, restart_file=None), m), (dict(job, restart_file=str(tmp_path / "r.nc")), m),
+                             (dict(job, package_digest="1" * 64), m), (job, dict(m, ic_is_custom=False)),
+                             (job, dict(m, package_digest="1" * 64))):
+        with pytest.raises(ValidationError, match="does not match aimip-manifest.json"):
+            emu._check_job_matches_manifest(bad_job, bad_man)
+    assert exec_fme(str(seg2))["rc"] == 0
+
+    # The restart file itself is pinned: a changed restart is refused at job time.
+    seg3 = runs / "seg3"
+    _prepare(emu_env, "archesweathergen", seg3, start_iso="1978-10-20T00:00:00", steps=11, ic_path=str(seg1 / "restart.nc"),
+             members=2, seed=5)
+    shutil.copy2(seg1 / "restart.nc", tmp_path / "keep.nc")
+    write_test_restart(seg1 / "restart.nc", step=20, members=2, seed=5, digest=first["package_digest"], month="")
+    with pytest.raises(ValidationError, match="SHA-256 mismatch at job time"):
+        exec_fme(str(seg3))
+    shutil.copy2(tmp_path / "keep.nc", seg1 / "restart.nc")
+
+    other = runs / "other"
+    other.mkdir()
+    write_test_restart(other / "restart.nc", step=20, members=2, seed=5, digest="0" * 64)
+    (runs / "empty").mkdir()
+    import netCDF4
+
+    with netCDF4.Dataset(runs / "empty" / "plain.nc", "w") as ds:
+        ds.title = "not a restart"
+    for i, (name, kw, err, msg) in enumerate((
+        ("archesweathergen", dict(start_iso="1978-10-21T00:00:00"), ConfigError, "use --start 1978-10-20T00:00:00"),
+        ("archesweathergen", dict(members=3), ConfigError, "holds 2 member"),
+        ("archesweathergen", dict(seed=6), ConfigError, "use that seed"),
+        ("archesweather", {}, ConfigError, "continues a archesweathergen run, not archesweather"),
+        ("archesweathergen", dict(ic_path=str(other)), ValidationError, "other model or input files"),
+        ("archesweathergen", dict(ic_path=str(runs / "empty")), ConfigError, "no restart file there"),
+        ("archesweathergen", dict(ic_path=str(runs / "empty" / "plain.nc")), ConfigError, "not an ArchesWeather restart"),
+    )):
+        args = dict(start_iso="1978-10-20T00:00:00", steps=11, ic_path=str(seg1))
+        args.update(kw)
+        with pytest.raises(err, match=msg):
+            _prepare(emu_env, name, runs / f"refused{i}", **args)
+    # requests refused before the run directory is created
+    assert not (runs / "refused0").exists() and not (runs / "refused3").exists()
 
 
 def _synthetic_geoarches_archive(path: pathlib.Path, commit: str, extra: list[tarfile.TarInfo] | None = None) -> bytes:
