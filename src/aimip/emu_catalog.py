@@ -14,6 +14,7 @@ EMU_MODELS: tuple[str, ...] = (
     "dlesym-v1.0",
     "dlesym-v1.1",
     "dlesym-v0-isccp",
+    "dlesym-aimip",
     "archesclimate-ssp",
     "archesweather",
     "archesweathergen",
@@ -25,6 +26,14 @@ EMU_MODELS: tuple[str, ...] = (
 )
 DLESYM_IC_WINDOW: tuple[str, str] = ("1940-01-04T00:00:00", "2023-12-31T18:00:00")   # inputs reach back 48 h; v1.1 ttr03 needs
 # trailing ERA5 accumulations that ERA5 lacks at its very start, leaving one day of margin.
+# DLESyM AIMIP version (Cresswell-Clay et al., DLESyM_aimip-2026): the dlesym-v0-isccp checkpoints with the SST
+# prescribed from the AIMIP Phase 1 forcing (Zenodo 17065758, monthly, stamped at the first of each month; the authors'
+# "ground-truth" ocean interpolates linearly in time). The inputs reach back 48 h, so the first start is 1978-10-03T00
+# (the authors' members start 1978-10-03 .. 07); every 96-h step must end by 2025-01-01T00, the last stamp.
+AIMIP_SST_REL = "raw/zenodo-17065758/ERA5-0.25deg-monthly-mean-forcing-1978-2024.nc"
+AIMIP_SST_SHA256 = "a52caf3722bc85a58075118fa06f0c6cce5ace279458edda0a2c9d68ec179fb7"
+DLESYM_AIMIP_WINDOW: tuple[str, str] = ("1978-10-03T00:00:00", "2024-12-28T00:00:00")
+DLESYM_AIMIP_FORCING_END = "2025-01-01T00:00:00"
 ARCHES_WINDOW: tuple[str, str] = ("2015-01-01T00:00:00", "2100-11-01T00:00:00")   # outputs March 2015 .. November 2100
 SAMUDRA_WINDOW: tuple[str, str] = ("1975-01-08T12:00:00", "2022-12-29T12:00:00")   # OM4 5-day Julian states (time[1] .. time[-1])
 MD15_WINDOW: tuple[str, str] = ("1978-10-01T00:00:00", "2025-01-01T00:00:00")   # 556 month-start-centred AIMIP forcing points
@@ -123,7 +132,7 @@ def _place(repo: str, path: str) -> tuple[str, tuple[str, ...]] | None:
             models = ("dlesym-v1.0", "dlesym-v1.1")
         return f"models/dlesym-v1/{path}", models
     if repo == "nvidia/dlesym-v0-isccp-era5":
-        return f"models/dlesym-v0-isccp/{path}", ("dlesym-v0-isccp",)
+        return f"models/dlesym-v0-isccp/{path}", ("dlesym-v0-isccp", "dlesym-aimip")
     if repo == "gclyne/ArchesClimate":
         return f"models/archesclimate-ssp/{path}", ("archesclimate-ssp",)
     if repo == "gclyne/ArchesClimate-data":
@@ -202,9 +211,11 @@ def required_files(model: str) -> list[str]:
         rels += [r for r, v in AW_ZENODO_FILES.items() if model in v[4] and r != AW_ZIP_REL]
         return sorted(rels)
     rels = [a["rel_path"] for a in artifacts() if model in a["models"]]
-    if model == "md-1.5":
+    if model == "dlesym-aimip":
+        rels.append(AIMIP_SST_REL)
+    elif model == "md-1.5":
         return [
-            "raw/zenodo-17065758/ERA5-0.25deg-monthly-mean-forcing-1978-2024.nc",
+            AIMIP_SST_REL,
             *rels,
         ]
     return rels
@@ -215,6 +226,8 @@ def _sha(rel: str) -> str:
         return AW_ZIP_MEMBERS[rel][2]
     if rel in AW_ZENODO_FILES:
         return AW_ZENODO_FILES[rel][3]
+    if rel == AIMIP_SST_REL:
+        return AIMIP_SST_SHA256
     for a in all_artifacts():
         if a["rel_path"] == rel:
             return a["sha256"]
@@ -239,18 +252,27 @@ def registry_entries(p: str) -> list[dict[str, Any]]:
                            "rollouts (Cresswell-Clay et al. 2024). It takes ISCCP-like OLR; with use_ttr the ERA5 OLR of "
                            "the initial state is converted by the authors' day-of-year moment matching, then the model "
                            "uses its own OLR. Deterministic; starts from ERA5 at --start; --steps counts 6-h steps.",
+        "dlesym-aimip": "DLESyM, AIMIP Phase 1 version (UW; Cresswell-Clay et al. 2025, DLESyM_aimip-2026): the "
+                        "dlesym-v0-isccp checkpoints with the SST prescribed from the AIMIP forcing (Zenodo 17065758) "
+                        "instead of predicted, linear in time between the monthly stamps, as the authors' "
+                        "ground-truth ocean. Deterministic; the authors' five members start from ERA5 at "
+                        "1978-10-03 .. 07 00 UTC (one run per start); --steps counts 6-h steps, through 2024-12-31. "
+                        "Trained on 1983-2016, so it saw part of the AIMIP evaluation period.",
     }
     out: list[dict[str, Any]] = []
     for name, pkg, ckpt_rel, stochastic in (
         ("dlesym-v1.0", "models/dlesym-v1", "models/dlesym-v1/checkpoints/v1.0/atmos/atmos_model_0.mdlus", False),
         ("dlesym-v1.1", "models/dlesym-v1", "models/dlesym-v1/checkpoints/v1.1/atmos/atmos_model_0.mdlus", True),
         ("dlesym-v0-isccp", "models/dlesym-v0-isccp", "models/dlesym-v0-isccp/atmos_model_0.mdlus", False),
+        ("dlesym-aimip", "models/dlesym-v0-isccp", "models/dlesym-v0-isccp/atmos_model_0.mdlus", False),
     ):
+        forcing_set = ({"name": "aimip", "dir": f"{p}/{os.path.dirname(AIMIP_SST_REL)}", "window": list(DLESYM_AIMIP_WINDOW)}
+                       if name == "dlesym-aimip" else
+                       {"name": "era5-initial-state", "dir": f"{p}/{pkg}", "window": list(DLESYM_IC_WINDOW)})
         out.append({
             "name": name, "family": "e2s-dlesym", "fme_module": "aimip.emu_job", "calendar": "proleptic_gregorian",
             "checkpoint": f"{p}/{ckpt_rel}", "checkpoint_sha256": _sha(ckpt_rel), "ic_files": [],
-            "forcing_sets": [{"name": "era5-initial-state", "dir": f"{p}/{pkg}",
-                              "window": list(DLESYM_IC_WINDOW)}],
+            "forcing_sets": [forcing_set],
             "required_files": required_files(name), "timestep_hours": 6, "stochastic": stochastic,
             "default_n_ensemble_per_ic": 1, "notes": dlesym_notes[name],
         })

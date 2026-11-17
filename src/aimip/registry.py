@@ -123,6 +123,8 @@ MODEL_IC_PROVENANCE: dict[str, str] = {
     "dlesym-v1.0": "ERA5 state at --start fetched from ARCO-ERA5 at prepare time (no shipped IC).",
     "dlesym-v1.1": "ERA5 state at --start fetched from ARCO-ERA5 at prepare time (no shipped IC).",
     "dlesym-v0-isccp": "ERA5 state at --start fetched from ARCO-ERA5 at prepare time (no shipped IC).",
+    "dlesym-aimip": "ERA5 state at --start (1978-10-03..07 00 UTC for the authors' five AIMIP members) fetched from "
+                    "ARCO-ERA5 at prepare time (no shipped IC).",
     "archesclimate-ssp": "IPSL-CM6A-LR r1i1p1f1 scenario state of 2015-02 (previous state 2015-01) from gclyne/ArchesClimate-data.",
     "archesweather": "ERA5 daily-mean state of 1978-09-30 (previous state 1978-09-29) from Zenodo 22795233 era5_1978_00h_sliced.nc.",
     "archesweathergen": "ERA5 daily-mean state of 1978-09-30 (previous state 1978-09-29) from Zenodo 22795233 era5_1978_00h_sliced.nc.",
@@ -791,7 +793,7 @@ def build_default_registry_payload(
     *,
     root_placeholder: str = DATA_PLACEHOLDER,
 ) -> dict[str, Any]:
-    """Construct the canonical registry JSON payload (10 fme models + 6 DLESyM/ArchesClimate/ArchesWeather models) with `${DATA}/...` paths and SHA-256s."""
+    """Construct the canonical registry JSON payload (10 fme models + 7 DLESyM/ArchesClimate/ArchesWeather models) with `${DATA}/...` paths and SHA-256s."""
     p = root_placeholder.rstrip("/")
 
     era5_hist_rels = [f"inputs/ace2-era5/amip-hist/forcing_{y}.nc" for y in range(1979, 2015)]

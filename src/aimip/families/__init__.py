@@ -1082,7 +1082,9 @@ class EmuFamilyAdapter:
                 role = "package"
             fallback = model.checkpoint_sha256 if abs_p == model.checkpoint else None
             is_selected = (
-                role in ("package", "ic") or model.family == "geoarches" or (scen_tag is not None and scen_tag in rel)
+                role in ("package", "ic")
+                or model.family in ("geoarches", "e2s-dlesym")
+                or (scen_tag is not None and scen_tag in rel)
             )
             assets.append(
                 _asset_from_rel(

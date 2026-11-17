@@ -25,7 +25,7 @@ R=/path/to/your/run/root
 ## First run
 
 ```bash
-$A models                               # the sixteen models, their date windows and initial conditions
+$A models                               # the seventeen models, their date windows and initial conditions
 $A ic list -m ace2-era5                 # 24 shipped start dates: the 1st of each month of 1979 and of 2001
 $A run -m ace2-era5 --start 1979-01-01T00:00:00 --steps 8 --out $R/first --submit
 $A submit $R/first
