@@ -283,7 +283,7 @@ def _cmd_models(args: argparse.Namespace) -> int:
     rows: list[list[str]] = []
     for item in entries:
         fam = item["family"]
-        runtime = {"e2s-dlesym": "e2s 0.19", "arches": "arches"}.get(
+        runtime = {"e2s-dlesym": "e2s 0.19", "arches": "arches", "geoarches": "geoarches"}.get(
             fam, item["fme_version"]
         )
         dt = "1mo" if fam == "arches" else f"{item['timestep_hours']}h"
@@ -302,6 +302,8 @@ def _cmd_models(args: argparse.Namespace) -> int:
             ic_summary = "ERA5 at --start (ARCO-ERA5)"
         elif fam == "arches":
             ic_summary = "2015 scenario state"
+        elif fam == "geoarches":
+            ic_summary = "ERA5 daily mean 1978-09-30"
         elif not ic_ts:
             ic_summary = f"unstaged ({len(item['ic_files'])} file)"
         elif len(ic_ts) <= 2:
@@ -1281,7 +1283,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="List registered climate emulator models with optional task, family, and status filters.",
     )
     p_models.add_argument("--task", default=None, help="Filter by task (amip, slab-ocean, coupled, scenario).")
-    p_models.add_argument("--family", default=None, help="Filter by family (fme, e2s-dlesym, arches, emu).")
+    p_models.add_argument("--family", default=None, help="Filter by family (fme, e2s-dlesym, arches, geoarches, emu).")
     p_models.add_argument("--status", default=None, help="Filter by tier (certified, runs, experimental).")
     p_models.add_argument("--installed", action="store_true", help="Show only models whose files are staged locally.")
     p_models.add_argument(

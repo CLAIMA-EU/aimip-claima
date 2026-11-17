@@ -1,11 +1,12 @@
-"""Job side of the DLESyM / ArchesClimate-SSP families. Runs in the emulator venv (started by `aimip.emu`):
+"""Job side of the DLESyM / ArchesClimate-SSP / ArchesWeather families. Runs in the emulator venv (started by `aimip.emu`):
 
     python -I -m aimip.emu_job stage <run-dir>     DLESyM: ERA5 state at <start> from ARCO-ERA5 -> <run-dir>/ic_era5.pt
     python -I -m aimip.emu_job run <run-dir>       the rollout -> <run-dir>/{atmosphere,ocean}/monthly_mean_predictions.nc
 
 Outputs follow the fme layout so `aimip summary` reads them: variables (sample, time, lat, lon), `valid_time`
 (sample, time) and `counts` (sample, time). For ArchesClimate-SSP, dataset item 0 uses state 2015-02 with previous
-state 2015-01, so the first output month is March 2015.
+state 2015-01, so the first output month is March 2015. ArchesWeather writes the pressure-level variables to
+`atmosphere/monthly_levels.nc` (sample, time, level, lat, lon).
 """
 from __future__ import annotations
 
@@ -51,10 +52,12 @@ def _load_job(out_dir: str) -> dict:
 # ------------------------------------------------------------------ monthly-mean netCDF writer (fme-like layout)
 
 class MonthlyWriter:
-    """Monthly means of one realm, written month by month to <out>/<realm>/monthly_mean_predictions.nc."""
+    """Monthly means of one realm, written month by month to <out>/<realm>/monthly_mean_predictions.nc.
+
+    With *levels*, every variable gets a `level` dimension: (sample, time, level, lat, lon)."""
 
     def __init__(self, path: str, names: list, lat, lon, n_members: int, attrs: dict | None = None,
-                 extra: dict | None = None):
+                 extra: dict | None = None, levels=None, level_units: str = "hPa"):
         import netCDF4
         import numpy as np
 
@@ -67,6 +70,15 @@ class MonthlyWriter:
         self.ds.createDimension("time", None)
         self.ds.createDimension("lat", len(lat))
         self.ds.createDimension("lon", len(lon))
+        dims: tuple = ("sample", "time", "lat", "lon")
+        chunks: tuple = (1, 1, len(lat), len(lon))
+        if levels is not None:
+            self.ds.createDimension("level", len(levels))
+            lv = self.ds.createVariable("level", "f8", ("level",))
+            lv[:] = np.asarray(levels, dtype="f8")
+            lv.units = level_units
+            dims = ("sample", "time", "level", "lat", "lon")
+            chunks = (1, 1, len(levels), len(lat), len(lon))
         for name, vals, units in (("lat", lat, "degrees_north"), ("lon", lon, "degrees_east")):
             v = self.ds.createVariable(name, "f8", (name,))
             v[:] = np.asarray(vals, dtype="f8")
@@ -79,8 +91,7 @@ class MonthlyWriter:
         self.vars = {}
         for n in names:
             meta = (extra or {}).get(n, {})
-            v = self.ds.createVariable(n, "f4", ("sample", "time", "lat", "lon"), zlib=True, complevel=1, shuffle=True,
-                                       chunksizes=(1, 1, len(lat), len(lon)))
+            v = self.ds.createVariable(n, "f4", dims, zlib=True, complevel=1, shuffle=True, chunksizes=chunks)
             for k, val in meta.items():
                 setattr(v, k, val)
             self.vars[n] = v
@@ -102,7 +113,7 @@ class MonthlyWriter:
         self.ds["valid_time"][member, i] = day
         self.ds["counts"][member, i] = int(count)
         for n, arr in fields.items():
-            self.vars[n][member, i, :, :] = arr
+            self.vars[n][member, i, ...] = arr
 
     def close(self) -> None:
         self.ds.close()
@@ -510,6 +521,262 @@ def _write_levels(path, arr, names, levels, lat, lon, months, dim, units, attrs)
     os.replace(path + ".part", path)
 
 
+# ------------------------------------------------------------------ ArchesWeather / ArchesWeatherGen (geoarches)
+
+# Buffers the backbone computes when it is built (the checkpoints do not store them).
+AW_OK_MISSING = ("attn.earth_position_index",)
+# geoarches name -> (output name, units); geopotential is written as geopotential height zg = z / g0.
+AW_SURFACE_OUT = {"10m_u_component_of_wind": ("uas", "m s-1"), "10m_v_component_of_wind": ("vas", "m s-1"),
+                  "2m_temperature": ("tas", "K"), "mean_sea_level_pressure": ("psl", "Pa"),
+                  "sea_surface_temperature": ("sst", "K"), "sea_ice_cover": ("sic", "1")}
+AW_LEVEL_OUT = {"geopotential": ("zg", "m"), "u_component_of_wind": ("ua", "m s-1"),
+                "v_component_of_wind": ("va", "m s-1"), "temperature": ("ta", "K"),
+                "specific_humidity": ("hus", "kg kg-1"), "vertical_velocity": ("wap", "Pa s-1")}
+G0 = 9.80665
+
+
+def _geoarches_code() -> str:
+    """Verify the pinned geoarches tree next to this interpreter's environment and import it from there."""
+    from .geoarches_src import GEOARCHES_COMMIT, code_dir, verify
+
+    root = code_dir()
+    if os.environ.get("AIMIP_GEOARCHES_CODE"):
+        _log(f"WARNING: geoarches from AIMIP_GEOARCHES_CODE={root}; the pinned tree digest is not checked")
+    else:
+        verify(root)
+    # A native tree is writable by its owner: bytecode written into it would change the tree digest for the next run.
+    sys.dont_write_bytecode = True
+    sys.path.insert(0, root)
+    import geoarches
+
+    if not os.path.realpath(geoarches.__file__).startswith(os.path.realpath(root) + os.sep):
+        raise SystemExit(f"geoarches imported from {geoarches.__file__}, expected {root}")
+    _log(f"geoarches {GEOARCHES_COMMIT[:12]} from {root}")
+    return root
+
+
+def _aw_module(model_dir: str, dotlist: list, torch, allow_unexpected: tuple = ()):
+    """Build one geoarches module from its config and load the pinned checkpoint file (weights only, no pickle).
+
+    Not geoarches' load_module(): it loads the newest *.ckpt in the directory with weights_only=False and ignores
+    every key mismatch. Here only the buffers in AW_OK_MISSING may be missing, and only keys with a prefix in
+    *allow_unexpected* may be left unused."""
+    from hydra.utils import instantiate
+    from omegaconf import OmegaConf
+
+    from .emu_catalog import AW_CKPT
+
+    cfg = OmegaConf.load(os.path.join(model_dir, "config.yaml"))
+    cfg.merge_with_dotlist(list(dotlist))
+    module = instantiate(cfg.module.module, cfg.module, cfg.stats)
+    ckpt = torch.load(os.path.join(model_dir, AW_CKPT), map_location="cpu", weights_only=True)
+    res = module.load_state_dict(ckpt["state_dict"], strict=False)
+    bad_missing = [k for k in res.missing_keys if not k.endswith(AW_OK_MISSING)]
+    bad_unused = [k for k in res.unexpected_keys if not k.startswith(allow_unexpected)] if allow_unexpected else list(res.unexpected_keys)
+    if bad_missing or bad_unused:
+        raise SystemExit(f"{model_dir}: checkpoint does not match the model (missing {bad_missing[:4]}, "
+                         f"unused {bad_unused[:4]})")
+    unused = len(res.unexpected_keys)
+    return module.eval(), cfg, unused
+
+
+def run_geoarches(out_dir: str, job: dict) -> dict:
+    """ArchesWeather-Mx4 / ArchesWeatherGen rollout as described in arXiv:2605.29976 section 2.3.
+
+    - initial state X_t = ERA5 daily mean of 1978-09-30, previous state 1978-09-29 (era5_1978_00h_sliced.nc);
+    - each daily step predicts X_{t+1} from (X_t, X_{t-1}) and the monthly SST / sea-ice forcing of the month of
+      t+1, conditioned on the day of year (and hour 0) of t, like geoarches' own multistep loop;
+    - ArchesWeather-Mx4: the four ArchesWeather-M networks are averaged at every step;
+    - ArchesWeatherGen: flow-matching sample (25 steps) around the Mx4 prediction; step i of member k uses the
+      noise seed (seed + k) + 1000 i, the authors' sample_rollout scheme;
+    - predicted SST and sea-ice cover are set to 0 (normalized) where the initial state has no ocean value before
+      they are fed back, and written as NaN there.
+    """
+    _geoarches_code()
+    import numpy as np
+    import pandas as pd
+    import torch
+
+    from geoarches.dataloaders import nan_util
+    from geoarches.dataloaders.era5 import Era5Forecast
+    from tensordict import TensorDict
+
+    dev = "cuda" if torch.cuda.is_available() else "cpu"
+    torch.set_grad_enabled(False)
+    t_load = time.time()
+    norm = [f"stats.module.norm_file={job['norm_stats_file']}"]
+    seeds = []
+    for d in job["seed_dirs"]:
+        m, seed_cfg, _ = _aw_module(d, norm, torch)
+        seeds.append(m.to(dev))
+    mx4 = _MeanOf(seeds, torch)
+    gen_unused = None
+    if job["kind"] == "gen":
+        # The generative checkpoint also stores one deterministic network (det_model.*). The published AIMIP config
+        # (load_deterministic_model = the four seeds) replaces it with ArchesWeather-Mx4, as geoarches'
+        # load_module does; aimip builds the module without it and attaches the four verified seeds.
+        dot = norm + [f"stats.module.residual_stats_path={job['residual_stats_file']}",
+                      "module.module.load_deterministic_model=false"]
+        gen, cfg, gen_unused = _aw_module(job["gen_dir"], dot, torch, allow_unexpected=("det_model.",))
+        # geoarches pins tensordict < 0.14, where +/- between TensorDicts of different batch sizes act leaf by leaf.
+        # tensordict 0.15 broadcasts the batch dimensions instead: in DiffusionModule.sample the decoder output (batch
+        # size [1]) meets states that geoarches' own helpers give auto batch sizes ([1, 6]), and the shapes blow up.
+        # Giving the decoder output and the Mx4 prediction auto batch sizes too restores the leaf-by-leaf arithmetic.
+        decode = gen.embedder.decode
+        gen.embedder.decode = lambda x: decode(x).auto_batch_size_()
+        gen.det_model = lambda b: mx4(b).auto_batch_size_()
+        gen = gen.to(dev)
+        step_fn = lambda batch, i, member_seed: gen.sample(batch, seed=member_seed + 1000 * i, disable_tqdm=True)
+    else:
+        cfg = seed_cfg
+        step_fn = lambda batch, i, member_seed: mx4(batch)
+    load_s = time.time() - t_load
+
+    ic_dir = os.path.join(os.environ.get("AIMIP_EMU_TMP") or tempfile.gettempdir(), "aw-ic")
+    os.makedirs(ic_dir, exist_ok=True)
+    link = os.path.join(ic_dir, os.path.basename(job["ic_file"]))
+    if not os.path.lexists(link):
+        os.symlink(job["ic_file"], link)
+    ds = Era5Forecast(stats_cfg=cfg.stats, path=ic_dir + "/", domain="aimip_rollout_z00", lead_time_hours=24,
+                      load_prev=True, multistep=1, variables=cfg.stats.module.variables,
+                      dimension_indexers=dict(level=cfg.stats.module.levels), warning_on_nan=False,
+                      interpolate_input="zero_after_norm", forcings_path=job["forcing_file"],
+                      forcings_stats_path=job["forcing_stats_file"],
+                      forcing_vars=["sea_surface_temperature", "sea_ice_cover"])
+    ic = ds[0]
+    t0 = pd.Timestamp(int(ic["timestamp"]), unit="s")
+    if t0 != pd.Timestamp(job["start"]):
+        raise SystemExit(f"initial state is {t0}, expected {job['start']}")
+    land = {k: ic["nan_mask"][k][None].to(dev) for k in ("surface", "level")}
+    sv = list(cfg.stats.module.variables["surface"])
+    lv = list(cfg.stats.module.variables["level"])
+    levels = [float(x) for x in cfg.stats.module.levels]
+    if set(sv) != set(AW_SURFACE_OUT) or set(lv) != set(AW_LEVEL_OUT):
+        raise SystemExit(f"unexpected model variables {sv} / {lv}")
+    if bool(land["level"].any()) or [i for i, v in enumerate(sv) if bool(land["surface"][0, i].any())
+                                     and v not in ("sea_surface_temperature", "sea_ice_cover")]:
+        raise SystemExit("the initial state has missing values outside SST / sea-ice cover")
+    # aimip's own arithmetic below works on plain tensors (leaf by leaf), never on TensorDicts.
+    mean = {k: ds.data_mean[k].to(dev) for k in ("surface", "level")}
+    std = {k: ds.data_std[k].to(dev) for k in ("surface", "level")}
+
+    forcing_cache: dict = {}
+
+    def forcing_for(state_time):
+        """Normalized SST / sea-ice forcing of the month of state_time + 1 day (geoarches' load_forcings)."""
+        key = (state_time + pd.Timedelta(days=1)).strftime("%Y-%m")
+        if key not in forcing_cache:
+            forcing_cache.clear()
+            f = ds.load_forcings(np.datetime64(state_time.to_datetime64()))
+            f = nan_util.post_norm_interpolate_nans((f - ds.forcings_mean) / ds.forcings_std, "zero_after_norm")
+            forcing_cache[key] = f[None].to(dev)
+        return forcing_cache[key]
+
+    # geoarches' convert_to_tensordict flips latitude to north-first and rolls longitude by half the globe ("focus on
+    # Europe"); its convert_to_xarray undoes both. The writer below undoes the roll, so the files use the input grid.
+    lat = np.sort(np.asarray(ds.coords["latitude"], dtype="f8"))[::-1]
+    lon = np.asarray(ds.coords["longitude"], dtype="f8")
+    half = len(lon) // 2
+    attrs = {"source": f"{job['model']} (geoarches, Zenodo 22795233), daily steps from the ERA5 daily mean of "
+                       "1978-09-30", "aimip_family": "geoarches", "first_output_day": "1978-10-01",
+             "comment": "monthly means of the model's daily-mean states; sst and sic are the model's own daily "
+                        "predictions (it also receives the monthly forcing), NaN over land"}
+    surf_names = [AW_SURFACE_OUT[v][0] for v in sv]
+    lev_names = [AW_LEVEL_OUT[v][0] for v in lv]
+    n_members = int(job["members"])
+    ws = MonthlyWriter(os.path.join(out_dir, "atmosphere", "monthly_mean_predictions.nc"), surf_names, lat, lon,
+                       n_members, attrs=attrs, extra={AW_SURFACE_OUT[v][0]: {"units": AW_SURFACE_OUT[v][1]} for v in sv})
+    wl = MonthlyWriter(os.path.join(out_dir, "atmosphere", "monthly_levels.nc"), lev_names, lat, lon, n_members,
+                       attrs=attrs, extra={AW_LEVEL_OUT[v][0]: {"units": AW_LEVEL_OUT[v][1]} for v in lv},
+                       levels=levels, level_units="hPa")
+    zg_i = lv.index("geopotential")
+    w_lat = np.cos(np.deg2rad(lat))[:, None] * np.ones((1, len(lon)))
+
+    def flush(member, month, acc, n):
+        surf = (acc["surface"][0, :, 0] / n).float().cpu().numpy()
+        lev = (acc["level"][0] / n).float().cpu().numpy()
+        lev[zg_i] = lev[zg_i] / G0
+        ocean = ~land["surface"][0, :, 0].cpu().numpy()
+        bad = [v for i, v in enumerate(sv)
+               if not np.isfinite(surf[i][ocean[i]] if v in ("sea_surface_temperature", "sea_ice_cover") else surf[i]).all()]
+        bad += [v for i, v in enumerate(lv) if not np.isfinite(lev[i]).all()]
+        if bad:
+            raise Unstable(month, member, f"non-finite values in {', '.join(bad[:4])}")
+        g = float((surf[sv.index("2m_temperature")] * w_lat).sum() / w_lat.sum())
+        if not T2M_BAND_K[0] <= g <= T2M_BAND_K[1]:
+            raise Unstable(month, member, f"global-mean tas {g:.1f} K outside {T2M_BAND_K[0]:.0f}-{T2M_BAND_K[1]:.0f} K")
+        surf, lev = np.roll(surf, -half, axis=-1), np.roll(lev, -half, axis=-1)
+        ws.write(member, month, {surf_names[i]: surf[i] for i in range(len(sv))}, n)
+        wl.write(member, month, {lev_names[i]: lev[i] for i in range(len(lv))}, n)
+        return g
+
+    steps = int(job["steps"])
+    unstable = None
+    first_year: list = []
+    tw = time.time()
+    try:
+        for member in range(n_members):
+            member_seed = int(job["seed"]) + member
+            torch.manual_seed(member_seed)
+            batch = {k: v[None].to(dev) for k, v in ic.items() if k not in ("next_state", "nan_mask")}
+            for k in ("state", "prev_state"):
+                batch[k] = batch[k].auto_batch_size_()
+            acc, n, month = None, 0, None
+            for i in range(steps):
+                t_cur = t0 + pd.Timedelta(days=i)
+                t_next = t_cur + pd.Timedelta(days=1)
+                batch["forcings"] = forcing_for(t_cur)
+                batch["timestamp"] = torch.tensor([int(t_cur.timestamp())], device=dev)
+                batch["hour_of_day"] = torch.tensor([0], device=dev)
+                batch["day_of_year"] = torch.tensor([t_cur.dayofyear], device=dev)
+                batch["month"] = torch.tensor([t_cur.month], device=dev)
+                pred = step_fn(batch, i, member_seed)
+                phys = {k: (pred[k] * std[k] + mean[k]).double() for k in ("surface", "level")}
+                phys["surface"] = torch.where(land["surface"], torch.nan, phys["surface"])
+                m_next = np.datetime64(t_next.strftime("%Y-%m"), "M")
+                if month is not None and m_next != month:
+                    g = flush(member, month, acc, n)
+                    if member == 0 and len(first_year) < 12:
+                        first_year.append(g)
+                    acc, n = None, 0
+                month = m_next
+                acc = phys if acc is None else {k: acc[k] + phys[k] for k in acc}
+                n += 1
+                fed = TensorDict(surface=torch.where(land["surface"], 0.0, pred["surface"]),
+                                 level=pred["level"].clone()).auto_batch_size_()
+                batch["prev_state"], batch["state"] = batch["state"], fed
+                if (i + 1) % 365 == 0:
+                    _log(f"member {member}: {i + 1} days, {(time.time() - tw) / (i + 1 + member * steps):.3f} s/day")
+            g = flush(member, month, acc, n)
+            if member == 0 and len(first_year) < 12:
+                first_year.append(g)
+    except Unstable as exc:
+        unstable = exc
+        _log(f"UNSTABLE {exc}: the run stops; months before it are written")
+    ws.close()
+    wl.close()
+    roll_s = time.time() - tw
+    out = {"days_per_member": steps, "members": n_members, "load_seconds": round(load_s, 1),
+           "rollout_seconds": round(roll_s, 1), "seconds_per_day": round(roll_s / max(1, steps * n_members), 4),
+           "global_mean_tas_first_12_months_K": float(np.mean(first_year)) if first_year else None,
+           "device": torch.cuda.get_device_name(0) if dev == "cuda" else "cpu"}
+    if gen_unused is not None:
+        out["gen_checkpoint_unused_det_model_keys"] = gen_unused
+    if unstable is not None:
+        out.update({"unstable_from": unstable.month, "unstable_member": unstable.member, "unstable_reason": unstable.why})
+    return out
+
+
+class _MeanOf:
+    """Average of several geoarches modules' predictions at one step (ArchesWeather-Mx4)."""
+
+    def __init__(self, modules, torch):
+        self.modules, self.torch = list(modules), torch
+
+    def __call__(self, batch):
+        return self.torch.stack([m(batch) for m in self.modules], dim=0).mean(dim=0)
+
+
 # ------------------------------------------------------------------ entry point
 
 def main(argv: list) -> int:
@@ -529,6 +796,8 @@ def main(argv: list) -> int:
         result = run_dlesym(job["out_dir"], job)
     elif job["family"] == "arches":
         result = run_arches(job["out_dir"], job)
+    elif job["family"] == "geoarches":
+        result = run_geoarches(job["out_dir"], job)
     else:
         raise SystemExit(f"unknown family {job['family']!r}")
     result["process_seconds"] = round(time.time() - t0, 1)

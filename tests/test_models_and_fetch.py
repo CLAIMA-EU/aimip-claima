@@ -313,7 +313,7 @@ def test_registry_default_and_lock_contract_for_all_models(
     tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Verify all 14 models in `registry.default.json` and their lock pins in `aimip.lock`."""
+    """Verify all 16 models in `registry.default.json` and their lock pins in `aimip.lock`."""
     data_dir = tmp_path / "data"
     data_dir.mkdir()
     monkeypatch.delenv("AIMIP_REGISTRY", raising=False)
@@ -330,7 +330,7 @@ def test_registry_default_and_lock_contract_for_all_models(
 
     reg = load_registry(data_dir=str(data_dir))
     assert tuple(reg.keys()) == CANONICAL_MODELS
-    assert len(reg) == 14   # 10 fme + 4 DLESyM / ArchesClimate-SSP
+    assert len(reg) == 16   # 10 fme + 4 DLESyM / ArchesClimate-SSP + 2 ArchesWeather
 
     expected_meta = {
         "ace2-era5": ("2026.5.1", "fme.ace.inference", "proleptic_gregorian", 6, False),
@@ -349,6 +349,8 @@ def test_registry_default_and_lock_contract_for_all_models(
         "dlesym-v1.1": ("e2s-dlesym", 6, True, ["era5-initial-state"]),
         "dlesym-v0-isccp": ("e2s-dlesym", 6, False, ["era5-initial-state"]),
         "archesclimate-ssp": ("arches", 730, False, ["ssp434", "ssp585"]),
+        "archesweather": ("geoarches", 24, False, ["aimip"]),
+        "archesweathergen": ("geoarches", 24, True, ["aimip"]),
     }
 
     lock_files = load_lock_file(str(pkg_dir / "aimip.lock"))["files"]
@@ -360,10 +362,22 @@ def test_registry_default_and_lock_contract_for_all_models(
             assert (model.family, model.timestep_hours, model.stochastic) == (fam, step, stoch)
             assert model.fme_module == "aimip.emu_job" and model.ic_files == () and not model.is_coupled
             assert [fs.name for fs in model.forcing_sets] == sets
-            assert model.checkpoint.endswith((".mdlus", "model.ckpt"))
+            assert model.checkpoint.endswith((".mdlus", "model.ckpt", "checkpoint.ckpt"))
             for req_rel in model.required_files:
                 le = lock_files[req_rel]
-                assert hex64_re.match(le["sha256"]) and le["size"] > 0 and le["source"]["kind"] == "hf"
+                assert hex64_re.match(le["sha256"]) and le["size"] > 0
+                if fam == "geoarches":   # Zenodo 22795233 files, checkpoints/configs extracted from its zip
+                    src = le["source"]
+                    assert src["kind"] in ("zenodo", "derived"), req_rel
+                    if src["kind"] == "zenodo":
+                        assert src["record"] == "22795233" and re.match(r"^[0-9a-f]{32}$", src["md5"]), req_rel
+                    else:
+                        assert src["builder"] == "extract_zip_member", req_rel
+                        assert list(src["inputs"]) == ["raw/zenodo-22795233/model_checkpoints.zip"], req_rel
+                        assert src["inputs"]["raw/zenodo-22795233/model_checkpoints.zip"] == (
+                            lock_files["raw/zenodo-22795233/model_checkpoints.zip"]["sha256"])
+                    continue
+                assert le["source"]["kind"] == "hf"
                 assert re.match(r"^[0-9a-f]{40}$", le["source"]["revision"]), req_rel
             continue
         exp_ver, exp_mod, exp_cal, exp_step, exp_stoch = expected_meta[name]

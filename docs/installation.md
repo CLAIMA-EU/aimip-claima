@@ -11,7 +11,7 @@ the site settings at `<prefix>/site.json` and the model data at `<prefix>/data/`
   state). Compute nodes need no internet.
 - `bash`, `python3` (3.8+ for the installers themselves), `tar`, `sha256sum` or `shasum`.
 - Disk: about 25 GB for the software (image and build cache, or the virtual environments), plus the model data:
-  0.04–34 GB per model, about 215 GB for all fourteen.
+  0.04–34 GB per model, about 219 GB for all sixteen.
 - Container mode: one of Apptainer, Singularity, Docker or Podman; Docker and Podman need the NVIDIA Container Toolkit
   for `--gpus all`. Native mode: Python 3.12 (the pins were made for 3.12; newer versions are untested), and for
   `--with-emu` also a C/C++ compiler.
@@ -95,12 +95,13 @@ It creates, inside `DIR`:
 |---|---|
 | `venv/` | Python 3.12 with PyTorch 2.14 (CUDA 13.0 wheels), Ai2 `fme` 2026.5.1 and `aimip`, pinned like the image |
 | `overlay-fme-2026.10.0/` | `fme` 2026.10.0, used only by `hiro-acev2` and `samudrace-e3smv3` |
-| `venv-emu/` | with `--with-emu`: the environment for DLESyM and ArchesClimate-SSP (Earth2Studio, PhysicsNeMo, earth2grid with its CUDA padding kernel and ArchesClimate-SSP's Python dependencies), pinned like the image. The ArchesClimate-SSP source itself is downloaded on first use ([models](models.md)) |
+| `venv-emu/` | with `--with-emu`: the environment for DLESyM, ArchesClimate-SSP and ArchesWeather (Earth2Studio, PhysicsNeMo, earth2grid with its CUDA padding kernel, ArchesClimate-SSP's and geoarches' Python dependencies), pinned like the image. The ArchesClimate-SSP source itself is downloaded on first use ([models](models.md)) |
+| `geoarches/` | with `--with-emu`: the geoarches source for ArchesWeather (commit 4d0c77a1, checked against its pinned archive and tree digest) |
 | `bin/aimip` | the launcher that sets the paths and starts `venv/bin/python -m aimip` |
 | `site.json`, `data/` | site settings, model data |
 
 The installer runs the package tests in the new environment and prints the next steps. Without `--with-emu` the
-ten `fme` models work; DLESyM and ArchesClimate-SSP report that their environment is missing.
+ten `fme` models work; DLESyM, ArchesClimate-SSP and ArchesWeather report that their environment is missing.
 
 ## Model data
 
@@ -108,8 +109,9 @@ Two ways, in both modes:
 
 - **On first use** (default): the first `aimip run -m X` downloads and verifies model X only, and prints what it
   downloads. `aimip fetch -m X` does the same without preparing a run; `--no-fetch` forbids downloads.
-- **All at once:** `aimip setup --models all` (about 215 GB). On clusters that limit work on login nodes, run it in
-  a CPU job. The downloads are about 125 GiB; the rest of the 215 GB are forcing files built on your machine.
+- **All at once:** `aimip setup --models all` (about 219 GB). On clusters that limit work on login nodes, run it in
+  a CPU job. The downloads are about 127 GiB; the rest are forcing files built on your machine and the ArchesWeather
+  checkpoints extracted from their zip.
 
 | model | download |
 |---|---|
@@ -118,6 +120,7 @@ Two ways, in both modes:
 | `ace2-som` 8.7 · `ace2s` 7.6 · `hiro-acev2` 8.9 · `samudrace-cm4` 3.1 · `samudrace-e3smv3` 2.5 GiB | |
 | `dlesym-v1.0` 0.16 · `dlesym-v1.1` 0.04 · `dlesym-v0-isccp` 0.29 GiB | plus the ERA5 initial state per run (0.4 GB) |
 | `archesclimate-ssp` | 33.5 GiB (both scenarios) |
+| `archesweather`, `archesweathergen` | 2.0 GiB from Zenodo 22795233 (the checkpoint zip, the initial state, the forcing, statistics), plus 1.3 or 1.8 GiB of checkpoints extracted from the zip |
 
 Every file is checked against `aimip.lock`: downloads by size and sha256, files built on your machine by sha256. Derived files (forcing built from the authors'
 packages) are rebuilt on your machine and must match the lock bit for bit.
@@ -136,7 +139,7 @@ in `container/Dockerfile` (then `--build`) or in `install/install-native.sh`.
 ```bash
 A=DIR/bin/aimip
 $A --version
-$A models                       # fourteen models
+$A models                       # sixteen models
 $A run -m ace2-era5 --start 1979-01-01T00:00:00 --steps 8 --out <run root>/check --submit   # prepares the run
 $A submit <run root>/check                                                     # queues it (or use --local above instead)
 ```
@@ -173,6 +176,12 @@ and `archesclimate-ssp` (24 months).
   runs vary. With autotuning off, `ace2-era5` gave 285.1581 K.
 - Not tested in 1.3.x: the other nine models were not compared between the two modes; Docker/Podman; aarch64
   builds; local mode without a scheduler; schedulers other than Slurm.
+- `archesweather` and `archesweathergen` (added after 1.3.1, container mode, Apptainer, one A100-80GB): an image
+  built from this version, `aimip fetch` from Zenodo (2.0 GiB downloaded, 10 files extracted, all checked against the
+  lock), then `aimip run --submit`: `archesweather` 62 days and `archesweathergen` 2 members × 31 days. Both were
+  bit-identical to the same rollouts run directly in the emulator environment. A 457-day `archesweather` run agrees
+  with the authors' AIMIP submission in global-mean 2 m temperature ([models](models.md)). Native mode and other
+  GPUs were not tested for these two models.
 
 ## Uninstall
 

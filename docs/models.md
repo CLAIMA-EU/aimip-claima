@@ -18,6 +18,8 @@
 | `dlesym-v1.1` | coupled, stochastic; adds 6-hour precipitation | as above | as above | `--members K` (noise seed + k) |
 | `dlesym-v0-isccp` | coupled, deterministic | as above | as above | — |
 | `archesclimate-ssp` | monthly emulator of IPSL-CM6A-LR (144 × 144: 1.25° lat × 2.5° lon; atmosphere and upper-ocean temperature), deterministic | scenarios `ssp434` (default) and `ssp585`; outputs March 2015 … November 2100 | the scenario's 2015 state (`--start 2015-01-01T00:00:00`) | — |
+| `archesweather` | ArchesWeather-Mx4, AIMIP version: four networks averaged at every step, deterministic, trained on ERA5 (1°, 13 pressure levels, daily means) | monthly ERA5 SST and sea ice, 1978-10-01 … 2024-12-31 | the ERA5 daily mean of 1978-09-30 (`--start 1978-09-30T00:00:00`) | — |
+| `archesweathergen` | ArchesWeatherGen, AIMIP version: stochastic (flow matching around ArchesWeather-Mx4) | as above | as above | `--members K` (noise seed + k) |
 
 ## Steps
 
@@ -27,6 +29,7 @@
 | `samudrace-cm4`, `samudrace-e3smv3` | 5 days | 73 steps |
 | `dlesym-*` | 6 hours | 1460 or 1464 steps |
 | `archesclimate-ssp` | 1 month | 12 steps (at most 1029) |
+| `archesweather`, `archesweathergen` | 1 day (daily-mean states) | 365 or 366 steps (at most 16894: 1978-10-01 … 2024-12-31) |
 
 ## Notes per model family
 
@@ -67,12 +70,39 @@ weather. Outputs: `atmosphere/monthly_mean_predictions.nc` (`tas`, `psl`, `pr`, 
 `ocean/monthly_thetao.nc` (`thetao` on 10 depths, °C). Pressure levels below the ground (mostly 1000–700 hPa
 over land) and ocean values over land are NaN, with a mask that does not change in time.
 
-**DLESyM and ArchesClimate-SSP software.** They run in a second Python environment (Earth2Studio 0.19 at commit
-8fa7acb, PhysicsNeMo 1dacf8d, earth2grid 11dcf1b with its CUDA HEALPix padding kernel; every other package pinned in
-`container/constraints-emu.txt`). The ArchesClimate-SSP source code (commit 06ce82dc) carries no licence, so it is
-not part of the image or this repository: `aimip fetch -m archesclimate-ssp` (or the first run) downloads it from
-its author's GitHub repository into `$AIMIP_DATA/code/ArchesClimate-SSP` and checks it against the tree digest pinned in
-`src/aimip/setup_data.py`. See
+**ArchesWeather and ArchesWeatherGen.** These are the versions the INRIA authors retrained for AIMIP (Singh et al.,
+"Evaluating Skill and Stability of ArchesWeather and ArchesWeatherGen under Multi-Decadal Climate Simulations",
+arXiv:2605.29976), with checkpoints, initial state and forcing from Zenodo record 22795233. One step is one day of
+daily-mean states on the 1° grid; the model sees the two previous days and the monthly SST and sea-ice cover of the
+predicted day's month. `archesweather` averages the four ArchesWeather-M networks at every step, as the authors do in
+their AIMIP runs. `archesweathergen` draws each day with 25 flow-matching steps around that average; members differ by
+the noise seed (step i of member k uses seed + k + 1000 i, the authors' scheme). The authors' long-rollout script is
+not published, so aimip follows section 2.3 of the paper: predicted SST and sea ice over land (where the initial
+state has no ocean value) are set to zero before they are fed back, and written as NaN. The only initial state is
+the ERA5 daily mean of 1978-09-30 (the authors' member r2; their other members start on 1978-09-29 and
+1978-10-01 … 03). Outputs: `atmosphere/monthly_mean_predictions.nc` (`tas`, `psl`, `uas`, `vas`, and the model's own
+daily `sst` and `sic` averaged per month) and `atmosphere/monthly_levels.nc` (`zg`, `ua`, `va`, `ta`, `hus`, `wap`
+on 13 pressure levels, `zg` = geopotential / 9.80665). A run cannot be continued yet: on one A100 a whole run
+1978-10 … 2024-12 takes about 5 hours for `archesweather` and about 21 hours per member for `archesweathergen`, so
+the latter covers about 9 years per member in a 12-hour job. The ArchesWeatherGen checkpoint also stores one
+deterministic network of its own; like geoarches' loader with the published configuration, aimip uses the four
+ArchesWeather-M networks instead.
+
+Compared with the authors' AIMIP submission (`allenai/aimip-phase1-submissions`, `ArchesWeather/ArchesWeather-V2`),
+an `archesweather` run from 1978-09-30 gives a global-mean 2 m temperature of 286.95 K for October 1978 (authors'
+member r2: 286.96 K) and 287.18 K for 1979 (authors' five members: 287.11–287.19 K). The runs are not bit-identical:
+the authors ran on TPUs.
+
+**DLESyM, ArchesClimate-SSP and ArchesWeather software.** They run in a second Python environment (Earth2Studio 0.19
+at commit 8fa7acb, PhysicsNeMo 1dacf8d, earth2grid 11dcf1b with its CUDA HEALPix padding kernel; every other package
+pinned in `container/constraints-emu.txt`). The ArchesClimate-SSP source code (commit 06ce82dc) carries no licence,
+so it is not part of the image or this repository: `aimip fetch -m archesclimate-ssp` (or the first run) downloads it
+from its author's GitHub repository into `$AIMIP_DATA/code/ArchesClimate-SSP` and checks it against the tree digest
+pinned in `src/aimip/setup_data.py`. The geoarches source (BSD-3-Clause, commit 4d0c77a1 of its `aimip` branch) is
+unpacked at install time from its GitHub archive into `/opt/aimip/geoarches` (native: `<prefix>/geoarches`); the
+archive's SHA-256 and the tree digest are pinned in `src/aimip/geoarches_src.py`, and every run checks the tree
+again. The ArchesWeatherGen sampler is used with tensordict 0.15 (geoarches pins an older version); aimip gives the
+TensorDicts it passes in matching batch sizes so the arithmetic stays element by element. See
 [THIRD_PARTY.md](../THIRD_PARTY.md) for the licences of everything the image installs.
 
 ## Forcing of the AMIP models
@@ -83,6 +113,7 @@ its author's GitHub repository into `$AIMIP_DATA/code/ArchesClimate-SSP` and che
 | `ace2-shield`, `ace2s-shield-plus` | Ai2's SHiELD+ AMIP forcing (`allenai/ACE2S-SHiELD-plus`) | AIMIP SST and sea ice (Zenodo 17065758, ERA5 0.25° monthly, regridded conservatively to the models' 1° grid, linear in time); insolation and statics from the model's reference year; CO2 from the ACE2-ERA5 series, extrapolated linearly after 2022 |
 | `ace2-eamv3` | ERA5 SST and sea ice from the Ai2 ERA5 forcing; land fraction, orography, insolation cycle from the authors' 1971 file; noleap calendar (29 February dropped); no CO2 input | — |
 | `hiro-ace` | SHiELD+ AMIP time-varying fields with HiRO's own statics (coastal cells take SST from the nearest SHiELD+ ocean cell) | as for SHiELD+ |
+| `archesweather`, `archesweathergen` | the authors' AIMIP forcing (Zenodo 22795233): ERA5 monthly SST and sea-ice cover regridded conservatively to 1°, constant within each month, from October 1978 | the same file, through December 2024 |
 
 The authors of HiRO-ACE state that ACE2S was trained only on 9 years of X-SHiELD (2014–2022) and is not expected to
 generalize outside the forcing conditions used in training (model card `allenai/HiRO-ACE`; Perkins et al.,
@@ -91,5 +122,6 @@ arXiv:2512.18224). The 1994–2014 window of `hiro-ace` is therefore outside its
 build from another model's package and a 2014 state given a 1994 date: treat it as an experiment.
 
 The other models use their authors' forcing packages unchanged (`allenai/ACE2-SOM`, `allenai/HiRO-ACE`,
-`allenai/HiRO-ACEv2`, `allenai/SamudrACE-CM4-piControl`, `allenai/SamudrACE-E3SMv3`, `gclyne/ArchesClimate-data`).
+`allenai/HiRO-ACEv2`, `allenai/SamudrACE-CM4-piControl`, `allenai/SamudrACE-E3SMv3`, `gclyne/ArchesClimate-data`,
+Zenodo 22795233 for ArchesWeather).
 Derived forcing files are rebuilt by `aimip setup`/`aimip fetch` on your machine and checked against the lock file.

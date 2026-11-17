@@ -167,6 +167,7 @@ EOF
   "$PREFIX/venv-emu/bin/pip" install -c "$REPO/container/constraints-emu.txt" earth2studio@8fa7acb nvidia-physicsnemo@1dacf8d ...
   "$PREFIX/venv-emu/bin/pip" install --no-build-isolation earth2grid@11dcf1b (with CUDA HEALPix padding kernel via nvcc 13.0)
   "$PREFIX/venv-emu/bin/pip" install --no-deps "$REPO"
+  "$PREFIX/venv-emu/bin/python" -I "$REPO/src/aimip/geoarches_src.py" install "$PREFIX/geoarches"   (geoarches@4d0c77a1, ArchesWeather)
 EOF
   fi
   exit 0
@@ -191,7 +192,8 @@ echo "install-native: creating $PREFIX/venv and $PREFIX/overlay-fme-2026.10.0 (l
   && "$PREFIX/venv/bin/pip" freeze --all > "$PREFIX/installed-inventory.txt"
 } > "$LOG" 2>&1 || { tail -30 "$LOG" >&2; die "venv build failed (see $LOG)"; }
 
-# ---- optional emulator venv (DLESyM + ArchesClimate-SSP Python deps; same recipe as container/Dockerfile)
+# ---- optional emulator venv (DLESyM + ArchesClimate-SSP + ArchesWeather Python deps; same recipe as container/Dockerfile)
+# geoarches (ArchesWeather) is unpacked into $PREFIX/geoarches from its pinned archive (src/aimip/geoarches_src.py).
 if [ "$WITH_EMU" = 1 ]; then
   EMU_LOG=$PREFIX/build/install-native-emu-$VERSION.log
   echo "install-native: creating $PREFIX/venv-emu with CUDA earth2grid kernel (log $EMU_LOG)"
@@ -203,6 +205,7 @@ if [ "$WITH_EMU" = 1 ]; then
       "earth2studio @ https://github.com/NVIDIA/earth2studio/archive/8fa7acb28b082e83a0718e8d2ed137fd375a11fe.tar.gz#sha256=db814396dff3fe021d9af70bf10a6f80577694416eeb8b70b8b504685df4ff20" \
       "nvidia-physicsnemo @ https://github.com/NVIDIA/physicsnemo/archive/1dacf8d691bb0ab987e8832debacab2dbe0043bb.tar.gz#sha256=ee6a06672258bbb7f20a4554725a5f22b9c504d67f57b4f49561d9cc577f09ae" \
       omegaconf hydra-core lightning tensordict timm diffusers lovely-tensors lovely-numpy matplotlib torchmetrics einops cftime netCDF4 pyyaml \
+      axial-attention fasteners \
     && rm -rf "$PREFIX/build/cuda-build" \
     && "$PREFIX/venv-emu/bin/pip" install --target "$PREFIX/build/cuda-build" \
       "nvidia-cuda-nvcc==13.0.88" "nvidia-cuda-crt==13.0.88" "nvidia-cuda-cccl==13.0.85" "nvidia-cuda-runtime==13.0.96" "nvidia-nvvm==13.0.88" \
@@ -219,12 +222,15 @@ if [ "$WITH_EMU" = 1 ]; then
       "earth2grid @ https://github.com/NVlabs/earth2grid/archive/11dcf1b0787a7eb6a8497a3a5a5e1fdcc31232d3.tar.gz#sha256=6ae3c5b020e1c9623a77debca1ef10f6a5127cffd8a084db8c965381f8928581" \
     && rm -rf "$PREFIX/build/cuda-build" \
     && "$PREFIX/venv-emu/bin/pip" install --no-deps "$REPO" \
+    && { "$PREFIX/venv-emu/bin/python" -I "$REPO/src/aimip/geoarches_src.py" verify "$PREFIX/geoarches" \
+         || { rm -rf "$PREFIX/geoarches" \
+              && "$PREFIX/venv-emu/bin/python" -I "$REPO/src/aimip/geoarches_src.py" install "$PREFIX/geoarches"; }; } \
     && "$PREFIX/venv-emu/bin/pip" freeze --all > "$PREFIX/installed-inventory-emu.txt"
   } > "$EMU_LOG" 2>&1 || { rm -rf "$PREFIX/build/cuda-build"; tail -30 "$EMU_LOG" >&2; die "venv-emu build failed (see $EMU_LOG)"; }
 fi
 
 chmod -R a+rX "$PREFIX/venv" "$PREFIX/overlay-fme-2026.10.0" 2>/dev/null || true
-[ "$WITH_EMU" = 1 ] && chmod -R a+rX "$PREFIX/venv-emu" 2>/dev/null || true
+[ "$WITH_EMU" = 1 ] && chmod -R a+rX "$PREFIX/venv-emu" "$PREFIX/geoarches" 2>/dev/null || true
 
 # ---- version/import assertions and self-test in the new environment (launcher written ONLY after all pass)
 echo "install-native: verifying installed versions and running test suite"
@@ -262,6 +268,14 @@ assert os.path.realpath(aimip.__file__).startswith(venv_dir + os.sep), f"venv-em
 assert aimip.__version__ == want_v, f"venv-emu aimip {aimip.__version__} != {want_v}"
 assert torch.__version__.split("+")[0] == "2.14.0", f"venv-emu torch {torch.__version__} != 2.14.0"
 print("AIMIP_EMU_OK", torch.__version__, earth2studio.__version__, physicsnemo.__version__)
+import axial_attention, fasteners
+from aimip.geoarches_src import code_dir, verify
+verify(code_dir())
+sys.path.insert(0, code_dir())
+sys.dont_write_bytecode = True   # keep the geoarches tree identical to its pinned digest
+import geoarches.lightning_modules.forecast, geoarches.lightning_modules.diffusion, geoarches.dataloaders.era5
+verify(code_dir())
+print("AIMIP_GEOARCHES_OK", code_dir())
 ' "$VERSION" "$PREFIX/venv-emu" || die "venv-emu import/version check failed"
 fi
 

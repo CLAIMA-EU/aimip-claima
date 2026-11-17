@@ -187,7 +187,7 @@ The table lists declared package licences only. Some wheels bundle native librar
 | torch_harmonics | 0.8.0 | BSD License |
 | zarrs | 0.2.3 | MIT |
 
-## Emulator environment `/opt/aimip/venv-emu` (DLESyM, ArchesClimate-SSP)
+## Emulator environment `/opt/aimip/venv-emu` (DLESyM, ArchesClimate-SSP, ArchesWeather)
 
 | package | version | declared licence |
 |---|---|---|
@@ -200,6 +200,7 @@ The table lists declared package licences only. Some wheels bundle native librar
 | antlr4-python3-runtime | 4.9.3 | BSD |
 | anyio | 4.16.0 | MIT |
 | attrs | 26.1.0 | MIT |
+| axial-attention | 0.6.1 | MIT |
 | bokeh | 3.10.2 | BSD-3-Clause |
 | botocore | 1.43.117 | Apache-2.0 |
 | certifi | 2026.10.23 | Mozilla Public License 2.0 (MPL 2.0) |
@@ -223,6 +224,7 @@ The table lists declared package licences only. Some wheels bundle native librar
 | earth2studio | 0.19.0a0 | Apache-2.0 |
 | einops | 0.8.2 | MIT License |
 | fastcore | 2.2.41 | Apache-2.0 |
+| fasteners | 0.19 | Apache-2.0 |
 | filelock | 4.2.4 | MIT |
 | fonttools | 4.68.0 | MIT |
 | frozenlist | 1.8.0 | Apache-2.0 |

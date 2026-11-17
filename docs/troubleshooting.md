@@ -14,7 +14,8 @@
 | `forcing sets 1xCO2, 3xCO2 all cover this window` | a continued `ace2-som` run whose scenario cannot be read from the previous manifest; pass `--forcing-set` |
 | `not an aimip-generated script` / `unexpected line` | `job.sbatch` was edited; prepare the run again with the options of `run` |
 | `Could not fetch the ERA5 initial state` | DLESyM reads its start state from Google Cloud when the run is prepared; run `aimip run` where there is internet |
-| `environment is missing` (DLESyM, ArchesClimate-SSP) | container: reinstall with `install/install-container.sh`; native: install with `--with-emu` |
+| `environment is missing` (DLESyM, ArchesClimate-SSP, ArchesWeather) | container: reinstall with `install/install-container.sh`; native: install with `--with-emu` |
+| `the geoarches source is not installed` (ArchesWeather) | the install predates ArchesWeather support: reinstall as above |
 | `site preset needs --account` | give `--account <account>` or `--account none` to the installer |
 | the job ends as `TIMEOUT` | rerun the segment with a larger `--time` or fewer steps |
 | `State: failed` | read the end of `slurm-<jobid>.err` (or `local-run.log` with the `local` preset) and `inference_out.log` in the run directory |

@@ -25,7 +25,7 @@ R=/path/to/your/run/root
 ## First run
 
 ```bash
-$A models                               # the fourteen models, their date windows and initial conditions
+$A models                               # the sixteen models, their date windows and initial conditions
 $A ic list -m ace2-era5                 # 24 shipped start dates: the 1st of each month of 1979 and of 2001
 $A run -m ace2-era5 --start 1979-01-01T00:00:00 --steps 8 --out $R/first --submit
 $A submit $R/first
@@ -48,10 +48,10 @@ both modes reproduce these two numbers exactly.
 - **Model:** [models.md](models.md) lists for each model whether it is deterministic or stochastic, its forcing
   window and its shipped initial conditions.
 - **Start:** `--start YYYY-MM-DDTHH:MM:SS`. Without `--ic` it must be a shipped date (`aimip ic list -m <model>`);
-  to start on another date make an initial state first (below). DLESyM and ArchesClimate-SSP follow their own rules
-  ([models.md](models.md)).
+  to start on another date make an initial state first (below). DLESyM, ArchesClimate-SSP and ArchesWeather follow
+  their own rules ([models.md](models.md)).
 - **Length:** `--steps` counts model steps (6 hours for most models, 5 days for SamudrACE, 1 month for
-  ArchesClimate-SSP). The run must end inside the forcing window; `aimip run` refuses a run that does not and gives
+  ArchesClimate-SSP, 1 day for ArchesWeather). The run must end inside the forcing window; `aimip run` refuses a run that does not and gives
   the largest number of steps that fits.
 - **Output:** monthly means by default; `--prediction` also writes every step (about 6 GB per member and year),
   `--no-monthly` switches the monthly means off (fme models only).
@@ -135,7 +135,7 @@ checkpoints from a source you trust.
 |---|---|
 | `aimip-manifest.json` | the record of the run (see above) |
 | `plan.json` | the plan card and its digest; `aimip submit` checks the run against it |
-| `config.yaml` | the fme inference configuration (for DLESyM and ArchesClimate-SSP a JSON job description) |
+| `config.yaml` | the fme inference configuration (for DLESyM, ArchesClimate-SSP and ArchesWeather a JSON job description) |
 | `job.sbatch` | the job script |
 | `monthly_mean_predictions.nc` | **the main result**: monthly means of every output variable |
 | `autoregressive_predictions.nc` | every step; only with `--prediction` |
@@ -162,8 +162,9 @@ ens_mean = t2m.mean("sample")
 dates = ds["valid_time"].isel(sample=0)
 ```
 
-The `counts >= 112` mask is for the 6-hourly fme atmosphere models. In DLESyM and ArchesClimate-SSP files `time` is
-the date itself (the first of each month) and `counts` is the number of samples (6-hourly for the DLESyM atmosphere,
-48-hourly for its ocean, 1 for ArchesClimate-SSP); SamudrACE steps 5 days. Variable names follow each model (fme:
-`TMP2m`, `PRATEsfc`, …; E3SM-trained: `TREFHT`, `TS`; DLESyM: `t2m`, `sst`; ArchesClimate-SSP: `tas`, `pr`); 
+The `counts >= 112` mask is for the 6-hourly fme atmosphere models. In DLESyM, ArchesClimate-SSP and ArchesWeather
+files `time` is the date itself (the first of each month) and `counts` is the number of samples (6-hourly for the
+DLESyM atmosphere, 48-hourly for its ocean, 1 for ArchesClimate-SSP, daily for ArchesWeather); SamudrACE steps 5 days.
+Variable names follow each model (fme: `TMP2m`, `PRATEsfc`, …; E3SM-trained: `TREFHT`, `TS`; DLESyM: `t2m`, `sst`;
+ArchesClimate-SSP: `tas`, `pr`; ArchesWeather: `tas`, `psl`, `sst`, and `zg`, `ta`, … in `monthly_levels.nc`); 
 `ncdump -h` shows the list. A monthly file of `ace2-era5` takes about 16 MB per member and month.

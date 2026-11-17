@@ -132,7 +132,7 @@ def test_logs_follow_keeps_printing_after_max_bytes(tmp_path: Path, monkeypatch:
     assert any("ERR-LINE" in chunk for chunk in seen[1:]), seen
 
 
-def test_all_14_canonical_models_plan_through_services_and_check_ic_and_arches_card(
+def test_all_16_canonical_models_plan_through_services_and_check_ic_and_arches_card(
     tmp_path: Path, allow_tmp_run_root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     data_dir = tmp_path / "empty_data"
@@ -181,6 +181,8 @@ def test_all_14_canonical_models_plan_through_services_and_check_ic_and_arches_c
         "dlesym-v1.1": {"start": "1995-01-01", "steps": 4, "members": 2},
         "dlesym-v0-isccp": {"start": "1995-01-01", "steps": 4},
         "archesclimate-ssp": {"start": "2015-01-01", "length": "1y", "forcing_set": "ssp585"},
+        "archesweather": {"start": "1978-09-30", "steps": 4},
+        "archesweathergen": {"start": "1978-09-30", "length": "30d", "members": 2},
     }
     assert set(valid_requests) == set(CANONICAL_MODELS)
 
@@ -193,6 +195,10 @@ def test_all_14_canonical_models_plan_through_services_and_check_ic_and_arches_c
             assert "monthly means" in card_txt
             show_txt = services.render_show_card(services.show(mname))
             assert "1mo step" in show_txt and "730h step" not in show_txt
+        elif resolved.family == "geoarches":
+            assert "outputs 1978-10-01 .." in card_txt and "daily steps / monthly means" in card_txt
+            assert "ERA5 daily-mean state of 1978-09-30" in card_txt
+            assert "pressure levels in monthly_levels.nc" in card_txt
         elif resolved.family == "fme":
             assert "initial condition: not checked until the files are fetched" in card_txt
 

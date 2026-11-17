@@ -6,6 +6,7 @@ Derived datasets built reproducibly against `aimip.lock`:
 - `build_co2_table`:
   global-mean CO2 mole fraction table (1979-2024, 6-hourly) derived from `allenai/ACE2-ERA5`
   with a local-file fast path and pinned repository commit metadata.
+- `extract_zip_member`: one file of a pinned zip archive, unchanged (ArchesWeather checkpoints and configs).
 - `build_oos_forcing` (`shieldplus`, `hiro`, `eamv3`):
   out-of-sample AIMIP SST/SIC forcing (first-order conservative 0.25 deg -> 1 deg Gaussian
   regridding in `sin(lat)` and periodic longitude, nearest-neighbor coastal fill, and linear
@@ -1011,3 +1012,39 @@ def build_oos_forcing(
         written.append(out_file)
 
     return written
+
+
+def extract_zip_member(zip_path: str, member: str, dst_path: str) -> str:
+    """Copy one regular member of *zip_path* unchanged to *dst_path* (atomic; the zip's CRC-32 is checked on read).
+
+    Used for the ArchesWeather checkpoints and configs in Zenodo 22795233 `model_checkpoints.zip`; the result is then
+    verified against its SHA-256 in `aimip.lock` like every derived file."""
+    import zipfile
+
+    validated_zip = validate_safe_path(os.path.realpath(zip_path), label="zip archive")
+    validated_dst = validate_safe_path(dst_path, label="extracted file")
+    if not os.path.isfile(validated_zip):
+        raise ValidationError(f"Builder input file not found: {validated_zip}")
+    parent = os.path.dirname(validated_dst) or "/"
+    os.makedirs(parent, exist_ok=True)
+    tmp_path = os.path.join(parent, f".extract_{uuid.uuid4().hex}.part")
+    try:
+        with zipfile.ZipFile(validated_zip) as zf:
+            try:
+                info = zf.getinfo(member)
+            except KeyError as exc:
+                raise ValidationError(f"{member!r} is not in {validated_zip}") from exc
+            if info.is_dir() or (info.external_attr >> 16) & 0o170000 not in (0, 0o100000):
+                raise ValidationError(f"{member!r} in {validated_zip} is not a regular file")
+            with zf.open(info) as src, open(tmp_path, "wb") as out:
+                shutil.copyfileobj(src, out, 1 << 20)
+        if os.path.getsize(tmp_path) != info.file_size:
+            raise ValidationError(f"{member!r}: extracted {os.path.getsize(tmp_path)} bytes, expected {info.file_size}")
+        os.replace(tmp_path, validated_dst)
+    finally:
+        if os.path.exists(tmp_path):
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+    return validated_dst

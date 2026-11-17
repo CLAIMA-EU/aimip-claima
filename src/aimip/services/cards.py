@@ -270,6 +270,12 @@ def render_plan_card(plan: ResolvedPlan, *, is_tty: bool = False) -> str:
             f"start={plan.start_time[:10]}, calendar={plan.calendar})"
         )
         ic_line = "2015-02 IPSL scenario state (previous 2015-01)"
+    elif plan.family == "geoarches":
+        period_line = (
+            f"outputs 1978-10-01 .. {plan.end_time[:10]}  ({plan.steps} daily steps / monthly means, "
+            f"start={plan.start_time[:10]}, calendar={plan.calendar})"
+        )
+        ic_line = "ERA5 daily-mean state of 1978-09-30 (previous 1978-09-29), Zenodo 22795233"
     else:
         period_line = (
             f"{plan.start_time} -> {plan.end_time}  "
@@ -292,6 +298,8 @@ def render_plan_card(plan: ResolvedPlan, *, is_tty: bool = False) -> str:
         outputs_line = "monthly means (monthly_mean_predictions.nc) + full step predictions (--prediction: large output)"
     elif plan.spec.prediction:
         outputs_line = "full step predictions only (--prediction: large output; monthly means disabled)"
+    elif plan.spec.monthly and plan.family == "geoarches":
+        outputs_line = "monthly means (monthly_mean_predictions.nc; pressure levels in monthly_levels.nc)"
     elif plan.spec.monthly:
         outputs_line = "monthly means (monthly_mean_predictions.nc)"
     else:

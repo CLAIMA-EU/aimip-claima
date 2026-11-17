@@ -387,7 +387,7 @@ def models(
     )
 
     allowed_tasks = sorted({card_for_model(m)["task"] for m in catalog} | {"amip", "slab-ocean", "coupled", "scenario"})
-    allowed_families = sorted({spec.family for spec in catalog.values()} | {"fme", "e2s-dlesym", "arches", "emu"})
+    allowed_families = sorted({spec.family for spec in catalog.values()} | {"fme", "e2s-dlesym", "arches", "geoarches", "emu"})
     allowed_statuses = ["certified", "runs", "experimental"]
 
     if task is not None and task not in allowed_tasks:
@@ -428,7 +428,7 @@ def models(
         fam_match = (
             family is None
             or spec.family == family
-            or (family == "emu" and spec.family in ("e2s-dlesym", "arches"))
+            or (family == "emu" and spec.family in ("e2s-dlesym", "arches", "geoarches"))
         )
         if not fam_match:
             continue

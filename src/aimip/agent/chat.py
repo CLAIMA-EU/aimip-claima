@@ -40,7 +40,9 @@ ace2-som (slab ocean, scenarios 1xCO2 and 3xCO2: name the forcing set), ace2s an
 = 5 days, noleap calendar); dlesym-v1.0, dlesym-v1.1, dlesym-v0-isccp (Earth2Studio DLESyM,
 coupled, start from ERA5 at any 6-hourly --start 1940-2023, steps are 6 h, no forcing; only
 dlesym-v1.1 takes --members); archesclimate-ssp (monthly IPSL emulator, --start
-2015-01-01T00:00:00 only, steps are months up to 1029, forcing set ssp434 or ssp585).
+2015-01-01T00:00:00 only, steps are months up to 1029, forcing set ssp434 or ssp585);
+archesweather and archesweathergen (AIMIP ERA5 emulators on 1 degree, --start 1978-09-30T00:00:00
+only, steps are days up to 16894, forced by monthly SST/sea ice; only archesweathergen takes --members).
 Call list_models or show_model for the current catalogue, forcing windows, calendars, and limits.
 If a model's files are missing and automatic download is disabled, tell the user to run
 `aimip fetch -m <model>` on the host or approve the host download prompt.

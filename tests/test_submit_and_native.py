@@ -778,6 +778,19 @@ def _make_stub_native_python(work_dir: pathlib.Path, real_version: str) -> pathl
                 code = a[1]
                 sys.argv = ["-c", *a[2:]]
                 exec(compile(code, "<string>", "exec"), {"__name__": "__main__"})
+            elif a and a[0].endswith("geoarches_src.py"):
+                # offline stand-in for the pinned geoarches download (install) and tree check (verify)
+                mode, tgt = a[1], pathlib.Path(a[2])
+                if mode == "verify":
+                    sys.exit(0 if (tgt / "geoarches" / "__init__.py").is_file() else 1)
+                if os.environ.get("FAKE_NATIVE_GEOARCHES_FAIL") == "1":
+                    sys.exit("geoarches archive mismatch (simulated)")
+                for rel in ("__init__.py", "lightning_modules/__init__.py", "lightning_modules/forecast.py",
+                            "lightning_modules/diffusion.py", "dataloaders/__init__.py", "dataloaders/era5.py"):
+                    f = tgt / "geoarches" / rel
+                    f.parent.mkdir(parents=True, exist_ok=True)
+                    f.write_text("")
+                sys.exit(0)
             elif a[:2] == ["-m", "pytest"]:
                 bt = next((x.split("=", 1)[1] for x in a if x.startswith("--basetemp=")), "")
                 for check_p in [bt, os.environ.get("TMPDIR", "")]:
@@ -854,6 +867,18 @@ def _make_stub_native_python(work_dir: pathlib.Path, real_version: str) -> pathl
                     f"__version__ = {{os.environ.get('FAKE_NATIVE_AIMIP_VER', REAL_VER)!r}}\\n"
                 )
                 (d / "emu_job.py").write_text("")
+                (d / "geoarches_src.py").write_text(
+                    "import pathlib\\n"
+                    "def code_dir(python_executable=None):\\n"
+                    "    return str(pathlib.Path(__file__).resolve().parents[5] / 'geoarches')\\n"
+                    "def verify(root):\\n"
+                    "    if not (pathlib.Path(root) / 'geoarches' / '__init__.py').is_file():\\n"
+                    "        raise SystemExit('geoarches source missing')\\n"
+                )
+            if "axial-attention" in cmdline:
+                for mod in ("axial_attention", "fasteners"):
+                    (target / mod).mkdir(parents=True, exist_ok=True)
+                    (target / mod / "__init__.py").write_text("")
             if "earth2studio" in cmdline:
                 e2s = target / "earth2studio"
                 (e2s / "models" / "px").mkdir(parents=True, exist_ok=True)
@@ -931,6 +956,7 @@ def test_install_native_fails_on_step_or_version_errors_without_launcher_and_use
             "FAKE_NATIVE_TORCH_VER",
             "FAKE_NATIVE_AIMIP_VER",
             "FAKE_NATIVE_OMIT_HEALPIXPAD",
+            "FAKE_NATIVE_GEOARCHES_FAIL",
             "FAKE_PYTEST_LOG",
             "FAKE_PYTEST_RC",
         ):
@@ -966,6 +992,7 @@ def test_install_native_fails_on_step_or_version_errors_without_launcher_and_use
         ("wrong_torch_ver", [], {"FAKE_NATIVE_TORCH_VER": "2.13.0+cu130"}, "import/version check failed"),
         ("emu_mid_pip_fail", ["--with-emu"], {"FAKE_NATIVE_FAIL_MATCH": "nvidia-cuda-nvcc"}, "venv-emu build failed"),
         ("emu_missing_healpixpad", ["--with-emu"], {"FAKE_NATIVE_OMIT_HEALPIXPAD": "1"}, "venv-emu import/version check failed"),
+        ("emu_geoarches_mismatch", ["--with-emu"], {"FAKE_NATIVE_GEOARCHES_FAIL": "1"}, "venv-emu build failed"),
     ]
     for case_name, extra, overrides, expected_err in failure_cases:
         pfx = safe_gate_root / f"fail_{case_name}"
@@ -992,6 +1019,7 @@ def test_install_native_fails_on_step_or_version_errors_without_launcher_and_use
     )
     assert ok_res.returncode == 0, ok_res.stderr + ok_res.stdout
     assert (ok_pfx / "bin" / "aimip").is_file()
+    assert (ok_pfx / "geoarches" / "geoarches" / "lightning_modules" / "forecast.py").is_file()
     assert (ok_pfx / "VERSION").read_text(encoding="utf-8").strip() == real_version
     logged = pytest_log.read_text(encoding="utf-8")
     assert str(bad_tmp) not in logged

@@ -1540,7 +1540,7 @@ def prepare_run(
             f"Invalid run mode {mode!r}: expected 'dry-run', 'submit', or 'local'."
         )
     if model.family != "fme":
-        # DLESyM and ArchesClimate-SSP run in the emulator environment (aimip/emu.py).
+        # DLESyM, ArchesClimate-SSP and ArchesWeather run in the emulator environment (aimip/emu.py).
         from .emu import prepare_emu_run
 
         return prepare_emu_run(
