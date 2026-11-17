@@ -41,6 +41,8 @@ ace2-som (slab ocean, scenarios 1xCO2 and 3xCO2: name the forcing set), ace2s an
 coupled, start from ERA5 at any 6-hourly --start 1940-2023, steps are 6 h, no forcing; only
 dlesym-v1.1 takes --members); archesclimate-ssp (monthly IPSL emulator, --start
 2015-01-01T00:00:00 only, steps are months up to 1029, forcing set ssp434 or ssp585);
+archesweather and archesweathergen (AIMIP ERA5 emulators on 1 degree, --start 1978-09-30T00:00:00
+only, steps are days up to 16894, forced by monthly SST/sea ice; only archesweathergen takes --members);
 samudra-om4 (global ocean emulator of GFDL OM4, 5-day julian steps on YYYY-MM-DDT12:00:00,
 even --steps >= 2, replays OM4 window staged from OSN);
 md-1.5 (Monthly Diffusion v0.9 at 1.5 deg, stochastic monthly latent-diffusion atmosphere

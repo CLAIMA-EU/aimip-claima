@@ -45,10 +45,14 @@ in the shipped presets).
 | fme models | 0.0644 GPU-hours (about 4 minutes) per model year and member | 20 minutes |
 | DLESyM | about 40 s per model year and member | 45 minutes |
 | ArchesClimate-SSP | about 2 s per month | 45 minutes |
+| ArchesWeather | about 1.1 s per day (about 5 hours for 1978-10 … 2024-12) | 45 minutes |
+| ArchesWeatherGen | about 4.6 s per day and member (about 21 hours per member for 1978-10 … 2024-12) | 45 minutes |
 
 Short runs are dominated by start-up: an 8-step `ace2-era5` run finishes in under a minute of model time. When the
 estimate exceeds the site limit, `aimip` warns and uses the limit; for the fme models with a 12-hour limit that is
-above about 60 member-years in one job. Split such runs into segments, or set `--time` yourself.
+above about 60 member-years in one job. Split such runs into segments, or set `--time` yourself. DLESyM and
+ArchesWeather runs cannot be continued yet: one run must fit in one job (`archesweathergen` about 9 years per member
+in 12 hours).
 
 Members of one run share one GPU and one job.
 

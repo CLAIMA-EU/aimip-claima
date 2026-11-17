@@ -1,9 +1,10 @@
-"""Non-fme model families: DLESyM (Earth2Studio) and ArchesClimate-SSP.
+"""Non-fme model families: DLESyM (Earth2Studio), ArchesClimate-SSP and ArchesWeather / ArchesWeatherGen (geoarches).
 
-Both run in a dedicated Python environment (`/opt/aimip/venv-emu` inside the container, or `<prefix>/venv-emu` in
+All run in a dedicated Python environment (`/opt/aimip/venv-emu` inside the container, or `<prefix>/venv-emu` in
 native mode: torch 2.14 cu130, earth2studio @ 8fa7acb, physicsnemo @ 1dacf8d, earth2grid @ 11dcf1b, plus
-ArchesClimate-SSP's Python dependencies; ArchesClimate-SSP @ 06ce82dc itself is downloaded into
-`$AIMIP_DATA/code/ArchesClimate-SSP` on first use). This module runs in the main environment and only uses the
+ArchesClimate-SSP's and geoarches' Python dependencies; ArchesClimate-SSP @ 06ce82dc itself is downloaded into
+`$AIMIP_DATA/code/ArchesClimate-SSP` on first use, geoarches @ 4d0c77a1 is unpacked next to the environment at install
+time, see `geoarches_src.py`). This module runs in the main environment and only uses the
 standard library plus the CLI helpers:
 
 - `prepare_emu_run`: validate the request, fetch the model on first use (same lock/fetch path as fme models), stage
@@ -22,6 +23,9 @@ Model facts:
 - ArchesClimate-SSP deterministic: HF gclyne/ArchesClimate @ 06a914d, data gclyne/ArchesClimate-data @ b9f5458.
   Monthly steps on 144x144 (1.25 x 2.5 degree), IPSL-CM6A-LR r1i1p1f1 scenario forcing. The authors' rollout starts from
   dataset item 0 (state 2015-02, previous state 2015-01), so the first output is March 2015.
+- ArchesWeather-Mx4 / ArchesWeatherGen, AIMIP versions: Zenodo 22795233. Daily steps on the 1-degree grid from the ERA5
+  daily-mean state of 1978-09-30 (previous state 1978-09-29), monthly ERA5 SST / sea-ice forcing through 2024; the
+  rollout follows arXiv:2605.29976 section 2.3 (see `emu_job.run_geoarches`).
 """
 from __future__ import annotations
 
@@ -67,7 +71,7 @@ from .cbottle import (
     cbottle_sample_timestamps,
 )
 from .errors import EXIT_UNSTABLE, ConfigError, MissingAssetsError, ValidationError
-from .emu_catalog import DLESYM_IC_WINDOW, SAMUDRA_WINDOW
+from .emu_catalog import AW_FORCING, AW_IC, AW_LAST_DAY, AW_MAX_STEPS, AW_START, DLESYM_IC_WINDOW, SAMUDRA_WINDOW
 from .lora import sha256_file
 from .md15 import (
     MD15_CODE_REL_DIR,
@@ -117,6 +121,7 @@ from .validators import (
 EMU_FAMILIES: tuple[str, ...] = (
     "e2s-dlesym",
     "arches",
+    "geoarches",
     "samudra",
     "md",
     "camulator",
@@ -142,6 +147,7 @@ ARCHES_DOMAIN = {"ssp434": "val", "ssp585": "test"}   # the checkpoint config's 
 # Wall-time estimate (measured on one A100 GPU), padded 3x with a 45-minute floor.
 DLESYM_SECONDS_PER_YEAR = 40.0
 ARCHES_SECONDS_PER_MONTH = 2.0
+AW_SECONDS_PER_DAY = {"archesweather": 1.1, "archesweathergen": 4.6}   # per member (A100-80GB, measured)
 EMU_FIXED_SECONDS = 900
 EMU_SAFETY = 3.0
 EMU_MIN_WALLTIME = 2700
@@ -204,41 +210,34 @@ def _parse_hms(value: str) -> int:
     return days * 86400 + parts[0] * 3600 + parts[1] * 60 + parts[2]
 
 
-def _walltime(family: str, steps: int, members: int, max_time: str) -> tuple[str, str, bool]:
+def _work_seconds(family: str, steps: int, members: int, model: str | None) -> float:
     if family == "e2s-dlesym":
-        work = steps * 6 / (365.25 * 24) * DLESYM_SECONDS_PER_YEAR * members
-    elif family == "samudra":
-        work = steps * 120 / (365.25 * 24) * SAMUDRA_SECONDS_PER_YEAR * members
-    elif family == "md":
-        work = md15_wall_seconds_estimate(steps, members)
-    elif family == "camulator":
-        work = steps * 6 / (365.0 * 24) * CAMULATOR_SECONDS_PER_YEAR * members
-    elif family == "cbottle":
-        work = steps / 365.25 * CBOTTLE_SECONDS_PER_YEAR * members
-    elif family == "sdyff":
-        work = steps * 6 / (365.0 * 24) * SDYFF_SECONDS_PER_YEAR * members
-    else:
-        work = steps * ARCHES_SECONDS_PER_MONTH * members
+        return steps * 6 / (365.25 * 24) * DLESYM_SECONDS_PER_YEAR * members
+    if family == "geoarches":
+        return steps * AW_SECONDS_PER_DAY.get(str(model), max(AW_SECONDS_PER_DAY.values())) * members
+    if family == "samudra":
+        return steps * 120 / (365.25 * 24) * SAMUDRA_SECONDS_PER_YEAR * members
+    if family == "md":
+        return md15_wall_seconds_estimate(steps, members)
+    if family == "camulator":
+        return steps * 6 / (365.0 * 24) * CAMULATOR_SECONDS_PER_YEAR * members
+    if family == "cbottle":
+        return steps / 365.25 * CBOTTLE_SECONDS_PER_YEAR * members
+    if family == "sdyff":
+        return steps * 6 / (365.0 * 24) * SDYFF_SECONDS_PER_YEAR * members
+    return steps * ARCHES_SECONDS_PER_MONTH * members
+
+
+def _walltime(family: str, steps: int, members: int, max_time: str, model: str | None = None) -> tuple[str, str, bool]:
+    work = _work_seconds(family, steps, members, model)
     want = max(EMU_MIN_WALLTIME, int(EMU_SAFETY * (EMU_FIXED_SECONDS + work)))
     cap = _parse_hms(max_time) if max_time else 12 * 3600
     return validate_slurm_time(_format_hms(min(want, cap))), _format_hms(want), want > cap
 
 
-def _gpu_hours(family: str, steps: int, members: int) -> float:
+def _gpu_hours(family: str, steps: int, members: int, model: str | None = None) -> float:
     """Expected GPU time (no padding): rollout plus about one minute of loading."""
-    if family == "e2s-dlesym":
-        return (60 + steps * 6 / (365.25 * 24) * DLESYM_SECONDS_PER_YEAR * members) / 3600
-    if family == "samudra":
-        return (60 + steps * 120 / (365.25 * 24) * SAMUDRA_SECONDS_PER_YEAR * members) / 3600
-    if family == "md":
-        return (60 + md15_wall_seconds_estimate(steps, members)) / 3600
-    if family == "camulator":
-        return (60 + steps * 6 / (365.0 * 24) * CAMULATOR_SECONDS_PER_YEAR * members) / 3600
-    if family == "cbottle":
-        return (60 + steps / 365.25 * CBOTTLE_SECONDS_PER_YEAR * members) / 3600
-    if family == "sdyff":
-        return (60 + steps * 6 / (365.0 * 24) * SDYFF_SECONDS_PER_YEAR * members) / 3600
-    return (60 + steps * ARCHES_SECONDS_PER_MONTH * members) / 3600
+    return (60 + _work_seconds(family, steps, members, model)) / 3600
 
 
 # ---------------------------------------------------------------- pinned files per model
@@ -320,6 +319,11 @@ def precheck_emu_request(
                     "DLESyM starts from ERA5 at --start (fetched from ARCO-ERA5) and cannot be continued yet; "
                     "run the whole period in one job (about 40 s of GPU time per simulated year)."
                 )
+            elif model.family == "geoarches":
+                reason = (
+                    "ArchesWeather always starts from the ERA5 daily-mean state of 1978-09-30 and cannot be "
+                    "continued yet; run the whole period in one job."
+                )
             elif model.family == "samudra":
                 reason = (
                     "samudra-om4 replays two 5-day OM4 ocean states ending at --start plus OM4 surface boundary "
@@ -393,6 +397,29 @@ def precheck_emu_request(
         y, m = ARCHES_FIRST_OUTPUT_MONTH
         k = m - 1 + n_steps - 1
         end_iso = f"{y + k // 12:04d}-{k % 12 + 1:02d}-01T00:00:00"
+    elif model.family == "geoarches":
+        if norm_start != AW_START:
+            raise ConfigError(
+                f"{model.name} starts from the ERA5 daily-mean state of 1978-09-30 only: use --start {AW_START} "
+                "(the first output day is 1978-10-01)."
+            )
+        if n_steps > AW_MAX_STEPS:
+            raise ConfigError(
+                f"--steps {n_steps} exceeds the forcing: at most {AW_MAX_STEPS} daily steps (1978-10-01 .. "
+                f"{AW_LAST_DAY[:10]})."
+            )
+        if n_members > 1 and not model.stochastic:
+            raise ConfigError(
+                f"{model.name} is deterministic: --members must be 1 (archesweathergen samples noise and supports "
+                "members)."
+            )
+        names = [fs.name for fs in model.forcing_sets]
+        scenario = names[0]
+        if forcing_set_name is not None and validate_forcing_set_name(forcing_set_name) not in names:
+            raise ConfigError(f"Unknown --forcing-set {forcing_set_name!r} for {model.name}: choose one of "
+                              f"{', '.join(names)}.")
+        start_dt = datetime.datetime.fromisoformat(norm_start)
+        end_iso = (start_dt + datetime.timedelta(days=n_steps)).strftime("%Y-%m-%dT%H:%M:%S")
     elif model.family == "samudra":
         if norm_start[11:] != "12:00:00":
             raise ConfigError(
@@ -814,6 +841,29 @@ def prepare_emu_run(
         job = {"family": model.family, "model": model.name, "version": info["version"], "flavor": info["flavor"],
                "package_dir": package_dir}
         ic_provenance = f"ERA5 state at {req['start']} from ARCO-ERA5 (gs://gcp-public-data-arco-era5), staged at prepare time"
+    elif model.family == "geoarches":
+        from .emu_catalog import AW_DIR, AW_FORCING_STATS, AW_GEN, AW_NORM_STATS, AW_RESIDUAL_STATS, AW_SEEDS
+        from .geoarches_src import GEOARCHES_TREE_FILES, GEOARCHES_TREE_SHA256, code_dir, tree_digest
+
+        geo_dir = code_dir(emu_python())
+        if not os.path.isdir(geo_dir):
+            raise ConfigError(
+                f"{model.name}: the geoarches source is not installed at {geo_dir}; this install predates ArchesWeather "
+                "support. Reinstall (install/install-container.sh, or install/install-native.sh --with-emu)."
+            )
+        if not os.environ.get("AIMIP_GEOARCHES_CODE") and tree_digest(geo_dir) != (GEOARCHES_TREE_SHA256,
+                                                                                GEOARCHES_TREE_FILES):
+            raise ValidationError(f"{model.name}: the geoarches source at {geo_dir} does not match the pinned commit.")
+        job = {"family": model.family, "model": model.name, "kind": "gen" if model.name == "archesweathergen" else "mx4",
+               "seed_dirs": [os.path.join(data_root, AW_DIR, s) for s in AW_SEEDS],
+               "gen_dir": os.path.join(data_root, AW_DIR, AW_GEN) if model.name == "archesweathergen" else None,
+               "ic_file": os.path.join(data_root, AW_IC), "forcing_file": os.path.join(data_root, AW_FORCING),
+               "forcing_stats_file": os.path.join(data_root, AW_FORCING_STATS),
+               "norm_stats_file": os.path.join(data_root, AW_NORM_STATS),
+               "residual_stats_file": (os.path.join(data_root, AW_RESIDUAL_STATS)
+                                       if model.name == "archesweathergen" else None)}
+        ic_provenance = ("ERA5 daily-mean state of 1978-09-30 (previous state 1978-09-29) from Zenodo 22795233 "
+                         "era5_1978_00h_sliced.nc; first output day 1978-10-01")
     elif model.family == "samudra":
         means_zip = os.path.join(data_root, "models/samudra-om4/OM4_means.zip")
         stds_zip = os.path.join(data_root, "models/samudra-om4/OM4_stds.zip")
@@ -1153,6 +1203,8 @@ def prepare_emu_run(
 
     if model.family == "e2s-dlesym":
         ic_file = _stage_dlesym_ic(validated_out)
+    elif model.family == "geoarches":
+        ic_file = job["ic_file"]
     elif model.family == "samudra":
         ic_file, win_sha, win_files, win_bytes = _stage_samudra_window(validated_out)
         window_meta = {
@@ -1171,7 +1223,7 @@ def prepare_emu_run(
     ic_sha = sha256_file(ic_file) if ic_file is not None else None
 
     max_time = getattr(active_site, "max_time", "12:00:00") or "12:00:00"
-    default_walltime, unclamped, capped = _walltime(model.family, req["steps"], req["members"], max_time)
+    default_walltime, unclamped, capped = _walltime(model.family, req["steps"], req["members"], max_time, model.name)
     walltime_capped = bool(effective_slurm.time is None and capped)
     if effective_slurm.scheduler == "slurm" and walltime_capped:
         print(f"aimip warning: estimated walltime {unclamped} exceeds the site limit {max_time}; clamped. "
@@ -1212,12 +1264,16 @@ def prepare_emu_run(
                 f"independent conditional diffusion draws (batch_size={CBOTTLE_BATCH_SIZE}, cadence={CBOTTLE_DEFAULT_CADENCE}, seed_scheme={CBOTTLE_SEED_SCHEME})"
                 if model.family == "cbottle"
                 else (
-                    "batched latent-diffusion reverse DDPM noise seeded from --seed"
-                    if model.family == "md"
+                    "members share the ERA5 state and differ by the sampler noise seed (seed + k)"
+                    if model.family == "geoarches"
                     else (
-                        "probabilistic Spherical DYffusion rollout seeded from --seed"
-                        if model.family == "sdyff"
-                        else "members share the ERA5 state and differ by the conditional-layer-norm noise seed (seed + k)"
+                        "batched latent-diffusion reverse DDPM noise seeded from --seed"
+                        if model.family == "md"
+                        else (
+                            "probabilistic Spherical DYffusion rollout seeded from --seed"
+                            if model.family == "sdyff"
+                            else "members share the ERA5 state and differ by the conditional-layer-norm noise seed (seed + k)"
+                        )
                     )
                 )
             )
@@ -1228,13 +1284,14 @@ def prepare_emu_run(
         "lora_info": None,
         "n_ic_samples": 0 if model.family == "cbottle" else 1,
         "n_ensemble_per_ic": req["members"],
-        "gpu_hours_estimate": round(_gpu_hours(model.family, req["steps"], req["members"]), 6),
+        "gpu_hours_estimate": round(_gpu_hours(model.family, req["steps"], req["members"], model.name), 6),
         "ic_provenance": ic_provenance,
         "start_time": req["start"],
         "end_time": req["end"],
         "steps": req["steps"],
         "step_unit": {
             "e2s-dlesym": "6h",
+            "geoarches": "day",
             "camulator": "6h",
             "sdyff": "6h",
             "cbottle": "1d",
@@ -1327,6 +1384,30 @@ def _check_job_matches_manifest(job: dict[str, Any], manifest: dict[str, Any]) -
                 or job.get("code_tree_files") != manifest.get("code_tree_files")
             ):
                 fail("code_dir/code_tree_sha256")
+    elif job["family"] == "geoarches":
+        from .emu_catalog import AW_CKPT, AW_SEEDS
+
+        gen = job["model"] == "archesweathergen"
+        if job.get("kind") != ("gen" if gen else "mx4"):
+            fail("kind")
+        seed_dirs = job.get("seed_dirs") or []
+        if [os.path.basename(d) for d in seed_dirs] != list(AW_SEEDS):
+            fail("seed_dirs")
+        dirs = list(seed_dirs) + ([job.get("gen_dir")] if gen else [])
+        if not gen and job.get("gen_dir") is not None:
+            fail("gen_dir")
+        if job["checkpoint"] != os.path.join(str(dirs[-1] if gen else dirs[0]), AW_CKPT):
+            fail("checkpoint")
+        for d in dirs:
+            if not isinstance(d, str) or os.path.join(d, AW_CKPT) not in pinned or os.path.join(d, "config.yaml") not in pinned:
+                fail("model directories")
+        for key in ("ic_file", "forcing_file", "forcing_stats_file", "norm_stats_file") + (("residual_stats_file",) if gen else ()):
+            if job.get(key) not in pinned:
+                fail(key)
+        if not gen and job.get("residual_stats_file") is not None:
+            fail("residual_stats_file")
+        if str(manifest.get("ic_path")) != job["ic_file"]:
+            fail("initial state")
     elif job["family"] == "samudra":
         exp_win = os.path.join(job["out_dir"], "window")
         if job.get("window_dir") != exp_win or manifest.get("window_dir") != exp_win:

@@ -42,6 +42,7 @@ from .builders import (
     build_hiro_forcing,
     build_hiro_ic,
     build_oos_forcing,
+    extract_zip_member,
 )
 from .errors import ConfigError, ValidationError
 from .lora import sha256_file
@@ -68,11 +69,13 @@ CANONICAL_MODELS: tuple[str, ...] = (
     "hiro-acev2",
     "samudrace-cm4",
     "samudrace-e3smv3",
-    # Emulator environment models (Earth2Studio DLESyM, ArchesClimate-SSP, Samudra-OM4, MD-1.5, CAMulator, cBottle-3d, Spherical DYffusion)
+    # Emulator environment models (Earth2Studio DLESyM, ArchesClimate-SSP, ArchesWeather, Samudra-OM4, MD-1.5, CAMulator, cBottle-3d, Spherical DYffusion)
     "dlesym-v1.0",
     "dlesym-v1.1",
     "dlesym-v0-isccp",
     "archesclimate-ssp",
+    "archesweather",
+    "archesweathergen",
     "samudra-om4",
     "md-1.5",
     "camulator",
@@ -836,6 +839,35 @@ def build_artifact_catalog(
                     hf_repo_type=a["repo_type"],
                 )
             )
+
+    # 10. ArchesWeather / ArchesWeatherGen: Zenodo 22795233 files, checkpoints and configs extracted from its zip
+    from .emu_catalog import AW_RECORD, AW_ZENODO_FILES, AW_ZIP_MEMBERS, AW_ZIP_REL
+
+    for rel, (fname, _size, _md5, _sha, models) in AW_ZENODO_FILES.items():
+        _add(
+            ArtifactSpec(
+                rel_path=rel,
+                role="raw" if rel == AW_ZIP_REL else "output",
+                models_output=() if rel == AW_ZIP_REL else tuple(models),
+                models_needed=tuple(models),
+                source_kind="zenodo",
+                zenodo_record=AW_RECORD,
+                zenodo_file=fname,
+                zenodo_url=f"https://zenodo.org/records/{AW_RECORD}/files/{fname}?download=1",
+            )
+        )
+    for rel, (_member, _size, _sha, models) in AW_ZIP_MEMBERS.items():
+        _add(
+            ArtifactSpec(
+                rel_path=rel,
+                role="output",
+                models_output=tuple(models),
+                models_needed=tuple(models),
+                source_kind="derived",
+                builder="extract_zip_member",
+                input_refs=(AW_ZIP_REL,),
+            )
+        )
 
     return {spec.rel_path: spec for spec in items}
 
@@ -2846,6 +2878,17 @@ def run_setup(
             return not _file_matches_lock_quiet(
                 resolved_dest, rel_p, lock_files.get(rel_p)
             )
+
+        from .emu_catalog import AW_ZIP_MEMBERS, AW_ZIP_REL
+
+        for aw_rel, (aw_member, _size, _sha, aw_models) in AW_ZIP_MEMBERS.items():
+            if set(aw_models) & wanted and _needs_build(aw_rel):
+                extract_zip_member(
+                    os.path.join(resolved_dest, AW_ZIP_REL),
+                    aw_member,
+                    os.path.join(resolved_dest, aw_rel),
+                )
+                built_count += 1
 
         needs_oos = bool({"ace2-shield", "ace2s-shield-plus", "hiro-ace"} & wanted)
         if needs_oos and _needs_build(CO2_TABLE_REL_PATH):

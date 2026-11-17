@@ -1,4 +1,4 @@
-"""Installed model-family adapter protocol and allow-listed adapters (`fme`, `e2s-dlesym`, `arches`).
+"""Installed model-family adapter protocol and allow-listed adapters (`fme`, `e2s-dlesym`, `arches`, `geoarches`).
 
 Registry entries may reference ONLY installed adapter identifiers in `INSTALLED_ADAPTERS`;
 arbitrary import paths, shell fragments, or external commands in registry JSON are refused.
@@ -29,6 +29,7 @@ from ..cbottle import (
 )
 from ..emu import (
     ARCHES_DOMAIN,
+    AW_SECONDS_PER_DAY,
     ARCHES_SCENARIOS,
     ARCHES_START,
     _gpu_hours as _emu_gpu_hours,
@@ -791,7 +792,7 @@ class FmeFamilyAdapter:
 
 
 class EmuFamilyAdapter:
-    """Adapter wrapping `aimip.emu` for `e2s-dlesym` and `arches` families."""
+    """Adapter wrapping `aimip.emu` for the `e2s-dlesym`, `arches` and `geoarches` families."""
 
     def __init__(self, family_id: str) -> None:
         self.family_id = family_id
@@ -848,6 +849,17 @@ class EmuFamilyAdapter:
                 f"Deterministic IPSL scenario rollout ({selected_name}, domain={ARCHES_DOMAIN[selected_name]})."
             )
             ic_src: str | None = None
+        elif model.family == "geoarches":
+            selected_name = scenario or model.forcing_sets[0].name
+            ensemble_strategy = (
+                "stochastic_noise_from_era5_ic" if (model.stochastic and total_members > 1) else "single_era5_ic"
+            )
+            ensemble_note = (
+                f"{total_members} stochastic member(s) from the ERA5 daily-mean state of 1978-09-30 (seed + member_id)."
+                if total_members > 1
+                else "Rollout from the ERA5 daily-mean state of 1978-09-30 (Zenodo 22795233)."
+            )
+            ic_src = "zenodo-22795233@1978-09-30"
         elif model.family == "samudra":
             selected_name = scenario or "om4-jra55do-replay"
             ensemble_strategy = "single_om4_replay"
@@ -987,10 +999,13 @@ class EmuFamilyAdapter:
         members = int(validated["members"])
         req_time = validated.get("requested_walltime")
         max_wt = site.max_time or "12:00:00"
-        wt, uncapped, capped = _emu_walltime(model.family, steps, members, max_wt)
-        gpu_hours = round(_emu_gpu_hours(model.family, steps, members), 6)
+        wt, uncapped, capped = _emu_walltime(model.family, steps, members, max_wt, model.name)
+        gpu_hours = round(_emu_gpu_hours(model.family, steps, members, model.name), 6)
         if model.family == "e2s-dlesym":
             basis = "DLESyM 1x A100-80GB (~40 s / model year / member)"
+        elif model.family == "geoarches":
+            basis = (f"{model.name} 1x A100-80GB (~{AW_SECONDS_PER_DAY.get(model.name, 0):g} s / simulated day"
+                     + (" / member)" if model.stochastic else ")"))
         elif model.family == "samudra":
             basis = "Samudra-OM4 1x A100-80GB (~18 s / simulated year)"
         elif model.family == "md":
@@ -1028,7 +1043,9 @@ class EmuFamilyAdapter:
         assets: list[AssetRef] = []
         selected_fs = validated.get("forcing_set")
         selected_scen = getattr(selected_fs, "name", None)
-        scen_tag = f"r1i1p1f1_{selected_scen}_interpolation.memmap/" if selected_scen else None
+        scen_tag = (
+            f"r1i1p1f1_{selected_scen}_interpolation.memmap/" if selected_scen and model.family == "arches" else None
+        )
 
         for rel in model.required_files:
             if model.family == "camulator" and rel.startswith("inputs/camulator/"):
@@ -1047,7 +1064,9 @@ class EmuFamilyAdapter:
             else:
                 role = "package"
             fallback = model.checkpoint_sha256 if abs_p == model.checkpoint else None
-            is_selected = role in ("package", "ic") or (scen_tag is not None and scen_tag in rel)
+            is_selected = (
+                role in ("package", "ic") or model.family == "geoarches" or (scen_tag is not None and scen_tag in rel)
+            )
             assets.append(
                 _asset_from_rel(
                     rel,
@@ -1092,6 +1111,8 @@ class EmuFamilyAdapter:
                         cached=code_cached,
                     )
                 )
+        elif model.family == "geoarches":
+            pass   # the initial state and the forcing are pinned files under inputs/; geoarches is part of the install
         elif model.family == "samudra":
             out_cand = validated.get("output_dir")
             staged_win = os.path.join(str(out_cand), "window") if out_cand else ""
@@ -1370,6 +1391,7 @@ INSTALLED_ADAPTERS: dict[str, FamilyAdapter] = {
     "fme": FmeFamilyAdapter(),
     "e2s-dlesym": EmuFamilyAdapter("e2s-dlesym"),
     "arches": EmuFamilyAdapter("arches"),
+    "geoarches": EmuFamilyAdapter("geoarches"),
     "samudra": EmuFamilyAdapter("samudra"),
     "md": EmuFamilyAdapter("md"),
     "camulator": EmuFamilyAdapter("camulator"),

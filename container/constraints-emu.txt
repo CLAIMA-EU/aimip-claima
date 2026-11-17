@@ -1,4 +1,4 @@
-# Pinned package versions for the emulator Python environment (`venv-emu`: DLESyM and ArchesClimate-SSP)
+# Pinned package versions for the emulator Python environment (`venv-emu`: DLESyM, ArchesClimate-SSP and ArchesWeather)
 # so container and native installs resolve identical dependencies.
 # Direct git/archive dependencies (`earth2studio`, `physicsnemo`, `earth2grid`) are pinned by commit and sha256
 # in `container/Dockerfile` and `install/install-native.sh`; `torch` and `torchvision` are installed from the cu130 index.
@@ -10,6 +10,7 @@ aiosignal==1.4.0
 antlr4-python3-runtime==4.9.3
 anyio==4.16.0
 attrs==26.1.0
+axial-attention==0.6.1
 bokeh==3.10.2
 botocore==1.43.117
 certifi==2026.10.23
@@ -31,6 +32,7 @@ distributed==2026.8.0
 donfig==0.8.1.post1
 einops==0.8.2
 fastcore==2.2.41
+fasteners==0.19
 filelock==4.2.4
 fonttools==4.68.0
 frozenlist==1.8.0
