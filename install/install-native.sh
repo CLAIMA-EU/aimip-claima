@@ -2,7 +2,7 @@
 # AIMIP native installer (no container). Creates virtual environments, writes the site profile and the `aimip` command.
 #   ./install/install-native.sh --prefix DIR [--site levante|generic-slurm|local]
 #       [--partition P] [--account A|none] [--gres G|none] [--run-root R]
-#       [--with-emu] [--python python3.12] [--dry-run]
+#       [--with-emu] [--with-camulator] [--with-sdyff] [--python python3.12] [--dry-run]
 # Afterwards:  DIR/bin/aimip setup --models all     (downloads models + data, verifies aimip.lock)
 set -u
 umask 022
@@ -10,7 +10,7 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 REPO=$(cd "$HERE/.." && pwd)
 VERSION=$(tr -d '[:space:]' < "$REPO/container/VERSION")
 PREFIX=""; SITE=generic-slurm; PART=""; ACC=""; GRES=""; RUNROOT=""
-WITH_EMU=0; PY_REQ=""; DRY_RUN=0
+WITH_EMU=0; WITH_CAMULATOR=0; WITH_SDYFF=0; PY_REQ=""; DRY_RUN=0
 die() { echo "install-native: $*" >&2; exit 2; }
 need_val() { [ "$1" -ge 2 ] && [ -n "${2:-}" ] || die "option $3 requires a value"; }
 while [ $# -gt 0 ]; do
@@ -22,6 +22,8 @@ while [ $# -gt 0 ]; do
     --gres) need_val $# "${2:-}" "$1"; GRES=$2; shift 2;;
     --run-root) need_val $# "${2:-}" "$1"; RUNROOT=$2; shift 2;;
     --with-emu) WITH_EMU=1; shift;;
+    --with-camulator) WITH_CAMULATOR=1; shift;;
+    --with-sdyff) WITH_SDYFF=1; shift;;
     --python) need_val $# "${2:-}" "$1"; PY_REQ=$2; shift 2;;
     --dry-run) DRY_RUN=1; shift;;
     -h|--help) sed -n 2,6p "$0"; exit 0;;
@@ -44,15 +46,21 @@ fi
 "$PY_BIN" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 12) else 1)' 2>/dev/null \
   || die "Python >= 3.12 is required (got $("$PY_BIN" -V 2>&1 || echo unknown)); pass --python <python3.12>"
 
-# ---- optional emulator build tools check
-if [ "$WITH_EMU" = 1 ]; then
+# ---- optional emulator / torch_harmonics build tools check
+if [ "$WITH_EMU" = 1 ] || [ "$WITH_CAMULATOR" = 1 ] || [ "$WITH_SDYFF" = 1 ]; then
   if ! command -v c++ >/dev/null 2>&1 && ! command -v g++ >/dev/null 2>&1 && ! command -v clang++ >/dev/null 2>&1; then
-    die "--with-emu requires a C/C++ compiler (c++, g++, or clang++) on PATH to build earth2grid"
+    NEED_CXX_FLAGS=""
+    [ "$WITH_EMU" = 1 ] && NEED_CXX_FLAGS="$NEED_CXX_FLAGS --with-emu"
+    [ "$WITH_CAMULATOR" = 1 ] && NEED_CXX_FLAGS="$NEED_CXX_FLAGS --with-camulator"
+    [ "$WITH_SDYFF" = 1 ] && NEED_CXX_FLAGS="$NEED_CXX_FLAGS --with-sdyff"
+    die "${NEED_CXX_FLAGS# } requires a C/C++ compiler (c++, g++, or clang++) on PATH (or rerun without${NEED_CXX_FLAGS})"
   fi
 fi
 
 TORCH_INDEX=${AIMIP_TORCH_INDEX:-https://download.pytorch.org/whl/cu130}
-echo "install-native: version $VERSION, python $PY_BIN, site $SITE, with-emu $WITH_EMU, prefix $PREFIX"
+CAMULATOR_TORCH_INDEX=${AIMIP_CAMULATOR_TORCH_INDEX:-https://download.pytorch.org/whl/cu121}
+SDYFF_TORCH_INDEX=${AIMIP_SDYFF_TORCH_INDEX:-https://download.pytorch.org/whl/cu121}
+echo "install-native: version $VERSION, python $PY_BIN, site $SITE, with-emu $WITH_EMU, with-camulator $WITH_CAMULATOR, with-sdyff $WITH_SDYFF, prefix $PREFIX"
 
 mkdir -p "$PREFIX"/{bin,data,build} || die "cannot create $PREFIX"
 
@@ -74,6 +82,14 @@ PY
 SCHED=$("$PY_BIN" -c "import json;print(json.load(open('$PREFIX/site.json'))['scheduler'])") || die "cannot read scheduler from $PREFIX/site.json"
 RROOT=$("$PY_BIN" -c "import json;print(json.load(open('$PREFIX/site.json'))['run_root'])") || die "cannot read run_root from $PREFIX/site.json"
 EXTRA=$("$PY_BIN" -c "import json;print(' '.join(json.load(open('$PREFIX/site.json')).get('extra_ro_binds',[])))") || die "cannot read extra_ro_binds from $PREFIX/site.json"
+
+ensure_world_readable() {
+  find "$@" \
+    \( -type d ! -perm -a+rx -exec chmod a+rx {} + \) -o \
+    \( -type f -perm -u+x ! -perm -a+rx -exec chmod a+rx {} + \) -o \
+    \( -type f ! -perm -a+r -exec chmod a+r {} + \) \
+    || die "failed to set read/traverse permissions on $*"
+}
 
 write_launcher_and_version() {
   cp "$REPO/container/VERSION" "$PREFIX/VERSION" || die "cannot write $PREFIX/VERSION"
@@ -133,6 +149,12 @@ export AIMIP_FME_2026_10_OVERLAY="$PREFIX/overlay-fme-2026.10.0"
 if [ -z "${AIMIP_EMU_PYTHON:-}" ] && [ -x "$PREFIX/venv-emu/bin/python" ]; then
   export AIMIP_EMU_PYTHON="$PREFIX/venv-emu/bin/python"
 fi
+if [ -z "${AIMIP_CAMULATOR_PYTHON:-}" ] && [ -x "$PREFIX/venv-camulator/bin/python" ]; then
+  export AIMIP_CAMULATOR_PYTHON="$PREFIX/venv-camulator/bin/python"
+fi
+if [ -z "${AIMIP_SDYFF_PYTHON:-}" ] && [ -x "$PREFIX/venv-sdyff/bin/python" ]; then
+  export AIMIP_SDYFF_PYTHON="$PREFIX/venv-sdyff/bin/python"
+fi
 export HF_HOME="${HF_HOME:-$DATA/.hf}"
 export OMP_NUM_THREADS="${OMP_NUM_THREADS:-16}"
 export PYTHONNOUSERSITE=1
@@ -144,7 +166,7 @@ LAUNCHER
     && chmod 755 "$PREFIX/bin/aimip.tmp" \
     && mv "$PREFIX/bin/aimip.tmp" "$PREFIX/bin/aimip" \
     || die "cannot write $PREFIX/bin/aimip"
-  chmod -R a+rX "$PREFIX/bin" "$PREFIX/site.json" "$PREFIX/VERSION" 2>/dev/null || true
+  ensure_world_readable "$PREFIX/bin" "$PREFIX/site.json" "$PREFIX/VERSION"
 }
 
 if [ "$DRY_RUN" = 1 ]; then
@@ -167,6 +189,26 @@ EOF
   "$PREFIX/venv-emu/bin/pip" install -c "$REPO/container/constraints-emu.txt" earth2studio@8fa7acb nvidia-physicsnemo@1dacf8d ...
   "$PREFIX/venv-emu/bin/pip" install --no-build-isolation earth2grid@11dcf1b (with CUDA HEALPix padding kernel via nvcc 13.0)
   "$PREFIX/venv-emu/bin/pip" install --no-deps "$REPO"
+EOF
+  fi
+  if [ "$WITH_CAMULATOR" = 1 ]; then
+    cat <<EOF
+  "$PY_BIN" -m venv "$PREFIX/venv-camulator"
+  "$PREFIX/venv-camulator/bin/pip" install -c "$REPO/container/constraints-camulator.txt" numpy==1.26.4 ...
+  "$PREFIX/venv-camulator/bin/pip" install --index-url "$CAMULATOR_TORCH_INDEX" -c "$REPO/container/constraints-camulator.txt" "torch==2.4.1" "torchvision==0.19.1"
+  "$PREFIX/venv-camulator/bin/pip" install -c "$REPO/container/constraints-camulator.txt" --no-build-isolation --no-deps "torch_harmonics==0.7.2"
+  "$PREFIX/venv-camulator/bin/pip" install --no-build-isolation --no-deps "$REPO"
+  "$PREFIX/venv-camulator/bin/python" -I -B -c 'import sys; from aimip.camulator import install_camulator_source_tree; install_camulator_source_tree(sys.argv[1])' "$PREFIX/venv-camulator"
+EOF
+  fi
+  if [ "$WITH_SDYFF" = 1 ]; then
+    cat <<EOF
+  "$PY_BIN" -m venv "$PREFIX/venv-sdyff"
+  "$PREFIX/venv-sdyff/bin/pip" install -c "$REPO/container/constraints-sdyff.txt" numpy==1.26.4 "pytorch-lightning==2.4.0" "hydra-core==1.3.2" "omegaconf==2.3.0" ...
+  "$PREFIX/venv-sdyff/bin/pip" install --index-url "$SDYFF_TORCH_INDEX" -c "$REPO/container/constraints-sdyff.txt" "torch==2.4.1" "torchvision==0.19.1"
+  "$PREFIX/venv-sdyff/bin/pip" install -c "$REPO/container/constraints-sdyff.txt" --no-build-isolation --no-deps "torch_harmonics==0.7.2"
+  "$PREFIX/venv-sdyff/bin/pip" install --no-build-isolation --no-deps "nvidia-modulus @ https://github.com/ai2cm/modulus/archive/94f62e1ce2083640829ec12d80b00619c40a47f8.tar.gz#sha256=8785a70f2609746beaa5a3ff166b1a99393a9a969afef44c77fe1270ac5af246" "$REPO"
+  "$PREFIX/venv-sdyff/bin/python" -I -B -c 'import sys; from aimip.sdyff import install_sdyff_apex_shim; install_sdyff_apex_shim(sys.argv[1])' "$PREFIX/venv-sdyff"
 EOF
   fi
   exit 0
@@ -202,7 +244,7 @@ if [ "$WITH_EMU" = 1 ]; then
     && "$PREFIX/venv-emu/bin/pip" install -c "$REPO/container/constraints-emu.txt" \
       "earth2studio @ https://github.com/NVIDIA/earth2studio/archive/8fa7acb28b082e83a0718e8d2ed137fd375a11fe.tar.gz#sha256=db814396dff3fe021d9af70bf10a6f80577694416eeb8b70b8b504685df4ff20" \
       "nvidia-physicsnemo @ https://github.com/NVIDIA/physicsnemo/archive/1dacf8d691bb0ab987e8832debacab2dbe0043bb.tar.gz#sha256=ee6a06672258bbb7f20a4554725a5f22b9c504d67f57b4f49561d9cc577f09ae" \
-      omegaconf hydra-core lightning tensordict timm diffusers lovely-tensors lovely-numpy matplotlib torchmetrics einops cftime netCDF4 pyyaml \
+      omegaconf hydra-core lightning tensordict timm diffusers lovely-tensors lovely-numpy matplotlib torchmetrics einops cftime netCDF4 pyyaml torch_harmonics \
     && rm -rf "$PREFIX/build/cuda-build" \
     && "$PREFIX/venv-emu/bin/pip" install --target "$PREFIX/build/cuda-build" \
       "nvidia-cuda-nvcc==13.0.88" "nvidia-cuda-crt==13.0.88" "nvidia-cuda-cccl==13.0.85" "nvidia-cuda-runtime==13.0.96" "nvidia-nvvm==13.0.88" \
@@ -218,13 +260,74 @@ if [ "$WITH_EMU" = 1 ]; then
       "$PREFIX/venv-emu/bin/pip" install --no-build-isolation \
       "earth2grid @ https://github.com/NVlabs/earth2grid/archive/11dcf1b0787a7eb6a8497a3a5a5e1fdcc31232d3.tar.gz#sha256=6ae3c5b020e1c9623a77debca1ef10f6a5127cffd8a084db8c965381f8928581" \
     && rm -rf "$PREFIX/build/cuda-build" \
-    && "$PREFIX/venv-emu/bin/pip" install --no-deps "$REPO" \
+    && "$PREFIX/venv-emu/bin/pip" install --no-deps \
+      "cbottle @ https://github.com/NVlabs/cBottle/archive/f0f519987589cc0b368ab892a1adfb2fb30a5587.tar.gz#sha256=904e2e2e563b0c035f961e235d4081c4800fc4b1ab2767a507016ae2f2144fc1" \
+      "$REPO" \
     && "$PREFIX/venv-emu/bin/pip" freeze --all > "$PREFIX/installed-inventory-emu.txt"
-  } > "$EMU_LOG" 2>&1 || { rm -rf "$PREFIX/build/cuda-build"; tail -30 "$EMU_LOG" >&2; die "venv-emu build failed (see $EMU_LOG)"; }
+  } > "$EMU_LOG" 2>&1 || { rm -rf "$PREFIX/build/cuda-build"; tail -30 "$EMU_LOG" >&2; die "venv-emu build failed (see $EMU_LOG); fix the error above or rerun without --with-emu to install the other models"; }
 fi
 
-chmod -R a+rX "$PREFIX/venv" "$PREFIX/overlay-fme-2026.10.0" 2>/dev/null || true
-[ "$WITH_EMU" = 1 ] && chmod -R a+rX "$PREFIX/venv-emu" 2>/dev/null || true
+ensure_world_readable "$PREFIX/venv" "$PREFIX/overlay-fme-2026.10.0"
+[ "$WITH_EMU" = 1 ] && ensure_world_readable "$PREFIX/venv-emu"
+
+# ---- optional isolated CAMulator venv (torch 2.4.1 + torch_harmonics 0.7.2 + numpy 1.26.4; exact == version pins in
+#      constraints-camulator.txt without --require-hashes, configurable AIMIP_CAMULATOR_TORCH_INDEX, matching venv/venv-emu)
+if [ "$WITH_CAMULATOR" = 1 ]; then
+  CAM_LOG=$PREFIX/build/install-native-camulator-$VERSION.log
+  echo "install-native: creating $PREFIX/venv-camulator (torch 2.4.1, torch_harmonics 0.7.2, numpy 1.26.4; log $CAM_LOG)"
+  {
+    "$PY_BIN" -m venv "$PREFIX/venv-camulator" \
+    && "$PREFIX/venv-camulator/bin/pip" install pip==25.2 \
+    && "$PREFIX/venv-camulator/bin/pip" install -c "$REPO/container/constraints-camulator.txt" \
+      setuptools setuptools-scm wheel ninja packaging "numpy==1.26.4" \
+      fsspec filelock typing_extensions sympy networkx Jinja2 MarkupSafe mpmath pillow \
+    && "$PREFIX/venv-camulator/bin/pip" install --index-url "$CAMULATOR_TORCH_INDEX" -c "$REPO/container/constraints-camulator.txt" \
+      "torch==2.4.1" "torchvision==0.19.1" \
+    && "$PREFIX/venv-camulator/bin/pip" install -c "$REPO/container/constraints-camulator.txt" \
+      xarray netCDF4 h5netcdf h5py cftime scipy pandas pyyaml einops timm tqdm zarr numcodecs \
+      scikit-learn numba bridgescaler dask distributed matplotlib gcsfs huggingface_hub safetensors \
+      segmentation-models-pytorch torch-geometric torchmetrics \
+    && PATH="$PREFIX/venv-camulator/bin:$PATH" "$PREFIX/venv-camulator/bin/pip" install \
+      -c "$REPO/container/constraints-camulator.txt" --no-build-isolation --no-deps "torch_harmonics==0.7.2" \
+    && "$PREFIX/venv-camulator/bin/pip" install --no-build-isolation --no-deps "$REPO" \
+    && "$PREFIX/venv-camulator/bin/python" -I -B -c \
+      'import sys; from aimip.camulator import install_camulator_source_tree; install_camulator_source_tree(sys.argv[1])' \
+      "$PREFIX/venv-camulator" \
+    && "$PREFIX/venv-camulator/bin/pip" freeze --all > "$PREFIX/installed-inventory-camulator.txt"
+  } > "$CAM_LOG" 2>&1 || { tail -30 "$CAM_LOG" >&2; die "venv-camulator build failed (see $CAM_LOG); fix the error above or rerun without --with-camulator to install the other models"; }
+  ensure_world_readable "$PREFIX/venv-camulator"
+fi
+
+# ---- optional isolated Spherical DYffusion venv (torch 2.4.1 + torch_harmonics 0.7.2 + ai2cm/modulus@94f62e1c#sha256=...;
+#      exact == version pins in constraints-sdyff.txt without --require-hashes, configurable AIMIP_SDYFF_TORCH_INDEX)
+if [ "$WITH_SDYFF" = 1 ]; then
+  SDYFF_LOG=$PREFIX/build/install-native-sdyff-$VERSION.log
+  echo "install-native: creating $PREFIX/venv-sdyff (torch 2.4.1, torch_harmonics 0.7.2, ai2cm/modulus@94f62e1c; log $SDYFF_LOG)"
+  {
+    "$PY_BIN" -m venv "$PREFIX/venv-sdyff" \
+    && "$PREFIX/venv-sdyff/bin/pip" install pip==25.2 \
+    && "$PREFIX/venv-sdyff/bin/pip" install -c "$REPO/container/constraints-sdyff.txt" \
+      setuptools setuptools-scm wheel ninja packaging "numpy==1.26.4" \
+      fsspec filelock typing_extensions sympy networkx Jinja2 MarkupSafe mpmath pillow \
+    && "$PREFIX/venv-sdyff/bin/pip" install --index-url "$SDYFF_TORCH_INDEX" -c "$REPO/container/constraints-sdyff.txt" \
+      "torch==2.4.1" "torchvision==0.19.1" \
+    && "$PREFIX/venv-sdyff/bin/pip" install -c "$REPO/container/constraints-sdyff.txt" \
+      "pytorch-lightning==2.4.0" "hydra-core==1.3.2" "omegaconf==2.3.0" \
+      dacite tensordict tensorly tensorly-torch toolz torchmetrics einops \
+      xarray netCDF4 h5netcdf h5py cftime scipy pandas pyyaml "ruamel.yaml" dask zarr numcodecs \
+      tqdm matplotlib wandb huggingface_hub rich timm boto3 requests regex \
+    && PATH="$PREFIX/venv-sdyff/bin:$PATH" "$PREFIX/venv-sdyff/bin/pip" install \
+      -c "$REPO/container/constraints-sdyff.txt" --no-build-isolation --no-deps "torch_harmonics==0.7.2" \
+    && "$PREFIX/venv-sdyff/bin/pip" install --no-build-isolation --no-deps \
+      "nvidia-modulus @ https://github.com/ai2cm/modulus/archive/94f62e1ce2083640829ec12d80b00619c40a47f8.tar.gz#sha256=8785a70f2609746beaa5a3ff166b1a99393a9a969afef44c77fe1270ac5af246" \
+      "$REPO" \
+    && "$PREFIX/venv-sdyff/bin/python" -I -B -c \
+      'import sys; from aimip.sdyff import install_sdyff_apex_shim; install_sdyff_apex_shim(sys.argv[1])' \
+      "$PREFIX/venv-sdyff" \
+    && "$PREFIX/venv-sdyff/bin/pip" freeze --all > "$PREFIX/installed-inventory-sdyff.txt"
+  } > "$SDYFF_LOG" 2>&1 || { tail -30 "$SDYFF_LOG" >&2; die "venv-sdyff build failed (see $SDYFF_LOG); fix the error above or rerun without --with-sdyff to install the other models"; }
+  ensure_world_readable "$PREFIX/venv-sdyff"
+fi
 
 # ---- version/import assertions and self-test in the new environment (launcher written ONLY after all pass)
 echo "install-native: verifying installed versions and running test suite"
@@ -253,16 +356,80 @@ print("AIMIP_OVERLAY_OK", fme.__version__)
 
 if [ "$WITH_EMU" = 1 ]; then
   "$PREFIX/venv-emu/bin/python" -I -c '
-import os, sys, torch, earth2studio, physicsnemo, earth2grid, healpixpad_cuda, aimip, aimip.emu_job
+import os, sys, torch, earth2studio, physicsnemo, earth2grid, healpixpad_cuda, cbottle, aimip, aimip.emu_job
 from earth2studio.models.px import DLESyMLatLon
 from earth2studio.models.px.dlesym_v0_isccp_era5 import DLESyMv0_ISCCP_ERA5LatLon
-from earth2studio.data import ARCO_ERA5
+from earth2studio.data import ARCO_ERA5, CBottle3D
 want_v, venv_dir = sys.argv[1], os.path.realpath(sys.argv[2])
 assert os.path.realpath(aimip.__file__).startswith(venv_dir + os.sep), f"venv-emu aimip imported from {aimip.__file__}"
 assert aimip.__version__ == want_v, f"venv-emu aimip {aimip.__version__} != {want_v}"
 assert torch.__version__.split("+")[0] == "2.14.0", f"venv-emu torch {torch.__version__} != 2.14.0"
 print("AIMIP_EMU_OK", torch.__version__, earth2studio.__version__, physicsnemo.__version__)
-' "$VERSION" "$PREFIX/venv-emu" || die "venv-emu import/version check failed"
+' "$VERSION" "$PREFIX/venv-emu" || die "venv-emu import/version check failed (rerun without --with-emu to install the other models)"
+fi
+
+if [ "$WITH_CAMULATOR" = 1 ]; then
+  "$PREFIX/venv-camulator/bin/python" -I -B -c '
+import os, sys, numpy, torch, torch_harmonics, credit, aimip, aimip.emu_job
+from credit.parser import credit_main_parser
+from credit.models import load_model, load_model_name, model_types
+from credit.models.crossformer import CrossFormer
+from credit.models.camulator import Camulator
+from credit.models.wxformer.crossformer import CrossFormer as WXFormer
+from credit.models.checkpoint import load_model_state
+from credit.postblock import (
+    PostBlock,
+    TracerFixer,
+    GlobalMassFixer,
+    GlobalWaterFixer,
+    GlobalEnergyFixer,
+    GlobalEnergyFixerUpDown,
+)
+from credit.transforms import load_transforms, Normalize_ERA5_and_Forcing
+from credit.transforms.deprecated._transforms import ToTensor
+from credit.preblock.scaler import Scaler
+from credit.distributed import distributed_model_wrapper
+from credit.output import load_metadata, make_xarray, save_netcdf_increment
+
+want_v, venv_dir = sys.argv[1], os.path.realpath(sys.argv[2])
+src_root = os.path.realpath(os.path.join(venv_dir, "src", "miles-credit"))
+climate_dir = os.path.join(src_root, "climate")
+assert os.path.realpath(aimip.__file__).startswith(venv_dir + os.sep), f"venv-camulator aimip imported from {aimip.__file__}"
+assert os.path.realpath(credit.__file__).startswith(src_root + os.sep), f"venv-camulator credit imported from {credit.__file__}, expected {src_root}"
+assert aimip.__version__ == want_v, f"venv-camulator aimip {aimip.__version__} != {want_v}"
+assert model_types["camulator"][0] is Camulator, "model_types[\"camulator\"] did not resolve to Camulator"
+assert os.path.isfile(os.path.join(climate_dir, "Quick_Climate.py")), f"missing {climate_dir}/Quick_Climate.py"
+sys.path.insert(0, climate_dir)
+from WindPP import post_process_wind_artifacts
+import Model_State
+from Model_State import initialize_camulator, CAMulatorStepper
+assert Model_State.CREDIT_AVAILABLE and Model_State.POSTBLOCK_AVAILABLE and Model_State.WINDPP_AVAILABLE, (
+    f"Model_State optional imports failed: CREDIT={Model_State.CREDIT_AVAILABLE}, "
+    f"POSTBLOCK={Model_State.POSTBLOCK_AVAILABLE}, WINDPP={Model_State.WINDPP_AVAILABLE}"
+)
+assert int(numpy.__version__.split(".")[0]) < 2, f"venv-camulator numpy {numpy.__version__} must be < 2"
+assert torch.__version__.split("+")[0] == "2.4.1", f"venv-camulator torch {torch.__version__} != 2.4.1"
+assert torch_harmonics.__version__ == "0.7.2", f"venv-camulator torch_harmonics {torch_harmonics.__version__} != 0.7.2"
+print("AIMIP_CAMULATOR_OK", torch.__version__, torch_harmonics.__version__, numpy.__version__, Camulator.__name__)
+' "$VERSION" "$PREFIX/venv-camulator" || die "venv-camulator import/version check failed (rerun without --with-camulator to install the other models)"
+fi
+
+if [ "$WITH_SDYFF" = 1 ]; then
+  "$PREFIX/venv-sdyff/bin/python" -I -B -c '
+import os, sys, numpy, torch, torch_harmonics, pytorch_lightning, hydra, omegaconf, dacite, tensorly, tltorch, tensordict, toolz, boto3, apex, modulus, aimip, aimip.emu_job
+from apex.normalization import FusedLayerNorm
+from modulus.models.sfno.initialization import trunc_normal_
+from modulus.models.sfno.sfnonet import SphericalFourierNeuralOperatorNet
+want_v, venv_dir = sys.argv[1], os.path.realpath(sys.argv[2])
+assert os.path.realpath(aimip.__file__).startswith(venv_dir + os.sep), f"venv-sdyff aimip imported from {aimip.__file__}"
+assert os.path.realpath(apex.__file__).startswith(venv_dir + os.sep), f"venv-sdyff apex shim imported from {apex.__file__}"
+assert FusedLayerNorm is torch.nn.LayerNorm, "venv-sdyff apex.normalization.FusedLayerNorm must alias torch.nn.LayerNorm"
+assert aimip.__version__ == want_v, f"venv-sdyff aimip {aimip.__version__} != {want_v}"
+assert int(numpy.__version__.split(".")[0]) < 2, f"venv-sdyff numpy {numpy.__version__} must be < 2"
+assert torch.__version__.split("+")[0] == "2.4.1", f"venv-sdyff torch {torch.__version__} != 2.4.1"
+assert torch_harmonics.__version__ == "0.7.2", f"venv-sdyff torch_harmonics {torch_harmonics.__version__} != 0.7.2"
+print("AIMIP_SDYFF_OK", torch.__version__, torch_harmonics.__version__, pytorch_lightning.__version__, FusedLayerNorm.__name__)
+' "$VERSION" "$PREFIX/venv-sdyff" || die "venv-sdyff import/version check failed (rerun without --with-sdyff to install the other models)"
 fi
 
 selftest_dir_ok() {  # selftest_dir_ok <existing dir>

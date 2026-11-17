@@ -16,6 +16,10 @@ import sys
 import tempfile
 import time
 
+# Never emit `.pyc` / `__pycache__` inside `$AIMIP_DATA/code/*` trees verified by `find -type f` SHA-256.
+sys.dont_write_bytecode = True
+os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
+
 TIME_UNITS = "days since 1970-01-01 00:00:00"
 T2M_BAND_K = (200.0, 330.0)   # a global-mean 2-m temperature outside this band means the rollout has blown up
 TP6_EPS = 1e-8   # DLESyM v1.1 tp6 = log(P + eps) - log(eps), P = 6-h precipitation in m
@@ -521,14 +525,39 @@ def main(argv: list) -> int:
     job = _load_job(out_dir)
     t0 = time.time()
     if mode == "stage":
-        if job["family"] != "e2s-dlesym":
-            raise SystemExit("only DLESyM needs a staged initial state")
-        stage_dlesym(job["out_dir"], job)
-        return 0
+        if job["family"] == "e2s-dlesym":
+            stage_dlesym(job["out_dir"], job)
+            return 0
+        if job["family"] == "samudra":
+            from .samudra import stage_samudra
+
+            stage_samudra(job["out_dir"], job)
+            return 0
+        raise SystemExit("only DLESyM and Samudra need staged initial/window data")
     if job["family"] == "e2s-dlesym":
         result = run_dlesym(job["out_dir"], job)
     elif job["family"] == "arches":
         result = run_arches(job["out_dir"], job)
+    elif job["family"] == "samudra":
+        from .samudra import run_samudra
+
+        result = run_samudra(job["out_dir"], job)
+    elif job["family"] == "md":
+        from .md15 import run_md15
+
+        result = run_md15(job["out_dir"], job)
+    elif job["family"] == "camulator":
+        from .camulator import run_camulator
+
+        result = run_camulator(job["out_dir"], job)
+    elif job["family"] == "cbottle":
+        from .cbottle import run_cbottle
+
+        result = run_cbottle(job["out_dir"], job)
+    elif job["family"] == "sdyff":
+        from .sdyff import run_sdyff
+
+        result = run_sdyff(job["out_dir"], job)
     else:
         raise SystemExit(f"unknown family {job['family']!r}")
     result["process_seconds"] = round(time.time() - t0, 1)

@@ -35,7 +35,7 @@ from .validators import validate_run_path, validate_safe_path, validate_slurm_jo
 
 MONTHLY_PREDICTIONS_FILENAME = "monthly_mean_predictions.nc"
 # Includes EAMv3 (`TREFHT`, `TS`) and SamudrACE-E3SMv3 (`Tat2m`) alongside ERA5/SHiELD/HiRO (`TMP2m`, `surface_temperature`).
-SUMMARY_TEMP_VARS = ("TMP2m", "Tat2m", "surface_temperature", "TREFHT", "TS", "t2m", "tas")   # + DLESyM, ArchesClimate
+SUMMARY_TEMP_VARS = ("TMP2m", "Tat2m", "surface_temperature", "TREFHT", "TS", "t2m", "tas", "air_temperature_7")   # + DLESyM, ArchesClimate, cBottle-3d, Spherical DYffusion
 SUMMARY_OCEAN_TEMP_VARS = ("sst", "surface_temperature", "thetao_0", "temperatureCoarsened_0")
 
 MAX_SUMMARY_MONTHS = 2400
@@ -1044,7 +1044,43 @@ def summarize_run(out_dir: str) -> dict[str, Any]:
                 _SUMMARY_CACHE.popitem(last=False)
         return res
 
+    if os.path.isfile(ocean_monthly):
+        cache_key_ocean = (
+            "ocean_only",
+            validated_out,
+            manifest_model,
+            _file_cache_sig(ocean_monthly),
+            MAX_SUMMARY_MONTHS,
+            MAX_SUMMARY_MEMBERS,
+            MAX_SUMMARY_VAR_BYTES,
+        )
+        with _SUMMARY_CACHE_LOCK:
+            cached_o = _SUMMARY_CACHE.get(cache_key_ocean)
+            if cached_o is not None:
+                _SUMMARY_CACHE.move_to_end(cache_key_ocean)
+                return json.loads(json.dumps(cached_o))
+
+        ocean_primary = _summarize_monthly_dataset(
+            ocean_monthly, SUMMARY_OCEAN_TEMP_VARS, prefix="ocean."
+        )
+        res_ocean: dict[str, Any] = {
+            "out_dir": validated_out,
+            "monthly_file": ocean_monthly,
+            "ocean_monthly_file": ocean_monthly,
+            "spatial_dims": ocean_primary["spatial_dims"],
+            "n_samples": ocean_primary["n_samples"],
+            "n_months": ocean_primary["n_months"],
+            "variables": ocean_primary["variables"],
+        }
+        if manifest_model:
+            res_ocean["model"] = manifest_model
+        with _SUMMARY_CACHE_LOCK:
+            _SUMMARY_CACHE[cache_key_ocean] = json.loads(json.dumps(res_ocean))
+            while len(_SUMMARY_CACHE) > MAX_SUMMARY_CACHE_ENTRIES:
+                _SUMMARY_CACHE.popitem(last=False)
+        return res_ocean
+
     raise ConfigError(
-        f"Monthly output file not found: {top_monthly} (or coupled {atmos_monthly}; "
-        "ensure the run completed with `save_monthly_files: true`)."
+        f"Monthly output file not found: {top_monthly} (or coupled/ocean {atmos_monthly}, {ocean_monthly}; "
+        "ensure the run completed with monthly outputs)."
     )

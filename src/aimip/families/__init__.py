@@ -11,6 +11,21 @@ import json
 import os
 from typing import Any, Protocol
 
+from .. import camulator as _camulator_mod
+from .. import md15 as _md15_mod
+from .. import sdyff as _sdyff_mod
+from ..camulator import (
+    CAMULATOR_CODE_REL_DIR,
+    CAMULATOR_CYCLIC_FORCING_NAME,
+    camulator_forcing_rel_path,
+    camulator_ic_rel_path,
+)
+from ..cbottle import (
+    CBOTTLE_BATCH_SIZE,
+    CBOTTLE_DATE_ORDER,
+    CBOTTLE_DEFAULT_CADENCE,
+    CBOTTLE_FORCING_NAME,
+)
 from ..emu import (
     ARCHES_DOMAIN,
     ARCHES_SCENARIOS,
@@ -21,8 +36,17 @@ from ..emu import (
 )
 from ..errors import ConfigError, RegistryError, ValidationError
 from ..lora import inspect_lora, sha256_file
+from ..md15 import MD15_CODE_REL_DIR
 from ..plan_types import AssetRef, RunSpec
 from ..registry import SAMUDRACE_CM4_IC_SLUGS, ModelSpec, resolve_data_dir
+from ..safe_pickle import compute_sha256sum_tree_digest, compute_tree_digest
+from ..samudra import SAMUDRA_BYTES_PER_STEP, SAMUDRA_OSN_SOURCE
+from ..sdyff import (
+    SDYFF_CODE_REL_DIR,
+    SDYFF_DATA_REL_DIR,
+    SDYFF_FORCING_NAME,
+    sdyff_plan_schedule,
+)
 from ..runner import (
     ACE2_ERA5_GPU_HOURS_PER_MODEL_YEAR,
     HOURS_PER_JULIAN_YEAR,
@@ -807,6 +831,8 @@ class EmuFamilyAdapter:
 
         total_members = int(checked["members"])
         scenario: str | None = checked.get("scenario")
+        emu_ic_sha: str | None = None
+        emu_ic_custom = False
         if model.family == "arches":
             selected_name = scenario or ARCHES_SCENARIOS[0]
             if norm_start != ARCHES_START:
@@ -819,6 +845,91 @@ class EmuFamilyAdapter:
             ensemble_note = (
                 f"Deterministic IPSL scenario rollout ({selected_name}, domain={ARCHES_DOMAIN[selected_name]})."
             )
+            ic_src: str | None = None
+        elif model.family == "samudra":
+            selected_name = scenario or "om4-jra55do-replay"
+            ensemble_strategy = "single_om4_replay"
+            ensemble_note = (
+                "Deterministic OM4 replay (seed1 checkpoint; upstream seed1..seed5 are separate networks)."
+            )
+            ic_src = f"osn://m2lines-pubs/Samudra/OM4@{norm_start}"
+        elif model.family == "md":
+            selected_name = scenario or (
+                model.forcing_sets[0].name if model.forcing_sets else "aimip-era5-monthly"
+            )
+            ensemble_strategy = "seeded_noise_members" if total_members > 1 else "single_member"
+            ensemble_note = (
+                f"{total_members} stochastic latent-diffusion member(s) (250 reverse DDPM steps/month, seed={seed})."
+                if total_members > 1
+                else f"Single latent-diffusion trajectory (250 reverse DDPM steps/month, seed={seed})."
+            )
+            if spec.ic is not None:
+                ic_src = validate_visible_input_path(spec.ic, label="--ic")
+                emu_ic_custom = True
+                emu_ic_sha = sha256_file(ic_src) if os.path.isfile(ic_src) else None
+            else:
+                ymd = norm_start[:10]
+                matched = [
+                    p
+                    for p in model.ic_files
+                    if ymd in os.path.basename(p) or ymd.replace("-", "") in os.path.basename(p)
+                ]
+                resolved_data_md = resolve_data_dir(data_dir) or ""
+                default_ic_rel = f"inputs/md-1.5/ic/ic_{ymd}.nc"
+                ic_src = (
+                    matched[0]
+                    if matched
+                    else (
+                        os.path.join(resolved_data_md, default_ic_rel)
+                        if resolved_data_md
+                        else default_ic_rel
+                    )
+                )
+                if os.path.isfile(ic_src) and not os.path.islink(ic_src):
+                    emu_ic_sha = sha256_file(ic_src)
+        elif model.family == "camulator":
+            selected_name = scenario or CAMULATOR_CYCLIC_FORCING_NAME
+            ensemble_strategy = "single_member"
+            ensemble_note = (
+                f"Deterministic CAMulator rollout (checkpoint.pt00069.pt, forcing={selected_name})."
+            )
+            ic_rel = camulator_ic_rel_path(norm_start)
+            resolved_data = resolve_data_dir(data_dir) or ""
+            lock_files = _load_lock_entries(data_dir=resolved_data or None)
+            ic_src = os.path.join(resolved_data, ic_rel) if resolved_data else ic_rel
+            ic_entry = lock_files.get(ic_rel)
+            if isinstance(ic_entry, dict) and ic_entry.get("sha256"):
+                emu_ic_sha = str(ic_entry["sha256"])
+            elif os.path.isfile(ic_src) and not os.path.islink(ic_src):
+                emu_ic_sha = sha256_file(ic_src)
+        elif model.family == "cbottle":
+            selected_name = scenario or CBOTTLE_FORCING_NAME
+            ensemble_strategy = "independent_conditional_draws"
+            ensemble_note = (
+                f"{total_members} member(s) of independent conditional diffusion draws "
+                f"(seed={seed}, batch_size={CBOTTLE_BATCH_SIZE}, cadence={CBOTTLE_DEFAULT_CADENCE}, "
+                f"date_order={CBOTTLE_DATE_ORDER})."
+            )
+            ic_src = None
+        elif model.family == "sdyff":
+            selected_name = scenario or SDYFF_FORCING_NAME
+            sdyff_sched = sdyff_plan_schedule(norm_start, steps)
+            n_full_m = len(sdyff_sched["complete_months"])
+            ensemble_strategy = "seeded_noise_members" if total_members > 1 else "single_member"
+            ensemble_note = (
+                f"{total_members} probabilistic Spherical DYffusion member(s) "
+                f"(seed={seed}, coarsen_factor=4 -> {n_full_m} complete cycle month(s))."
+            )
+            start_m = int(norm_start[5:7])
+            ic_rel_s = f"{SDYFF_DATA_REL_DIR}/2021{start_m:02d}0100.nc"
+            resolved_data_s = resolve_data_dir(data_dir) or ""
+            lock_files_s = _load_lock_entries(data_dir=resolved_data_s or None)
+            ic_src = os.path.join(resolved_data_s, ic_rel_s) if resolved_data_s else ic_rel_s
+            ic_entry_s = lock_files_s.get(ic_rel_s)
+            if isinstance(ic_entry_s, dict) and ic_entry_s.get("sha256"):
+                emu_ic_sha = str(ic_entry_s["sha256"])
+            elif os.path.isfile(ic_src) and not os.path.islink(ic_src):
+                emu_ic_sha = sha256_file(ic_src)
         else:
             selected_name = "era5-initial-state"
             ensemble_strategy = (
@@ -831,12 +942,18 @@ class EmuFamilyAdapter:
                 if total_members > 1
                 else "Deterministic rollout from staged ARCO-ERA5 state."
             )
+            ic_src = f"arco-era5@{norm_start}"
 
         selected_fs = next(
             (fs for fs in model.forcing_sets if fs.name == selected_name),
             model.forcing_sets[0],
         )
         missing_rels = model_has_missing_files(model, data_dir=data_dir)
+        ic_checked = (
+            bool(spec.ic is not None or (ic_src is not None and os.path.isfile(ic_src) and not os.path.islink(ic_src)))
+            if model.family == "md"
+            else True
+        )
         return {
             "norm_start": norm_start,
             "end_time": end_iso,
@@ -847,8 +964,10 @@ class EmuFamilyAdapter:
             "forcing_set": selected_fs,
             "ensemble_strategy": ensemble_strategy,
             "ensemble_note": ensemble_note,
-            "ic_source": None if model.family == "arches" else f"arco-era5@{norm_start}",
-            "ic_sha256": None,
+            "ic_source": ic_src,
+            "ic_sha256": emu_ic_sha,
+            "ic_is_custom": emu_ic_custom,
+            "ic_checked": ic_checked,
             "ocean_ic_source": None,
             "ocean_ic_sha256": None,
             "lora_checkpoint": None,
@@ -868,11 +987,23 @@ class EmuFamilyAdapter:
         max_wt = site.max_time or "12:00:00"
         wt, uncapped, capped = _emu_walltime(model.family, steps, members, max_wt)
         gpu_hours = round(_emu_gpu_hours(model.family, steps, members), 6)
-        basis = (
-            "DLESyM 1x A100-80GB (~40 s / model year / member)"
-            if model.family == "e2s-dlesym"
-            else "ArchesClimate-SSP 1x A100-80GB (~2 s / simulated month)"
-        )
+        if model.family == "e2s-dlesym":
+            basis = "DLESyM 1x A100-80GB (~40 s / model year / member)"
+        elif model.family == "samudra":
+            basis = "Samudra-OM4 1x A100-80GB (~18 s / simulated year)"
+        elif model.family == "md":
+            basis = "MD-1.5 1x A100-80GB (~20 min for 46.25y x 50 members batched; Hall & Molina, 2026)"
+        elif model.family == "camulator":
+            basis = "CAMulator 1x A100-80GB (~480 simulated years / day, Chapman et al., 2025)"
+        elif model.family == "cbottle":
+            basis = (
+                f"cBottle-3d 1x A100-80GB (~150 s / sampled year at {CBOTTLE_DEFAULT_CADENCE}, "
+                f"batch_size={CBOTTLE_BATCH_SIZE})"
+            )
+        elif model.family == "sdyff":
+            basis = "Spherical DYffusion 1x A100-80GB (~180 s / simulated cycle year)"
+        else:
+            basis = "ArchesClimate-SSP 1x A100-80GB (~2 s / simulated month)"
         return {
             "time": str(req_time) if req_time else wt,
             "walltime_uncapped": uncapped,
@@ -898,10 +1029,23 @@ class EmuFamilyAdapter:
         scen_tag = f"r1i1p1f1_{selected_scen}_interpolation.memmap/" if selected_scen else None
 
         for rel in model.required_files:
+            if model.family == "camulator" and rel.startswith("inputs/camulator/"):
+                continue
+            if model.family == "md" and rel.startswith("inputs/md-1.5/ic/"):
+                if validated.get("ic_is_custom"):
+                    continue
+                ymd = str(validated.get("norm_start") or "")[:10]
+                if ymd and ymd not in os.path.basename(rel) and ymd.replace("-", "") not in os.path.basename(rel):
+                    continue
             abs_p = os.path.join(resolved_data, rel) if resolved_data else rel
-            role = "forcing" if "memmap" in rel or rel.startswith("inputs/") else "package"
+            if "/ic/" in rel:
+                role = "ic"
+            elif "memmap" in rel or rel.startswith(("inputs/", "raw/")):
+                role = "forcing"
+            else:
+                role = "package"
             fallback = model.checkpoint_sha256 if abs_p == model.checkpoint else None
-            is_selected = role == "package" or (scen_tag is not None and scen_tag in rel)
+            is_selected = role in ("package", "ic") or (scen_tag is not None and scen_tag in rel)
             assets.append(
                 _asset_from_rel(
                     rel,
@@ -943,6 +1087,193 @@ class EmuFamilyAdapter:
                         sha256=ARCHES_TREE_SHA256,
                         size_bytes=ARCHES_ARCHIVE_SIZE,
                         cached=code_cached,
+                    )
+                )
+        elif model.family == "samudra":
+            out_cand = validated.get("output_dir")
+            staged_win = os.path.join(str(out_cand), "window") if out_cand else ""
+            if (
+                staged_win
+                and os.path.isdir(staged_win)
+                and not os.path.islink(staged_win)
+                and os.path.isfile(os.path.join(staged_win, "window.json"))
+            ):
+                tree_sha, _, total_bytes = compute_tree_digest(
+                    staged_win, label="staged Samudra OM4 window"
+                )
+                assets.append(
+                    AssetRef(
+                        rel_path="window",
+                        path=staged_win,
+                        role="staged_ic",
+                        sha256=tree_sha,
+                        size_bytes=total_bytes,
+                        cached=True,
+                        prospective=False,
+                    )
+                )
+            else:
+                src_root = (
+                    os.environ.get("AIMIP_SAMUDRA_SOURCE") or SAMUDRA_OSN_SOURCE
+                ).strip().rstrip("/")
+                est_bytes = (int(validated["steps"]) + 2) * SAMUDRA_BYTES_PER_STEP
+                assets.append(
+                    AssetRef(
+                        rel_path="window",
+                        path=f"{src_root}/OM4@{validated['norm_start']}+{validated['steps']}steps",
+                        role="staged_ic",
+                        sha256=None,
+                        size_bytes=est_bytes,
+                        cached=False,
+                        prospective=True,
+                    )
+                )
+        elif model.family == "md":
+            if validated.get("ic_is_custom") and validated.get("ic_source"):
+                custom_ic_p = str(validated["ic_source"])
+                assets.append(
+                    AssetRef(
+                        rel_path=f"custom_ic:{custom_ic_p}",
+                        path=custom_ic_p,
+                        role="custom_ic",
+                        sha256=validated.get("ic_sha256"),
+                        size_bytes=os.path.getsize(custom_ic_p) if os.path.isfile(custom_ic_p) else None,
+                        cached=os.path.isfile(custom_ic_p) and not os.path.islink(custom_ic_p),
+                    )
+                )
+            elif validated.get("ic_source"):
+                staged_md_ic = str(validated["ic_source"])
+                already_listed = any(a.path == staged_md_ic for a in assets)
+                if not already_listed and os.path.isfile(staged_md_ic) and not os.path.islink(staged_md_ic):
+                    rel_md_ic = (
+                        os.path.relpath(staged_md_ic, resolved_data).replace(os.sep, "/")
+                        if resolved_data and staged_md_ic.startswith(resolved_data.rstrip("/") + "/")
+                        else os.path.basename(staged_md_ic)
+                    )
+                    assets.append(
+                        AssetRef(
+                            rel_path=rel_md_ic,
+                            path=staged_md_ic,
+                            role="ic",
+                            sha256=validated.get("ic_sha256") or sha256_file(staged_md_ic),
+                            size_bytes=os.path.getsize(staged_md_ic),
+                            cached=True,
+                        )
+                    )
+            override_md_code = (os.environ.get("AIMIP_MD15_CODE") or "").strip()
+            if override_md_code:
+                md_tree_sha, _ = compute_sha256sum_tree_digest(override_md_code, label="AIMIP_MD15_CODE")
+                assets.append(
+                    AssetRef(
+                        rel_path=MD15_CODE_REL_DIR,
+                        path=override_md_code,
+                        role="source_tree",
+                        sha256=md_tree_sha,
+                        size_bytes=None,
+                        cached=True,
+                    )
+                )
+            else:
+                md_code_abs = (
+                    os.path.join(resolved_data, MD15_CODE_REL_DIR)
+                    if resolved_data
+                    else MD15_CODE_REL_DIR
+                )
+                md_code_cached = os.path.isdir(md_code_abs) and not os.path.islink(md_code_abs)
+                assets.append(
+                    AssetRef(
+                        rel_path=MD15_CODE_REL_DIR,
+                        path=md_code_abs,
+                        role="source_tree",
+                        sha256=_md15_mod.MD15_TREE_SHA256,
+                        size_bytes=_md15_mod.MD15_GITHUB_ARCHIVE_SIZE,
+                        cached=md_code_cached,
+                    )
+                )
+        elif model.family == "camulator":
+            norm_start_s = str(validated.get("norm_start") or "")
+            eff_scen = str(selected_scen or CAMULATOR_CYCLIC_FORCING_NAME)
+            for cam_rel, cam_role in (
+                (camulator_ic_rel_path(norm_start_s), "ic"),
+                (camulator_forcing_rel_path(eff_scen), "forcing"),
+            ):
+                cam_abs = os.path.join(resolved_data, cam_rel) if resolved_data else cam_rel
+                assets.append(
+                    _asset_from_rel(
+                        cam_rel,
+                        cam_abs,
+                        cam_role,
+                        lock_files,
+                        derived_overrides=derived_overrides,
+                        verify_bytes=True,
+                    )
+                )
+            override_cam_code = (os.environ.get("AIMIP_CAMULATOR_CODE") or "").strip()
+            if override_cam_code:
+                cam_tree_sha, _ = compute_sha256sum_tree_digest(
+                    override_cam_code, label="AIMIP_CAMULATOR_CODE"
+                )
+                assets.append(
+                    AssetRef(
+                        rel_path=CAMULATOR_CODE_REL_DIR,
+                        path=override_cam_code,
+                        role="source_tree",
+                        sha256=cam_tree_sha,
+                        size_bytes=None,
+                        cached=True,
+                    )
+                )
+            else:
+                cam_code_abs = (
+                    os.path.join(resolved_data, CAMULATOR_CODE_REL_DIR)
+                    if resolved_data
+                    else CAMULATOR_CODE_REL_DIR
+                )
+                cam_code_cached = os.path.isdir(cam_code_abs) and not os.path.islink(cam_code_abs)
+                assets.append(
+                    AssetRef(
+                        rel_path=CAMULATOR_CODE_REL_DIR,
+                        path=cam_code_abs,
+                        role="source_tree",
+                        sha256=_camulator_mod.CAMULATOR_TREE_SHA256,
+                        size_bytes=_camulator_mod.CAMULATOR_GITHUB_ARCHIVE_SIZE,
+                        cached=cam_code_cached,
+                    )
+                )
+        elif model.family == "cbottle":
+            # All 4 cBottle-3d assets (3 expert checkpoints + amip_midmonth_sst.nc) are already in `model.required_files`.
+            pass
+        elif model.family == "sdyff":
+            override_sdyff_code = (os.environ.get("AIMIP_SDYFF_CODE") or "").strip()
+            if override_sdyff_code:
+                sd_tree_sha, _ = compute_sha256sum_tree_digest(
+                    override_sdyff_code, label="AIMIP_SDYFF_CODE"
+                )
+                assets.append(
+                    AssetRef(
+                        rel_path=SDYFF_CODE_REL_DIR,
+                        path=override_sdyff_code,
+                        role="source_tree",
+                        sha256=sd_tree_sha,
+                        size_bytes=None,
+                        cached=True,
+                    )
+                )
+            else:
+                sd_code_abs = (
+                    os.path.join(resolved_data, SDYFF_CODE_REL_DIR)
+                    if resolved_data
+                    else SDYFF_CODE_REL_DIR
+                )
+                sd_code_cached = os.path.isdir(sd_code_abs) and not os.path.islink(sd_code_abs)
+                assets.append(
+                    AssetRef(
+                        rel_path=SDYFF_CODE_REL_DIR,
+                        path=sd_code_abs,
+                        role="source_tree",
+                        sha256=_sdyff_mod.SDYFF_TREE_SHA256,
+                        size_bytes=_sdyff_mod.SDYFF_GITHUB_ARCHIVE_SIZE,
+                        cached=sd_code_cached,
                     )
                 )
         else:
@@ -1019,8 +1350,9 @@ class EmuFamilyAdapter:
         return runner.exec_fme(out_dir)
 
     def inspect(self, out_dir: str, *, sacct_json_path: str | None = None) -> dict[str, Any]:
-        has_monthly = os.path.isfile(
-            os.path.join(out_dir, "atmosphere", "monthly_mean_predictions.nc")
+        has_monthly = os.path.isfile(os.path.join(out_dir, "monthly_mean_predictions.nc")) or any(
+            os.path.isfile(os.path.join(out_dir, realm, "monthly_mean_predictions.nc"))
+            for realm in ("atmosphere", "ocean")
         )
         return {
             "status": get_run_status(out_dir, sacct_json_path=sacct_json_path),
@@ -1032,6 +1364,11 @@ INSTALLED_ADAPTERS: dict[str, FamilyAdapter] = {
     "fme": FmeFamilyAdapter(),
     "e2s-dlesym": EmuFamilyAdapter("e2s-dlesym"),
     "arches": EmuFamilyAdapter("arches"),
+    "samudra": EmuFamilyAdapter("samudra"),
+    "md": EmuFamilyAdapter("md"),
+    "camulator": EmuFamilyAdapter("camulator"),
+    "cbottle": EmuFamilyAdapter("cbottle"),
+    "sdyff": EmuFamilyAdapter("sdyff"),
     "emu": EmuFamilyAdapter("e2s-dlesym"),
 }
 

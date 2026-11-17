@@ -246,6 +246,12 @@ def model_has_missing_files(
         missing = list(model.required_files)
         if model.family == "arches":
             missing.append("code/ArchesClimate-SSP")
+        elif model.family == "md":
+            missing.append("code/monthly-diffusion")
+        elif model.family == "camulator":
+            missing.append("code/miles-credit-camulator")
+        elif model.family == "sdyff":
+            missing.append("code/spherical-dyffusion")
         return missing
     missing: list[str] = []
     for rel in model.required_files:
@@ -256,6 +262,21 @@ def model_has_missing_files(
         code_dir = override if override else os.path.join(resolved_data, "code", "ArchesClimate-SSP")
         if not os.path.isdir(code_dir):
             missing.append("code/ArchesClimate-SSP")
+    elif model.family == "md":
+        override = os.environ.get("AIMIP_MD15_CODE")
+        code_dir = override if override else os.path.join(resolved_data, "code", "monthly-diffusion")
+        if not os.path.isdir(code_dir):
+            missing.append("code/monthly-diffusion")
+    elif model.family == "camulator":
+        override = os.environ.get("AIMIP_CAMULATOR_CODE")
+        code_dir = override if override else os.path.join(resolved_data, "code", "miles-credit-camulator")
+        if not os.path.isdir(code_dir):
+            missing.append("code/miles-credit-camulator")
+    elif model.family == "sdyff":
+        override = os.environ.get("AIMIP_SDYFF_CODE")
+        code_dir = override if override else os.path.join(resolved_data, "code", "spherical-dyffusion")
+        if not os.path.isdir(code_dir):
+            missing.append("code/spherical-dyffusion")
     return missing
 
 

@@ -386,8 +386,14 @@ def models(
         data_dir=resolved_data,
     )
 
-    allowed_tasks = sorted({card_for_model(m)["task"] for m in catalog} | {"amip", "slab-ocean", "coupled", "scenario"})
-    allowed_families = sorted({spec.family for spec in catalog.values()} | {"fme", "e2s-dlesym", "arches", "emu"})
+    allowed_tasks = sorted(
+        {card_for_model(m)["task"] for m in catalog}
+        | {"amip", "slab-ocean", "coupled", "scenario", "ocean", "generator"}
+    )
+    allowed_families = sorted(
+        {spec.family for spec in catalog.values()}
+        | {"fme", "e2s-dlesym", "arches", "samudra", "md", "camulator", "cbottle", "sdyff", "emu"}
+    )
     allowed_statuses = ["certified", "runs", "experimental"]
 
     if task is not None and task not in allowed_tasks:
@@ -428,7 +434,11 @@ def models(
         fam_match = (
             family is None
             or spec.family == family
-            or (family == "emu" and spec.family in ("e2s-dlesym", "arches"))
+            or (
+                family == "emu"
+                and spec.family
+                in ("e2s-dlesym", "arches", "samudra", "md", "camulator", "cbottle", "sdyff")
+            )
         )
         if not fam_match:
             continue
@@ -443,7 +453,16 @@ def models(
             continue
 
         ic_times: list[str] = []
-        for ic_p in spec.ic_files:
+        ic_candidates = list(spec.ic_files)
+        if not ic_candidates and spec.family == "md" and resolved_data:
+            md_ic_dir = os.path.join(resolved_data, "inputs", spec.name, "ic")
+            if os.path.isdir(md_ic_dir) and not os.path.islink(md_ic_dir):
+                for fname in sorted(os.listdir(md_ic_dir)):
+                    if fname.endswith(".nc"):
+                        cand = os.path.join(md_ic_dir, fname)
+                        if os.path.isfile(cand) and not os.path.islink(cand):
+                            ic_candidates.append(cand)
+        for ic_p in ic_candidates:
             if os.path.isfile(ic_p):
                 try:
                     info = inspect_ic_file(ic_p)
@@ -528,7 +547,9 @@ def show(
         lock_files = {}
 
     missing = model_has_missing_files(spec, data_dir=resolved_data)
-    total_files = len(spec.required_files) + (1 if spec.family == "arches" else 0)
+    total_files = len(spec.required_files) + (
+        1 if spec.family in ("arches", "md", "camulator", "sdyff") else 0
+    )
     cached_files = max(0, total_files - len(missing))
     total_bytes = sum(
         int((lock_files.get(rel) or {}).get("size") or 0) for rel in spec.required_files
@@ -756,7 +777,18 @@ def plan(
         "estimate_basis": est["estimate_basis"],
     }
 
-    emu_py = (os.environ.get("AIMIP_EMU_PYTHON") or "").strip() if model_spec.family != "fme" else None
+    emu_py = (
+        (
+            os.environ.get("AIMIP_CAMULATOR_PYTHON")
+            if model_spec.family == "camulator"
+            else (
+                os.environ.get("AIMIP_SDYFF_PYTHON")
+                if model_spec.family == "sdyff"
+                else os.environ.get("AIMIP_EMU_PYTHON")
+            )
+        )
+        or ""
+    ).strip() if model_spec.family != "fme" else None
     fme_overlay = (
         (os.environ.get("AIMIP_FME_2026_10_OVERLAY") or "").strip()
         if (model_spec.family == "fme" and model_spec.fme_version == "2026.10.0")
@@ -766,6 +798,41 @@ def plan(
         (os.environ.get("AIMIP_ARCHES_CODE") or "").strip()
         if model_spec.family == "arches"
         else None
+    )
+    samudra_source_override = (
+        (os.environ.get("AIMIP_SAMUDRA_SOURCE") or "").strip()
+        if model_spec.family == "samudra"
+        else None
+    )
+    md15_code_override = (
+        (os.environ.get("AIMIP_MD15_CODE") or "").strip()
+        if model_spec.family == "md"
+        else None
+    )
+    camulator_code_override = (
+        (os.environ.get("AIMIP_CAMULATOR_CODE") or "").strip()
+        if model_spec.family == "camulator"
+        else None
+    )
+    sdyff_code_override = (
+        (os.environ.get("AIMIP_SDYFF_CODE") or "").strip()
+        if model_spec.family == "sdyff"
+        else None
+    )
+    cbottle_sampling_meta = (
+        {"batch_size": 4, "cadence": "daily_synoptic", "date_order": "chronological"}
+        if model_spec.family == "cbottle"
+        else {}
+    )
+    sdyff_cycle_meta = (
+        {
+            "coarsen_factor": 4,
+            "calendar_note": (
+                "repeating single-year SST cycle; year numbers are nominal cycle indices, not historical calendar years"
+            ),
+        }
+        if model_spec.family == "sdyff"
+        else {}
     )
 
     runtime_identity: dict[str, Any] = {
@@ -779,6 +846,28 @@ def plan(
         "emu_python": emu_py or None,
         "fme_overlay": fme_overlay or None,
         "arches_code_override": arches_code_override or None,
+        **(
+            {"samudra_source_override": samudra_source_override}
+            if samudra_source_override
+            else {}
+        ),
+        **(
+            {"md15_code_override": md15_code_override}
+            if md15_code_override
+            else {}
+        ),
+        **(
+            {"camulator_code_override": camulator_code_override}
+            if camulator_code_override
+            else {}
+        ),
+        **(
+            {"sdyff_code_override": sdyff_code_override}
+            if sdyff_code_override
+            else {}
+        ),
+        **cbottle_sampling_meta,
+        **sdyff_cycle_meta,
     }
 
     fs_obj = validated.get("forcing_set")
@@ -832,6 +921,28 @@ def plan(
             "emu_python": runtime_identity["emu_python"],
             "fme_overlay": runtime_identity["fme_overlay"],
             "arches_code_override": runtime_identity["arches_code_override"],
+            **(
+                {"samudra_source_override": samudra_source_override}
+                if samudra_source_override
+                else {}
+            ),
+            **(
+                {"md15_code_override": md15_code_override}
+                if md15_code_override
+                else {}
+            ),
+            **(
+                {"camulator_code_override": camulator_code_override}
+                if camulator_code_override
+                else {}
+            ),
+            **(
+                {"sdyff_code_override": sdyff_code_override}
+                if sdyff_code_override
+                else {}
+            ),
+            **cbottle_sampling_meta,
+            **sdyff_cycle_meta,
         },
         "asset_locks": {
             f"{a.role}:{a.path}": a.sha256

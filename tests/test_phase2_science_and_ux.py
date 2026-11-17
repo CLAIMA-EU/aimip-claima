@@ -49,7 +49,7 @@ def test_import_aimip_families_first_in_isolated_subprocess() -> None:
             (
                 f"import sys; sys.path.insert(0, {src_root!r}); "
                 "import aimip.families as fam; "
-                "assert {'fme', 'e2s-dlesym', 'arches'} <= set(fam.INSTALLED_ADAPTERS)"
+                "assert {'fme', 'e2s-dlesym', 'arches', 'samudra', 'md', 'camulator', 'cbottle', 'sdyff'} <= set(fam.INSTALLED_ADAPTERS)"
             ),
         ],
         capture_output=True,
@@ -181,6 +181,11 @@ def test_all_14_canonical_models_plan_through_services_and_check_ic_and_arches_c
         "dlesym-v1.1": {"start": "1995-01-01", "steps": 4, "members": 2},
         "dlesym-v0-isccp": {"start": "1995-01-01", "steps": 4},
         "archesclimate-ssp": {"start": "2015-01-01", "length": "1y", "forcing_set": "ssp585"},
+        "samudra-om4": {"start": "2014-10-10T12:00:00", "steps": 14},
+        "md-1.5": {"start": "1978-10-01T00:00:00", "steps": 12, "members": 2, "seed": 0},
+        "camulator": {"start": "1981-01-01T00:00:00", "length": "1y"},
+        "cbottle-3d": {"start": "1995-01-01T00:00:00", "length": "2m", "seed": 42},
+        "spherical-dyffusion": {"start": "2021-01-01T00:00:00", "steps": 240, "seed": 0},
     }
     assert set(valid_requests) == set(CANONICAL_MODELS)
 
@@ -191,6 +196,11 @@ def test_all_14_canonical_models_plan_through_services_and_check_ic_and_arches_c
         if mname == "archesclimate-ssp":
             assert "outputs 2015-03 .. 2016-02" in card_txt
             assert "monthly means" in card_txt
+            show_txt = services.render_show_card(services.show(mname))
+            assert "1mo step" in show_txt and "730h step" not in show_txt
+        elif mname == "md-1.5":
+            assert "outputs 1978-10 .. 1979-09" in card_txt
+            assert "single monthly states" in card_txt and "730h" not in card_txt
             show_txt = services.render_show_card(services.show(mname))
             assert "1mo step" in show_txt and "730h step" not in show_txt
         elif resolved.family == "fme":
@@ -242,6 +252,10 @@ def test_cite_references_verified_and_unconfirmed_uses_upstream_url(
     dlesym_cite = services.cite("dlesym-v1.0")
     assert "10.1029/2025AV001706" in dlesym_cite["bibtex"]
     assert "AGU Advances" in dlesym_cite["bibtex"]
+
+    md_cite = services.cite("md-1.5")
+    assert "2604.13481" in md_cite["bibtex"]
+    assert "Hall, Kyle J. C." in md_cite["bibtex"] and "Molina, Maria J." in md_cite["bibtex"]
 
     arches_cite = services.cite("archesclimate-ssp")
     assert arches_cite["entries"] == []

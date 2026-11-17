@@ -443,7 +443,9 @@
       tr.appendChild(tdFam);
 
       const tdStep = document.createElement("td");
-      const stepLabel = m.family === "arches" ? "1mo" : (m.timestep_hours ? m.timestep_hours + "h" : "");
+      const stepLabel = (m.family === "arches" || m.family === "md")
+        ? "1mo"
+        : (m.family === "cbottle" ? "gen" : (m.timestep_hours ? m.timestep_hours + "h" : ""));
       tdStep.textContent = stepLabel + " / " + (m.calendar || "");
       tr.appendChild(tdStep);
 
@@ -486,7 +488,9 @@
       body.textContent = "";
 
       const missingCnt = Array.isArray(card.missing_files) ? card.missing_files.length : (card.missing_files || 0);
-      const cardStep = card.family === "arches" ? "1mo" : ((card.timestep_hours || "") + "h");
+      const cardStep = (card.family === "arches" || card.family === "md")
+        ? "1mo"
+        : (card.family === "cbottle" ? "gen (1d synoptic)" : ((card.timestep_hours || "") + "h"));
       const statusDetail =
         (card.status || "") +
         (card.verified_on ? " (" + card.verified_on + ")" : "") +

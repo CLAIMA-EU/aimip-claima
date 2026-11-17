@@ -106,11 +106,11 @@ _aimip_completions() {{
             return 0
             ;;
         --task)
-            COMPREPLY=( $(compgen -W "amip slab-ocean coupled scenario" -- "${{cur}}") )
+            COMPREPLY=( $(compgen -W "amip slab-ocean coupled scenario ocean" -- "${{cur}}") )
             return 0
             ;;
         --family)
-            COMPREPLY=( $(compgen -W "fme e2s-dlesym arches emu" -- "${{cur}}") )
+            COMPREPLY=( $(compgen -W "fme e2s-dlesym arches samudra md camulator cbottle sdyff emu" -- "${{cur}}") )
             return 0
             ;;
         --status)
@@ -259,11 +259,11 @@ _aimip() {{
             return
             ;;
         --task)
-            compadd amip slab-ocean coupled scenario
+            compadd amip slab-ocean coupled scenario ocean
             return
             ;;
         --family)
-            compadd fme e2s-dlesym arches emu
+            compadd fme e2s-dlesym arches samudra md camulator cbottle sdyff emu
             return
             ;;
         --status)

@@ -126,6 +126,39 @@ def fingerprint(files: list[Path]) -> str:
 
 
 def _planned_outputs(model_spec: Any, *, monthly: bool, prediction: bool) -> dict[str, Any]:
+    if model_spec.family == "samudra":
+        return {
+            "monthly": True,
+            "prediction": False,
+            "files": [
+                "ocean/monthly_mean_predictions.nc",
+                "ocean/monthly_thetao.nc",
+            ],
+        }
+    if model_spec.family == "camulator":
+        return {
+            "monthly": True,
+            "prediction": False,
+            "files": [
+                "monthly_mean_predictions.nc",
+                "monthly_levels.nc",
+            ],
+        }
+    if model_spec.family == "md":
+        return {
+            "monthly": True,
+            "prediction": False,
+            "files": [
+                "monthly_mean_predictions.nc",
+                "restart.nc",
+            ],
+        }
+    if model_spec.family in ("cbottle", "sdyff"):
+        return {
+            "monthly": True,
+            "prediction": False,
+            "files": ["monthly_mean_predictions.nc"],
+        }
     if model_spec.family in ("e2s-dlesym", "arches"):
         return {
             "monthly": True,
@@ -190,6 +223,39 @@ def _build_run_detail(resolved: ResolvedPlan) -> dict[str, Any]:
 def _manifest_outputs(manifest: dict[str, Any]) -> dict[str, Any]:
     import yaml
 
+    if manifest.get("family") == "samudra":
+        return {
+            "monthly": True,
+            "prediction": False,
+            "files": [
+                "ocean/monthly_mean_predictions.nc",
+                "ocean/monthly_thetao.nc",
+            ],
+        }
+    if manifest.get("family") == "camulator":
+        return {
+            "monthly": True,
+            "prediction": False,
+            "files": [
+                "monthly_mean_predictions.nc",
+                "monthly_levels.nc",
+            ],
+        }
+    if manifest.get("family") == "md":
+        return {
+            "monthly": True,
+            "prediction": False,
+            "files": [
+                "monthly_mean_predictions.nc",
+                "restart.nc",
+            ],
+        }
+    if manifest.get("family") in ("cbottle", "sdyff"):
+        return {
+            "monthly": True,
+            "prediction": False,
+            "files": ["monthly_mean_predictions.nc"],
+        }
     if manifest.get("family") in ("e2s-dlesym", "arches"):
         return {
             "monthly": True,
@@ -265,14 +331,21 @@ class AgentTools:
         from ..ic import list_model_ics, list_model_ocean_ics
         from ..registry import get_model, get_model_ic_provenance
 
-        if model in EMU_MODELS:
+        if model in EMU_MODELS and model != "md-1.5":
+            if model == "archesclimate-ssp":
+                ic_origin = "the scenario's 2015 state."
+            elif model == "samudra-om4":
+                ic_origin = "the OM4 ocean window at --start (staged from OSN)."
+            elif model == "camulator":
+                ic_origin = "its 69 published .pth initial-condition tensors (1980-01-01, Jan 1 & Jul 1 of 1981-2014)."
+            elif model == "cbottle-3d":
+                ic_origin = "conditional draws without an initial state (conditioned on date/time and monthly SST)."
+            elif model == "spherical-dyffusion":
+                ic_origin = "its 365-day FV3GFS reference cycle (Zenodo 10791087)."
+            else:
+                ic_origin = "ERA5 at --start."
             raise ValueError(
-                f"`list_ics` applies to fme models only; {model} starts from "
-                + (
-                    "the scenario's 2015 state."
-                    if model == "archesclimate-ssp"
-                    else "ERA5 at --start."
-                )
+                f"`list_ics` applies to fme models only (plus md-1.5 NetCDF ICs); {model} starts from {ic_origin}"
             )
         try:
             spec = get_model(model)

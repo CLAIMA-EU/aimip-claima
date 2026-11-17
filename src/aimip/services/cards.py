@@ -239,7 +239,12 @@ def render_plan_card(plan: ResolvedPlan, *, is_tty: bool = False) -> str:
         inputs_line = f"{n_cached} cached, 0 to fetch (0 B)"
     else:
         if all(a.prospective for a in plan.missing_assets):
-            src_hint = "ARCO-ERA5" if plan.family == "e2s-dlesym" else "staging source"
+            if plan.family == "e2s-dlesym":
+                src_hint = "ARCO-ERA5"
+            elif plan.family == "samudra":
+                src_hint = "OSN (m2lines-pubs/Samudra)"
+            else:
+                src_hint = "staging source"
         else:
             src_hint = "Hugging Face / Zenodo"
         inputs_line = (
@@ -270,6 +275,26 @@ def render_plan_card(plan: ResolvedPlan, *, is_tty: bool = False) -> str:
             f"start={plan.start_time[:10]}, calendar={plan.calendar})"
         )
         ic_line = "2015-02 IPSL scenario state (previous 2015-01)"
+    elif plan.family == "md":
+        period_line = (
+            f"outputs {plan.start_time[:7]} .. {plan.end_time[:7]}  "
+            f"({plan.steps} monthly steps / single monthly states, calendar={plan.calendar})"
+        )
+        ic_line = f"{plan.ic_source or 'user --ic NetCDF'} @ {plan.start_time[:10]}"
+        if not plan.ic_checked:
+            ic_line += " (not staged yet; pass --ic <path.nc> or stage before prepare)"
+    elif plan.family == "cbottle":
+        period_line = (
+            f"{plan.start_time} -> {plan.end_time}  "
+            f"({plan.steps} daily synoptic draws, batch_size=4, calendar={plan.calendar})"
+        )
+        ic_line = "none (conditional state generator without state memory)"
+    elif plan.family == "sdyff":
+        period_line = (
+            f"repeating cycle from {plan.start_time[:10]}  "
+            f"({plan.steps} steps, dt=6h, coarsen_factor=4 -> nominal cycle months 0001-.., calendar={plan.calendar})"
+        )
+        ic_line = f"{plan.ic_source or 'FV3GFS 2021 reference cycle'} @ {plan.start_time}"
     else:
         period_line = (
             f"{plan.start_time} -> {plan.end_time}  "
@@ -336,7 +361,12 @@ def render_show_card(card: dict[str, Any], *, include_examples: bool = False) ->
         f"{fs['name']} ({fs['window'][0][:10]}..{fs['window'][1][:10]})"
         for fs in card.get("forcing_sets", [])
     )
-    step_label = "1mo step" if card.get("family") == "arches" else f"{card['timestep_hours']}h step"
+    if card.get("family") in ("arches", "md"):
+        step_label = "1mo step"
+    elif card.get("family") == "cbottle":
+        step_label = "conditional generator (1d synoptic draws, no time step)"
+    else:
+        step_label = f"{card['timestep_hours']}h step"
     ver_note = f", verified on {card['verified_on']}" if card.get("verified_on") else ""
     lines = [
         f"{card['name']} — {card['title']}",

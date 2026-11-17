@@ -68,11 +68,16 @@ CANONICAL_MODELS: tuple[str, ...] = (
     "hiro-acev2",
     "samudrace-cm4",
     "samudrace-e3smv3",
-    # Emulator environment models (Earth2Studio DLESyM, ArchesClimate-SSP)
+    # Emulator environment models (Earth2Studio DLESyM, ArchesClimate-SSP, Samudra-OM4, MD-1.5, CAMulator, cBottle-3d, Spherical DYffusion)
     "dlesym-v1.0",
     "dlesym-v1.1",
     "dlesym-v0-isccp",
     "archesclimate-ssp",
+    "samudra-om4",
+    "md-1.5",
+    "camulator",
+    "cbottle-3d",
+    "spherical-dyffusion",
 )
 
 # Default pinned Hugging Face commit revisions (overrideable per file in `aimip.lock`).
@@ -86,6 +91,8 @@ HF_REVISIONS: dict[str, str] = {
     "allenai/HiRO-ACEv2": "16bd51b8da79d85c138cc166c93196501616c3bf",
     "allenai/SamudrACE-CM4-piControl": "48567c80676de7db51d270c8c0c5dd61f08c9f39",
     "allenai/SamudrACE-E3SMv3": "b9abeb489154a9f7a4f776180122d64fdcf66cb5",
+    "nvidia/cbottle": "e60ce82b236b953d79d3ead7f43445a3bb8e37d3",
+    "salv47/spherical-dyffusion": "56fcb5d995717e91ba770f5ee41e8c3a8cfb00f6",
 }
 
 ZENODO_AIMIP_RECORD = "17065758"
@@ -152,7 +159,7 @@ class ArtifactSpec:
     role: str  # "output" | "raw"
     models_output: tuple[str, ...]
     models_needed: tuple[str, ...]
-    source_kind: str  # "hf" | "zenodo" | "derived"
+    source_kind: str  # "hf" | "zenodo" | "url" | "github_archive" | "derived"
     hf_repo: str | None = None
     hf_path: str | None = None
     hf_revision: str | None = None
@@ -160,6 +167,8 @@ class ArtifactSpec:
     zenodo_record: str | None = None
     zenodo_file: str | None = None
     zenodo_url: str | None = None
+    url: str | None = None
+    archive_sha256: str | None = None
     builder: str | None = None
     input_refs: tuple[str, ...] = ()
     pin_after_first_fetch: bool = False
@@ -188,6 +197,20 @@ class ArtifactSpec:
                 "file": self.zenodo_file,
                 "url": self.zenodo_url,
                 "md5": zenodo_md5,
+            }
+        if self.source_kind == "url":
+            return {
+                "kind": "url",
+                "url": self.url,
+            }
+        if self.source_kind == "github_archive":
+            return {
+                "kind": "github_archive",
+                "repo": self.hf_repo,
+                "path": self.hf_path,
+                "revision": self.hf_revision or REVISION_TBD,
+                "url": self.url,
+                "archive_sha256": self.archive_sha256 or SHA256_TBD,
             }
         if self.source_kind == "derived":
             shas = known_shas or {}
@@ -464,8 +487,8 @@ def build_artifact_catalog(
         ArtifactSpec(
             rel_path=ZENODO_AIMIP_REL_PATH,
             role="raw",
-            models_output=(),
-            models_needed=oos_models,
+            models_output=("md-1.5",),
+            models_needed=(*oos_models, "md-1.5"),
             source_kind="zenodo",
             zenodo_record=ZENODO_AIMIP_RECORD,
             zenodo_file=ZENODO_AIMIP_FILENAME,
@@ -767,23 +790,52 @@ def build_artifact_catalog(
             )
         )
 
-    # 9. DLESyM (v1.0, v1.1, v0-ISCCP) and ArchesClimate-SSP: pinned HF files (`emu_sources.json`)
+    # 9. Emulator families: pinned HF, Zenodo, and GitHub-archive files (`emu_sources.json`)
     from .emu_catalog import artifacts as _emu_artifacts
 
     for a in _emu_artifacts():
-        _add(
-            ArtifactSpec(
-                rel_path=a["rel_path"],
-                role="output",
-                models_output=tuple(a["models"]),
-                models_needed=tuple(a["models"]),
-                source_kind="hf",
-                hf_repo=a["repo"],
-                hf_path=a["path"],
-                hf_revision=a["revision"],
-                hf_repo_type=a["repo_type"],
+        if a.get("source_kind") == "zenodo":
+            _add(
+                ArtifactSpec(
+                    rel_path=a["rel_path"],
+                    role="output",
+                    models_output=tuple(a["models"]),
+                    models_needed=tuple(a["models"]),
+                    source_kind="zenodo",
+                    zenodo_record=a["record"],
+                    zenodo_file=a["path"],
+                    zenodo_url=a["url"],
+                )
             )
-        )
+        elif a.get("source_kind") == "github_archive":
+            _add(
+                ArtifactSpec(
+                    rel_path=a["rel_path"],
+                    role="output",
+                    models_output=tuple(a["models"]),
+                    models_needed=tuple(a["models"]),
+                    source_kind="github_archive",
+                    hf_repo=a["repo"],
+                    hf_path=a["path"],
+                    hf_revision=a["revision"],
+                    url=a["archive_url"],
+                    archive_sha256=a["archive_sha256"],
+                )
+            )
+        else:
+            _add(
+                ArtifactSpec(
+                    rel_path=a["rel_path"],
+                    role="output",
+                    models_output=tuple(a["models"]),
+                    models_needed=tuple(a["models"]),
+                    source_kind="hf",
+                    hf_repo=a["repo"],
+                    hf_path=a["path"],
+                    hf_revision=a["revision"],
+                    hf_repo_type=a["repo_type"],
+                )
+            )
 
     return {spec.rel_path: spec for spec in items}
 
@@ -1479,6 +1531,450 @@ def ensure_arches_code(
                 pass
 
 
+def download_url_artifact(
+    *,
+    url: str,
+    dst_path: str,
+    expected_size: int | None = None,
+    timeout_seconds: float = 120.0,
+) -> str:
+    """Download a pinned HTTPS / `file://` asset (or from `$AIMIP_URL_MIRROR`) with HTTP `Range` resume."""
+    validated_dst = validate_safe_path(dst_path, label="URL artifact target")
+    fname = os.path.basename(validated_dst)
+
+    mirror_root = _parse_mirror_uri(os.environ.get("AIMIP_URL_MIRROR"))
+    if mirror_root is not None:
+        cand = os.path.join(mirror_root, fname)
+        if os.path.isfile(cand):
+            _atomic_stage_file(cand, validated_dst)
+            return validated_dst
+        raise ValidationError(f"URL mirror {mirror_root} does not contain {fname}.")
+
+    if url.startswith("file://"):
+        local_src = validate_safe_path(url[len("file://") :], label="file:// asset URL")
+        if not os.path.isfile(local_src):
+            raise ValidationError(f"Local asset source not found: {local_src}")
+        _atomic_stage_file(local_src, validated_dst)
+        return validated_dst
+
+    parent = os.path.dirname(validated_dst) or "/"
+    os.makedirs(parent, exist_ok=True)
+    part_path = f"{validated_dst}.part"
+    offset = os.path.getsize(part_path) if os.path.isfile(part_path) else 0
+    if expected_size is not None and offset > expected_size:
+        offset = 0
+
+    headers: dict[str, str] = {"User-Agent": f"aimip-setup/{__version__}"}
+    if offset > 0:
+        headers["Range"] = f"bytes={offset}-"
+
+    req = urllib.request.Request(url, headers=headers)  # noqa: S310 - pinned HTTPS release URL
+    try:
+        with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:  # noqa: S310
+            status = getattr(resp, "status", 200)
+            mode = "ab" if (offset > 0 and status == 206) else "wb"
+            with open(part_path, mode) as out_fh:
+                while True:
+                    chunk = resp.read(8 * 1024 * 1024)
+                    if not chunk:
+                        break
+                    out_fh.write(chunk)
+    except urllib.error.HTTPError as exc:
+        if exc.code == 416 and os.path.isfile(part_path):
+            pass
+        else:
+            raise ConfigError(f"Failed to download {fname} from {url}: HTTP {exc.code}") from exc
+    except OSError as exc:
+        raise ConfigError(f"Failed to download {fname} from {url}: {exc}") from exc
+
+    if expected_size is not None:
+        got_size = os.path.getsize(part_path)
+        if got_size != expected_size:
+            raise ValidationError(
+                f"Download {fname} size mismatch: expected {expected_size}, got {got_size}."
+            )
+    strip_group_other_write(part_path)
+    os.replace(part_path, validated_dst)
+    return validated_dst
+
+
+def ensure_md15_code_and_weights(
+    dest_dir: str,
+    *,
+    archive_url: str | None = None,
+    expected_archive_sha256: str | None = None,
+    expected_archive_size: int | None = None,
+    expected_tree_sha256: str | None = None,
+    expected_tree_files: int | None = None,
+    timeout_seconds: float = 120.0,
+    progress_stream: Any = None,
+) -> dict[str, Any]:
+    """Ensure `<dest_dir>/code/monthly-diffusion` and `<dest_dir>/models/md-1.5/` match pinned SHA-256 digests."""
+    from . import md15 as _md15_mod
+
+    eff_ar_sha = (
+        _md15_mod.MD15_GITHUB_ARCHIVE_SHA256
+        if expected_archive_sha256 is None
+        else expected_archive_sha256
+    )
+    eff_ar_size = (
+        _md15_mod.MD15_GITHUB_ARCHIVE_SIZE
+        if expected_archive_size is None
+        else int(expected_archive_size)
+    )
+
+    validated_dest = validate_safe_path(dest_dir, label="setup destination dir")
+    code_target = validate_safe_path(
+        os.path.join(validated_dest, _md15_mod.MD15_CODE_REL_DIR),
+        label="MD-1.5 code directory",
+    )
+    model_target = validate_safe_path(
+        os.path.join(validated_dest, "models", "md-1.5"),
+        label="MD-1.5 model directory",
+    )
+
+    three_files_ok = all(
+        os.path.isfile(os.path.join(validated_dest, rel_p))
+        and not os.path.islink(os.path.join(validated_dest, rel_p))
+        and sha256_file(os.path.join(validated_dest, rel_p)).lower() == want_s.lower()
+        for rel_p, want_s in (
+            (_md15_mod.MD15_CONFIG_REL_PATH, _md15_mod.MD15_CONFIG_SHA256),
+            (_md15_mod.MD15_WEIGHTS_REL_PATH, _md15_mod.MD15_WEIGHTS_SHA256),
+            (_md15_mod.MD15_STATS_REL_PATH, _md15_mod.MD15_STATS_SHA256),
+        )
+    )
+    override_md15 = os.environ.get("AIMIP_MD15_CODE")
+    if override_md15 and three_files_ok:
+        safe_ovr = validate_safe_path(override_md15, label="AIMIP_MD15_CODE")
+        if not os.path.isdir(safe_ovr) or os.path.islink(safe_ovr):
+            raise ValidationError(f"AIMIP_MD15_CODE is missing or symlinked: {safe_ovr}")
+        return {"code_dir": safe_ovr, "downloaded": False, "override": True}
+    if three_files_ok and os.path.isdir(code_target) and not os.path.islink(code_target):
+        try:
+            info = _md15_mod.verify_md15_code_dir(
+                validated_dest,
+                expected_tree_sha256=expected_tree_sha256,
+                expected_tree_files=expected_tree_files,
+            )
+            info["downloaded"] = False
+            return info
+        except ValidationError:
+            pass
+
+    eff_url = (
+        archive_url
+        or os.environ.get("AIMIP_MD15_ARCHIVE_URL")
+        or _md15_mod.MD15_GITHUB_ARCHIVE_URL
+    )
+    if progress_stream is not None:
+        print(
+            f"  [code+weights] {_md15_mod.MD15_CODE_REL_DIR} (~{_format_bytes(eff_ar_size)}) <- {eff_url}",
+            file=progress_stream,
+            flush=True,
+        )
+
+    code_parent = os.path.dirname(code_target) or "/"
+    os.makedirs(code_parent, exist_ok=True)
+    tmp_archive = os.path.join(
+        code_parent, f".md15_{_md15_mod.MD15_COMMIT[:12]}_{uuid.uuid4().hex}.tar.gz"
+    )
+    try:
+        download_url_artifact(
+            url=eff_url,
+            dst_path=tmp_archive,
+            expected_size=eff_ar_size,
+            timeout_seconds=timeout_seconds,
+        )
+        res = _md15_mod.extract_and_verify_md15_archive(
+            tmp_archive,
+            code_target,
+            model_target_dir=model_target,
+            expected_archive_sha256=eff_ar_sha,
+            expected_archive_size=eff_ar_size,
+            expected_tree_sha256=expected_tree_sha256,
+            expected_tree_files=expected_tree_files,
+        )
+        res["downloaded"] = True
+        return res
+    finally:
+        if os.path.exists(tmp_archive):
+            try:
+                os.unlink(tmp_archive)
+            except OSError:
+                pass
+
+
+def ensure_camulator_code(
+    dest_dir: str,
+    *,
+    archive_url: str | None = None,
+    expected_archive_sha256: str | None = None,
+    expected_archive_size: int | None = None,
+    expected_tree_sha256: str | None = None,
+    expected_tree_files: int | None = None,
+    timeout_seconds: float = 120.0,
+    progress_stream: Any = None,
+) -> dict[str, Any]:
+    """Ensure `<dest_dir>/code/miles-credit-camulator` matches the pinned 380-file Apache-2.0 tree."""
+    from . import camulator as _camulator_mod
+
+    override = os.environ.get("AIMIP_CAMULATOR_CODE")
+    if override:
+        safe_ovr = validate_safe_path(override, label="AIMIP_CAMULATOR_CODE")
+        if not os.path.isdir(safe_ovr) or os.path.islink(safe_ovr):
+            raise ValidationError(f"AIMIP_CAMULATOR_CODE is missing or symlinked: {safe_ovr}")
+        return {"code_dir": safe_ovr, "downloaded": False, "override": True}
+
+    eff_ar_sha = (
+        _camulator_mod.CAMULATOR_GITHUB_ARCHIVE_SHA256
+        if expected_archive_sha256 is None
+        else expected_archive_sha256
+    )
+    eff_ar_size = (
+        _camulator_mod.CAMULATOR_GITHUB_ARCHIVE_SIZE
+        if expected_archive_size is None
+        else int(expected_archive_size)
+    )
+
+    validated_dest = validate_safe_path(dest_dir, label="setup destination dir")
+    code_target = validate_safe_path(
+        os.path.join(validated_dest, _camulator_mod.CAMULATOR_CODE_REL_DIR),
+        label="CAMulator code directory",
+    )
+    if os.path.isdir(code_target) and not os.path.islink(code_target):
+        try:
+            info = _camulator_mod.verify_camulator_code_dir(
+                validated_dest,
+                expected_tree_sha256=expected_tree_sha256,
+                expected_tree_files=expected_tree_files,
+            )
+            info["downloaded"] = False
+            return info
+        except ValidationError:
+            pass
+
+    eff_url = (
+        archive_url
+        or os.environ.get("AIMIP_CAMULATOR_ARCHIVE_URL")
+        or _camulator_mod.CAMULATOR_GITHUB_ARCHIVE_URL
+    )
+    if progress_stream is not None:
+        print(
+            f"  [code] {_camulator_mod.CAMULATOR_CODE_REL_DIR} (~{_format_bytes(eff_ar_size)}) <- {eff_url}",
+            file=progress_stream,
+            flush=True,
+        )
+
+    code_parent = os.path.dirname(code_target) or "/"
+    os.makedirs(code_parent, exist_ok=True)
+    tmp_archive = os.path.join(
+        code_parent,
+        f".camulator_{_camulator_mod.CAMULATOR_CODE_COMMIT[:12]}_{uuid.uuid4().hex}.tar.gz",
+    )
+    try:
+        download_url_artifact(
+            url=eff_url,
+            dst_path=tmp_archive,
+            expected_size=eff_ar_size,
+            timeout_seconds=timeout_seconds,
+        )
+        res = _camulator_mod.extract_and_verify_camulator_archive(
+            tmp_archive,
+            code_target,
+            expected_archive_sha256=eff_ar_sha,
+            expected_archive_size=eff_ar_size,
+            expected_tree_sha256=expected_tree_sha256,
+            expected_tree_files=expected_tree_files,
+        )
+        res["downloaded"] = True
+        return res
+    finally:
+        if os.path.exists(tmp_archive):
+            try:
+                os.unlink(tmp_archive)
+            except OSError:
+                pass
+
+
+def ensure_sdyff_code(
+    dest_dir: str,
+    *,
+    archive_url: str | None = None,
+    expected_archive_sha256: str | None = None,
+    expected_archive_size: int | None = None,
+    expected_tree_sha256: str | None = None,
+    expected_tree_files: int | None = None,
+    timeout_seconds: float = 120.0,
+    progress_stream: Any = None,
+) -> dict[str, Any]:
+    """Ensure `<dest_dir>/code/spherical-dyffusion` matches the pinned 190-file Apache-2.0 tree."""
+    from . import sdyff as _sdyff_mod
+
+    override = os.environ.get("AIMIP_SDYFF_CODE")
+    if override:
+        safe_ovr = validate_safe_path(override, label="AIMIP_SDYFF_CODE")
+        if not os.path.isdir(safe_ovr) or os.path.islink(safe_ovr):
+            raise ValidationError(f"AIMIP_SDYFF_CODE is missing or symlinked: {safe_ovr}")
+        return {"code_dir": safe_ovr, "downloaded": False, "override": True}
+
+    eff_ar_sha = (
+        _sdyff_mod.SDYFF_GITHUB_ARCHIVE_SHA256
+        if expected_archive_sha256 is None
+        else expected_archive_sha256
+    )
+    eff_ar_size = (
+        _sdyff_mod.SDYFF_GITHUB_ARCHIVE_SIZE
+        if expected_archive_size is None
+        else int(expected_archive_size)
+    )
+
+    validated_dest = validate_safe_path(dest_dir, label="setup destination dir")
+    code_target = validate_safe_path(
+        os.path.join(validated_dest, _sdyff_mod.SDYFF_CODE_REL_DIR),
+        label="Spherical DYffusion code directory",
+    )
+    if os.path.isdir(code_target) and not os.path.islink(code_target):
+        try:
+            info = _sdyff_mod.verify_sdyff_code_dir(
+                validated_dest,
+                expected_tree_sha256=expected_tree_sha256,
+                expected_tree_files=expected_tree_files,
+            )
+            info["downloaded"] = False
+            return info
+        except ValidationError:
+            pass
+
+    eff_url = (
+        archive_url
+        or os.environ.get("AIMIP_SDYFF_ARCHIVE_URL")
+        or _sdyff_mod.SDYFF_GITHUB_ARCHIVE_URL
+    )
+    if progress_stream is not None:
+        print(
+            f"  [code] {_sdyff_mod.SDYFF_CODE_REL_DIR} (~{_format_bytes(eff_ar_size)}) <- {eff_url}",
+            file=progress_stream,
+            flush=True,
+        )
+
+    code_parent = os.path.dirname(code_target) or "/"
+    os.makedirs(code_parent, exist_ok=True)
+    tmp_archive = os.path.join(
+        code_parent,
+        f".sdyff_{_sdyff_mod.SDYFF_CODE_COMMIT[:12]}_{uuid.uuid4().hex}.tar.gz",
+    )
+    try:
+        download_url_artifact(
+            url=eff_url,
+            dst_path=tmp_archive,
+            expected_size=eff_ar_size,
+            timeout_seconds=timeout_seconds,
+        )
+        res = _sdyff_mod.extract_and_verify_sdyff_archive(
+            tmp_archive,
+            code_target,
+            expected_archive_sha256=eff_ar_sha,
+            expected_archive_size=eff_ar_size,
+            expected_tree_sha256=expected_tree_sha256,
+            expected_tree_files=expected_tree_files,
+        )
+        res["downloaded"] = True
+        return res
+    finally:
+        if os.path.exists(tmp_archive):
+            try:
+                os.unlink(tmp_archive)
+            except OSError:
+                pass
+
+
+def ensure_camulator_selected_assets(
+    dest_dir: str,
+    *,
+    start_iso: str,
+    scenario: str,
+    auto_fetch: bool = True,
+    lock_path: str | None = None,
+    hf_downloader: Callable[..., str] | None = None,
+    progress_stream: Any = None,
+) -> dict[str, dict[str, Any]]:
+    """Ensure the requested CAMulator IC `.pth` and forcing `.nc` are staged & lock-verified under *dest_dir*.
+
+    Default `aimip fetch -m camulator` downloads only the 11 core/default files (~6.3 GB).
+    Any of the 67 other published start-date ICs or the 10.46 GB `camulator-branch-1980-2014`
+    forcing is fetched on demand here and verified against `aimip.lock`.
+    """
+    from .camulator import (
+        CAMULATOR_HF_REPO,
+        CAMULATOR_HF_REVISION,
+        camulator_forcing_rel_path,
+        camulator_ic_rel_path,
+    )
+
+    validated_dest = validate_safe_path(dest_dir, label="CAMulator data root")
+    resolved_lock = resolve_lock_path(lock_path, dest_dir=validated_dest, must_exist=True)
+    lock_payload = load_lock_file(resolved_lock)
+    lock_files = lock_payload["files"]
+
+    ic_rel = camulator_ic_rel_path(start_iso)
+    forcing_rel = camulator_forcing_rel_path(scenario)
+    hf_dl = hf_downloader or download_hf_artifact
+
+    out: dict[str, dict[str, Any]] = {}
+    for key, rel_path in (("ic", ic_rel), ("forcing", forcing_rel)):
+        lock_entry = lock_files.get(rel_path)
+        if not isinstance(lock_entry, Mapping):
+            raise ValidationError(
+                f"CAMulator asset {rel_path} is missing from lock file {resolved_lock}."
+            )
+        if _file_matches_lock_quiet(validated_dest, rel_path, lock_entry):
+            out[key] = verify_file_against_lock(
+                validated_dest, rel_path, lock_entry, role="output"
+            )
+            continue
+
+        if not auto_fetch:
+            raise ConfigError(
+                f"CAMulator on-demand asset {rel_path} is not yet staged under {validated_dest}; "
+                "re-run without `--no-auto-fetch` so aimip can download and lock-verify it."
+            )
+
+        with _exclusive_fetch_lock(validated_dest, progress_stream=progress_stream):
+            if _file_matches_lock_quiet(validated_dest, rel_path, lock_entry):
+                out[key] = verify_file_against_lock(
+                    validated_dest, rel_path, lock_entry, role="output"
+                )
+                continue
+            src_meta = lock_entry.get("source", {})
+            repo = str(src_meta.get("repo") or CAMULATOR_HF_REPO)
+            path_in_repo = str(src_meta.get("path") or rel_path.split("/", 2)[-1])
+            rev = str(src_meta.get("revision") or CAMULATOR_HF_REVISION)
+            exp_sz = lock_entry.get("size") if isinstance(lock_entry.get("size"), int) else None
+            if progress_stream is not None:
+                print(
+                    f"  [on-demand] {rel_path} ({_format_bytes(exp_sz)}) <- {repo}/{path_in_repo}",
+                    file=progress_stream,
+                    flush=True,
+                )
+            hf_home = validate_safe_path(
+                os.environ.get("HF_HOME") or os.path.join(validated_dest, ".hf"),
+                label="HF_HOME",
+            )
+            os.environ.setdefault("HF_HOME", hf_home)
+            dst_abs = os.path.join(validated_dest, rel_path)
+            hf_dl(
+                repo=repo,
+                path_in_repo=path_in_repo,
+                revision=rev,
+                dst_path=dst_abs,
+                hf_home=hf_home,
+            )
+            out[key] = verify_file_against_lock(
+                validated_dest, rel_path, lock_entry, role="output"
+            )
+    return out
+
+
 def verify_tree_against_lock(
     dest_dir: str,
     lock_payload: Mapping[str, Any],
@@ -1988,6 +2484,9 @@ def run_setup(
     hf_downloader: Callable[..., str] | None = None,
     zenodo_downloader: Callable[..., str] | None = None,
     arches_code_fetcher: Callable[..., dict[str, Any]] | None = None,
+    md15_code_fetcher: Callable[..., dict[str, Any]] | None = None,
+    camulator_code_fetcher: Callable[..., dict[str, Any]] | None = None,
+    sdyff_code_fetcher: Callable[..., dict[str, Any]] | None = None,
     co2_year_reader: Callable[[int], Any] | None = None,
     progress_stream: Any = None,
 ) -> dict[str, Any]:
@@ -2056,6 +2555,30 @@ def run_setup(
         )
         if "archesclimate-ssp" in selected and arches_code_fetcher is None:
             verify_arches_code_dir(resolved_dest)
+        if (
+            "md-1.5" in selected
+            and md15_code_fetcher is None
+            and not os.environ.get("AIMIP_MD15_CODE")
+        ):
+            from .md15 import verify_md15_code_dir
+
+            verify_md15_code_dir(resolved_dest)
+        if (
+            "camulator" in selected
+            and camulator_code_fetcher is None
+            and not os.environ.get("AIMIP_CAMULATOR_CODE")
+        ):
+            from .camulator import verify_camulator_code_dir
+
+            verify_camulator_code_dir(resolved_dest)
+        if (
+            "spherical-dyffusion" in selected
+            and sdyff_code_fetcher is None
+            and not os.environ.get("AIMIP_SDYFF_CODE")
+        ):
+            from .sdyff import verify_sdyff_code_dir
+
+            verify_sdyff_code_dir(resolved_dest)
         return {
             "mode": "verify-only",
             "dest_dir": resolved_dest,
@@ -2117,11 +2640,24 @@ def run_setup(
         else:
             pending_total_count = 0
 
-        # Step 1: Fetch and verify all direct HF & Zenodo inputs needed for `selected`
+        md15_code_info: dict[str, Any] | None = None
+        md15_code_err: str | None = None
+        if "md-1.5" in wanted:
+            md15_fn = md15_code_fetcher or ensure_md15_code_and_weights
+            try:
+                md15_code_info = md15_fn(resolved_dest, progress_stream=progress_stream)
+            except (ValidationError, ConfigError) as exc:
+                if only_download:
+                    if os.path.isfile(os.path.join(resolved_dest, "registry.json")):
+                        _write_data_registry(resolved_dest, (), failed_models=("md-1.5",))
+                    raise
+                md15_code_err = str(exc)
+
+        # Step 1: Fetch and verify all direct HF, Zenodo, and HTTPS URL inputs needed for `selected`
         for rel_path, spec in catalog.items():
             if not (set(spec.models_needed) & wanted):
                 continue
-            if spec.source_kind not in ("hf", "zenodo"):
+            if spec.source_kind not in ("hf", "zenodo", "url"):
                 continue
             affected_step1 = tuple(m for m in selected if m in spec.models_needed)
             if rel_path not in lock_files:
@@ -2143,11 +2679,12 @@ def run_setup(
                 else None
             )
             if progress_stream is not None:
-                src_label = (
-                    f"{spec.hf_repo}/{spec.hf_path}"
-                    if spec.source_kind == "hf"
-                    else f"zenodo:{spec.zenodo_record}/{spec.zenodo_file}"
-                )
+                if spec.source_kind == "hf":
+                    src_label = f"{spec.hf_repo}/{spec.hf_path}"
+                elif spec.source_kind == "zenodo":
+                    src_label = f"zenodo:{spec.zenodo_record}/{spec.zenodo_file}"
+                else:
+                    src_label = str(spec.url)
                 print(
                     f"  [{downloaded_count + 1}/{max(1, pending_total_count)}] {rel_path} "
                     f"({_format_bytes(exp_entry_size)}) <- {src_label}",
@@ -2177,7 +2714,7 @@ def run_setup(
                             else {}
                         ),
                     )
-                else:
+                elif spec.source_kind == "zenodo":
                     src_meta = lock_entry.get("source", {})
                     exp_md5 = (
                         str(src_meta.get("md5"))
@@ -2200,6 +2737,18 @@ def run_setup(
                         dst_path=dst_abs,
                         expected_size=exp_entry_size,
                         expected_md5=exp_md5,
+                    )
+                else:
+                    src_meta = lock_entry.get("source", {})
+                    target_url = str(
+                        src_meta.get("url")
+                        if isinstance(src_meta, Mapping) and src_meta.get("url")
+                        else spec.url
+                    )
+                    download_url_artifact(
+                        url=target_url,
+                        dst_path=dst_abs,
+                        expected_size=exp_entry_size,
                     )
 
                 ver_step1 = verify_file_against_lock(
@@ -2232,6 +2781,40 @@ def run_setup(
                         )
                     raise
                 arches_code_err = str(exc)
+
+        camulator_code_info: dict[str, Any] | None = None
+        camulator_code_err: str | None = None
+        if "camulator" in wanted:
+            cam_fn = camulator_code_fetcher or ensure_camulator_code
+            try:
+                camulator_code_info = cam_fn(
+                    resolved_dest, progress_stream=progress_stream
+                )
+            except (ValidationError, ConfigError) as exc:
+                if only_download:
+                    if os.path.isfile(os.path.join(resolved_dest, "registry.json")):
+                        _write_data_registry(
+                            resolved_dest, (), failed_models=("camulator",)
+                        )
+                    raise
+                camulator_code_err = str(exc)
+
+        sdyff_code_info: dict[str, Any] | None = None
+        sdyff_code_err: str | None = None
+        if "spherical-dyffusion" in wanted:
+            sdyff_fn = sdyff_code_fetcher or ensure_sdyff_code
+            try:
+                sdyff_code_info = sdyff_fn(
+                    resolved_dest, progress_stream=progress_stream
+                )
+            except (ValidationError, ConfigError) as exc:
+                if only_download:
+                    if os.path.isfile(os.path.join(resolved_dest, "registry.json")):
+                        _write_data_registry(
+                            resolved_dest, (), failed_models=("spherical-dyffusion",)
+                        )
+                    raise
+                sdyff_code_err = str(exc)
 
         if only_download:
             verified = verify_tree_against_lock(
@@ -2423,6 +3006,12 @@ def run_setup(
         model_failures: dict[str, list[str]] = {m: [] for m in selected}
         if arches_code_err is not None and "archesclimate-ssp" in model_failures:
             model_failures["archesclimate-ssp"].append(arches_code_err)
+        if md15_code_err is not None and "md-1.5" in model_failures:
+            model_failures["md-1.5"].append(md15_code_err)
+        if camulator_code_err is not None and "camulator" in model_failures:
+            model_failures["camulator"].append(camulator_code_err)
+        if sdyff_code_err is not None and "spherical-dyffusion" in model_failures:
+            model_failures["spherical-dyffusion"].append(sdyff_code_err)
 
         for rel_path, spec in catalog.items():
             affected_models = [
@@ -2583,6 +3172,12 @@ def run_setup(
     }
     if arches_code_info is not None:
         out_payload["arches_code"] = arches_code_info
+    if md15_code_info is not None:
+        out_payload["md15_code"] = md15_code_info
+    if camulator_code_info is not None:
+        out_payload["camulator_code"] = camulator_code_info
+    if sdyff_code_info is not None:
+        out_payload["sdyff_code"] = sdyff_code_info
     return out_payload
 
 
@@ -2597,6 +3192,9 @@ def fetch_model(
     hf_downloader: Callable[..., str] | None = None,
     zenodo_downloader: Callable[..., str] | None = None,
     arches_code_fetcher: Callable[..., dict[str, Any]] | None = None,
+    md15_code_fetcher: Callable[..., dict[str, Any]] | None = None,
+    camulator_code_fetcher: Callable[..., dict[str, Any]] | None = None,
+    sdyff_code_fetcher: Callable[..., dict[str, Any]] | None = None,
     co2_year_reader: Callable[[int], Any] | None = None,
     progress_stream: Any = False,
 ) -> dict[str, Any]:
@@ -2617,6 +3215,9 @@ def fetch_model(
         hf_downloader=hf_downloader,
         zenodo_downloader=zenodo_downloader,
         arches_code_fetcher=arches_code_fetcher,
+        md15_code_fetcher=md15_code_fetcher,
+        camulator_code_fetcher=camulator_code_fetcher,
+        sdyff_code_fetcher=sdyff_code_fetcher,
         co2_year_reader=co2_year_reader,
         progress_stream=eff_stream,
     )

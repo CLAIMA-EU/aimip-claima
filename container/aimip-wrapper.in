@@ -120,7 +120,7 @@ trusted_dir() {  # a run directory read again at job time must be the caller's o
   [ -O "$d" ] || die "run directory is not owned by you: $d"
   m=$(ls -ld "$d" | cut -c1-10)
   case "${m:5:1}${m:8:1}" in *w*) die "run directory is group- or world-writable ($m): $d — fix with: chmod go-w $d";; esac
-  for f in job.sbatch config.yaml emu-job.json ic_era5.pt aimip-manifest.json spin-manifest.json plan.json submit-intent.json cancel-requested.txt experiment.yaml .submit.lock slurm.jobid sacct.txt local.pid local-run.log ic_members.nc ic_members_atmosphere.nc ic_members_ocean.nc; do
+  for f in job.sbatch config.yaml emu-job.json ic_era5.pt aimip-manifest.json spin-manifest.json plan.json submit-intent.json cancel-requested.txt experiment.yaml .submit.lock slurm.jobid sacct.txt local.pid local-run.log ic_members.nc ic_members_atmosphere.nc ic_members_ocean.nc staged_om4.zarr camulator_runtime_config.yaml sdyff_runtime_config.yaml; do
     [ -L "$d/$f" ] && die "refusing symlinked $d/$f"
     [ -e "$d/$f" ] || continue
     [ -O "$d/$f" ] || die "$d/$f is not owned by you"

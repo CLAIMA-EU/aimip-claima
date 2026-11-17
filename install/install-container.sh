@@ -191,7 +191,14 @@ sed -e "s#@PREFIX@#$PREFIX#" -e "s#@RUNTIME@#$RT#" -e "s#@RUNTIME_BIN@#$RTB#" -e
   && mv "$PREFIX/bin/aimip.new" "$PREFIX/bin/aimip" \
   && cp "$REPO/container/VERSION" "$PREFIX/VERSION" \
   || die "cannot write $PREFIX/bin/aimip"
-chmod -R a+rX "$PREFIX/bin" "$PREFIX/images" "$PREFIX/site.json" "$PREFIX/VERSION" "$PREFIX/image.sha256" "$PREFIX/image.ref" 2>/dev/null || true
+ensure_world_readable() {
+  find "$@" \
+    \( -type d ! -perm -a+rx -exec chmod a+rx {} + \) -o \
+    \( -type f -perm -u+x ! -perm -a+rx -exec chmod a+rx {} + \) -o \
+    \( -type f ! -perm -a+r -exec chmod a+r {} + \) \
+    || die "failed to set read/traverse permissions on $*"
+}
+ensure_world_readable "$PREFIX/bin" "$PREFIX/images" "$PREFIX/site.json" "$PREFIX/VERSION" "$PREFIX/image.sha256" "$PREFIX/image.ref"
 echo "install-container: self-test"
 # The self-test runs small fake executables and submits trial run directories through the wrapper. Its working directory
 # must allow execution (TMPDIR may be mounted noexec) and must satisfy the wrapper's ancestry rule: no parent directory

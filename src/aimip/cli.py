@@ -283,15 +283,23 @@ def _cmd_models(args: argparse.Namespace) -> int:
     rows: list[list[str]] = []
     for item in entries:
         fam = item["family"]
-        runtime = {"e2s-dlesym": "e2s 0.19", "arches": "arches"}.get(
+        runtime = {
+            "e2s-dlesym": "e2s 0.19",
+            "arches": "arches",
+            "samudra": "samudra",
+            "md": "md v0.9",
+            "camulator": "credit",
+            "cbottle": "e2s 0.19",
+            "sdyff": "sdyff",
+        }.get(
             fam, item["fme_version"]
         )
-        dt = "1mo" if fam == "arches" else f"{item['timestep_hours']}h"
+        dt = "1mo" if fam in ("arches", "md") else ("gen" if fam == "cbottle" else f"{item['timestep_hours']}h")
         base_kind = "stochastic" if item["stochastic"] else "deterministic"
         kind = (
             f"coupled/{base_kind}"
             if (item["is_coupled"] or fam == "e2s-dlesym")
-            else base_kind
+            else (f"ocean/{base_kind}" if fam == "samudra" else base_kind)
         )
         sets_str = ", ".join(
             f"{fs['name']}[{fs['window'][0][:10]}..{fs['window'][1][:10]}]"
@@ -300,8 +308,18 @@ def _cmd_models(args: argparse.Namespace) -> int:
         ic_ts = item["available_ic_timestamps"]
         if fam == "e2s-dlesym":
             ic_summary = "ERA5 at --start (ARCO-ERA5)"
+        elif fam == "samudra":
+            ic_summary = "OM4 window at --start (OSN)"
         elif fam == "arches":
             ic_summary = "2015 scenario state"
+        elif fam == "md" and not ic_ts:
+            ic_summary = "--ic <era5_monthly.nc> (none published)"
+        elif fam == "camulator":
+            ic_summary = "69 published starts (1980..2014)"
+        elif fam == "cbottle":
+            ic_summary = "none (conditional draws)"
+        elif fam == "sdyff":
+            ic_summary = "FV3GFS 2021 cycle"
         elif not ic_ts:
             ic_summary = f"unstaged ({len(item['ic_files'])} file)"
         elif len(ic_ts) <= 2:
@@ -1280,8 +1298,8 @@ def build_parser() -> argparse.ArgumentParser:
         "models",
         help="List registered climate emulator models with optional task, family, and status filters.",
     )
-    p_models.add_argument("--task", default=None, help="Filter by task (amip, slab-ocean, coupled, scenario).")
-    p_models.add_argument("--family", default=None, help="Filter by family (fme, e2s-dlesym, arches, emu).")
+    p_models.add_argument("--task", default=None, help="Filter by task (amip, slab-ocean, coupled, scenario, ocean, generator).")
+    p_models.add_argument("--family", default=None, help="Filter by family (fme, e2s-dlesym, arches, samudra, md, camulator, cbottle, sdyff, emu).")
     p_models.add_argument("--status", default=None, help="Filter by tier (certified, runs, experimental).")
     p_models.add_argument("--installed", action="store_true", help="Show only models whose files are staged locally.")
     p_models.add_argument(
@@ -1873,19 +1891,33 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "ic":
             from .emu_catalog import EMU_MODELS
 
-            if getattr(args, "model", None) in EMU_MODELS:
+            no_ic_emu = {m for m in EMU_MODELS if m != "md-1.5"}
+            if getattr(args, "model", None) in no_ic_emu:
+                if args.model == "archesclimate-ssp":
+                    ic_origin = "the scenario's 2015 state."
+                elif args.model == "samudra-om4":
+                    ic_origin = "the OM4 ocean window at --start (staged from OSN by `aimip run`)."
+                elif args.model == "camulator":
+                    ic_origin = "its 69 published .pth initial-condition tensors (1980-01-01, Jan 1 & Jul 1 of 1981-2014)."
+                elif args.model == "cbottle-3d":
+                    ic_origin = "conditional draws without an initial state (conditioned on date/time and monthly SST)."
+                elif args.model == "spherical-dyffusion":
+                    ic_origin = "its 365-day FV3GFS reference cycle (Zenodo 10791087)."
+                else:
+                    ic_origin = "ERA5 at --start (fetched by `aimip run`)."
                 raise ConfigError(
-                    f"`aimip ic` works with the fme models only; {args.model} starts from "
-                    + (
-                        "the scenario's 2015 state."
-                        if args.model == "archesclimate-ssp"
-                        else "ERA5 at --start (fetched by `aimip run`)."
-                    ),
+                    f"`aimip ic` works with the fme models only (plus md-1.5 NetCDF ICs); {args.model} starts from {ic_origin}",
                     field="model",
                 )
             if args.ic_command == "list":
                 return _cmd_ic_list(args)
             if args.ic_command == "spin":
+                if getattr(args, "model", None) == "md-1.5":
+                    raise ConfigError(
+                        "`aimip ic spin` uses fme's step runner; for md-1.5 run a multi-year rollout with "
+                        "`aimip run md-1.5 ...` and pass `<prev_run>/restart.nc` to `--ic`.",
+                        field="model",
+                    )
                 return _cmd_ic_spin(args, recorded_argv)
         if args.command == "collect":
             return _cmd_collect(args)

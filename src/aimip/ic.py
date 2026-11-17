@@ -145,6 +145,14 @@ def inspect_ic_file(path: str) -> ICFileInfo:
                     if spatial_dims is None:
                         spatial_dims = (str(da.dims[1]), str(da.dims[2]))
                         grid_shape = (int(da.shape[1]), int(da.shape[2]))
+                elif da.ndim == 4 and "varlev" in da.dims and sample_dim in da.dims[:2]:
+                    if "varlev" in ds.coords:
+                        var_names.extend(str(v) for v in ds["varlev"].values)
+                    else:
+                        var_names.append(str(name))
+                    if spatial_dims is None:
+                        spatial_dims = (str(da.dims[-2]), str(da.dims[-1]))
+                        grid_shape = (int(da.shape[-2]), int(da.shape[-1]))
 
             if spatial_dims is None:
                 # Fallback only when a dataset has 2D horizontal coords without 3D vars.
@@ -177,8 +185,21 @@ def inspect_ic_file(path: str) -> ICFileInfo:
 
 
 def list_model_ics(model: ModelSpec) -> list[ICFileInfo]:
-    """Decode and return `ICFileInfo` for every shipped atmosphere IC file of *model*."""
-    return [inspect_ic_file(ic_path) for ic_path in model.ic_files]
+    """Decode and return `ICFileInfo` for every shipped/staged atmosphere IC file of *model*."""
+    paths = list(model.ic_files)
+    if not paths and model.family == "md":
+        from .registry import resolve_data_dir
+
+        data_root = resolve_data_dir()
+        if data_root:
+            md_ic_dir = os.path.join(data_root, "inputs", model.name, "ic")
+            if os.path.isdir(md_ic_dir) and not os.path.islink(md_ic_dir):
+                for fname in sorted(os.listdir(md_ic_dir)):
+                    if fname.endswith(".nc"):
+                        cand = os.path.join(md_ic_dir, fname)
+                        if os.path.isfile(cand) and not os.path.islink(cand):
+                            paths.append(cand)
+    return [inspect_ic_file(ic_path) for ic_path in paths]
 
 
 def list_model_ocean_ics(model: ModelSpec) -> list[ICFileInfo]:

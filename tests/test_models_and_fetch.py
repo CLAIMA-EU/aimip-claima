@@ -330,7 +330,7 @@ def test_registry_default_and_lock_contract_for_all_models(
 
     reg = load_registry(data_dir=str(data_dir))
     assert tuple(reg.keys()) == CANONICAL_MODELS
-    assert len(reg) == 14   # 10 fme + 4 DLESyM / ArchesClimate-SSP
+    assert len(reg) == len(CANONICAL_MODELS) and len(reg) >= 16
 
     expected_meta = {
         "ace2-era5": ("2026.5.1", "fme.ace.inference", "proleptic_gregorian", 6, False),
@@ -349,6 +349,11 @@ def test_registry_default_and_lock_contract_for_all_models(
         "dlesym-v1.1": ("e2s-dlesym", 6, True, ["era5-initial-state"]),
         "dlesym-v0-isccp": ("e2s-dlesym", 6, False, ["era5-initial-state"]),
         "archesclimate-ssp": ("arches", 730, False, ["ssp434", "ssp585"]),
+        "samudra-om4": ("samudra", 120, False, ["om4-jra55do-replay"]),
+        "md-1.5": ("md", 730, True, ["aimip-era5-monthly"]),
+        "camulator": ("camulator", 6, False, ["camulator-cyclic-1yr", "camulator-branch-1980-2014"]),
+        "cbottle-3d": ("cbottle", 24, True, ["pcmdi-amip-1-1-9-sst"]),
+        "spherical-dyffusion": ("sdyff", 6, True, ["fv3gfs-repeating-climsst-1deg"]),
     }
 
     lock_files = load_lock_file(str(pkg_dir / "aimip.lock"))["files"]
@@ -360,11 +365,19 @@ def test_registry_default_and_lock_contract_for_all_models(
             assert (model.family, model.timestep_hours, model.stochastic) == (fam, step, stoch)
             assert model.fme_module == "aimip.emu_job" and model.ic_files == () and not model.is_coupled
             assert [fs.name for fs in model.forcing_sets] == sets
-            assert model.checkpoint.endswith((".mdlus", "model.ckpt"))
+            assert model.checkpoint.endswith((".mdlus", "model.ckpt", ".pt", ".checkpoint", ".ckpt"))
             for req_rel in model.required_files:
                 le = lock_files[req_rel]
-                assert hex64_re.match(le["sha256"]) and le["size"] > 0 and le["source"]["kind"] == "hf"
-                assert re.match(r"^[0-9a-f]{40}$", le["source"]["revision"]), req_rel
+                assert hex64_re.match(le["sha256"]) and le["size"] > 0
+                if le["source"]["kind"] == "hf":
+                    assert re.match(r"^[0-9a-f]{40}$", le["source"]["revision"]), req_rel
+                elif le["source"]["kind"] == "zenodo":
+                    assert re.match(r"^[0-9a-f]{32}$", le["source"]["md5"]), req_rel
+                elif le["source"]["kind"] == "github_archive":
+                    assert re.match(r"^[0-9a-f]{40}$", le["source"]["revision"]), req_rel
+                    assert hex64_re.match(le["source"]["archive_sha256"]), req_rel
+                else:
+                    raise AssertionError(f"Unexpected source kind on {req_rel}: {le['source']}")
             continue
         exp_ver, exp_mod, exp_cal, exp_step, exp_stoch = expected_meta[name]
         assert model.family == "fme"

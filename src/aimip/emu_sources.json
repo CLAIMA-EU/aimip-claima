@@ -218,5 +218,557 @@
     "sha256": "e7650045d71532ba84bfe7c17d6008a4f7d101eb2b19e8c8ff7a69283ef38019"
    }
   }
+ },
+ "M2LInES/Samudra": {
+  "repo_type": "model",
+  "revision": "7a21c8b13ca52c2ef1c1946291acdb004b680ceb",
+  "files": {
+   "samudra_thermo_dynamic_seed1.pt": {
+    "size": 1622079848,
+    "sha256": "ab75d3342e47c28f62e051163752ea0c7d39121f63561b7e8607606e83b70d97"
+   }
+  }
+ },
+  "M2LInES/Samudra-OM4": {
+  "repo_type": "dataset",
+  "revision": "b910a55192bbcad2da553178bf795de1ead7b721",
+  "files": {
+   "OM4_means.zip": {
+    "size": 48647,
+    "sha256": "eb0f80ecb9cff50034cf3a312b4bb44ce331a49b5d16fd96e3647baa568a3f1d"
+   },
+   "OM4_stds.zip": {
+    "size": 48647,
+    "sha256": "d021cfa713740e1b36faf21427037a42a774b5faa7680e50a30b23429636ea09"
+   }
+  }
+ },
+ "willychap/camulator": {
+  "repo_type": "model",
+  "revision": "01afc272553fedd7e21d8046149ec41d2a5d90b8",
+  "files": {
+   "checkpoint.pt00069.pt": {
+    "size": 4805192874,
+    "sha256": "3c0b5f89784c1e0456cfd930f416e49b96adb0eb55d9063c11c2a3e6eb30a547"
+   },
+   "forcing_data/b.e21.CREDIT_climate_branch_1980_2014.nc": {
+    "size": 10461243408,
+    "sha256": "0d3b71131cb44a9092d6babf884077c35a1d062f75258fe333693cc4c973767e",
+    "on_demand": true
+   },
+   "forcing_data/b.e21.CREDIT_climate_cyclic_1yr_f32coords.nc": {
+    "size": 1292621664,
+    "sha256": "457552069f1af1a30e7abb388a6ef41eccbff979fe555293ece58ac60fcd38db"
+   },
+   "inference_config.yaml": {
+    "size": 30379,
+    "sha256": "b8b0e53b26bfa8b013468bfac22bae2c028a18e4a28fd3e10ebdf4154ab26743"
+   },
+   "initial_conditions/init_camulator_condition_tensor_1980-01-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "f6b63a866422e6758aa4e34d487bcaab214a28760cd6ed0bccbc11871dbc8a2d"
+   },
+   "initial_conditions/init_camulator_condition_tensor_1981-01-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "843a576a10b21d761bd3d4202dc259ffe62c5febd089f472e9d2ea5c1ff3829e"
+   },
+   "initial_conditions/init_camulator_condition_tensor_1981-07-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "fd9958bdb925244d7f3c40210a94af6666107f8b67b9575a3e69b36e38ed36cc",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_1982-01-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "e1340840e621226cf8ac780fcf14f243cb8a5970dd447c198f33a3026e042716",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_1982-07-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "de3f6727cbc547dbcc11f265ec9b0a5f80b213c0ee4c3dbe47097ddb1c68774f",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_1983-01-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "7f40c6557dda25ae0335123481a67da183dd54a2a64be531bf55550c1547699c",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_1983-07-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "84dee0deb87648a61f27a52db4377da5b930132b1ec0ccb4dc181eee149fe1ce",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_1984-01-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "a2dd89587bf07a811141f0dba61d60ac9464c43791c341c5f5bfec5b239a16e2",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_1984-07-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "f3a2164d2d09b7dd453198f6582df9c64d5513eae0b626470b55f0ffb78bf9a1",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_1985-01-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "d209c769e166ed062af75dbe671a82eaed224e708e5a815a7a67071410b56f18",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_1985-07-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "5f589db028f6d70d77df8bc9bd88ad76595291f1c2e279cfdfe13f62101e7253",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_1986-01-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "9c8fc5725c277c50bdcae2001800eaa6dd79f110c82d449cb87e9e207a551c5b",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_1986-07-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "7f438cbf8c67842bdf1cfbf92176148de7978437e05fa351cde414bfd8e20fb4",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_1987-01-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "eac7798bd5ac96cad47b51e1f5e100f56ea00a339d11509322cb6886202c7cb0",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_1987-07-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "879a6f9afc82bac6a3ec9bd3d1ecce1c5b7c315e48c3f2a22f1f8e554782aec5",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_1988-01-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "9435371ef0dcabe5b9a1ada33154c9dba6713a55c82d4e0e47efbceedd4e56c3",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_1988-07-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "f7010c2de85ed1b7e6b4131e87a0bb5f74f9f93d48ab73e79db0a5dcc494eb7c",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_1989-01-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "50fe938817c9e0d3bd31e10966a8a8c258ae8ea0d2073c16e730e80445b2e2d3",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_1989-07-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "2d294a673962ea1048320da6354c5422d25334766e08c0e9817f4b00c7e5707f",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_1990-01-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "6c9e53eb294a9bf19a19a1316814d0c860d6c04caad1f176c6d57fd5efcd45d2",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_1990-07-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "4cb7041de88f56f79075f5ea012081050b5795ece072c888624a841b592f24c8",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_1991-01-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "c3826e3f70a0b14b47baf10afc89f788012f5c3123f60de73045fa1e82d0e118",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_1991-07-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "6efb2f485a97dde505b5b993174261b2fb056dc6cd29ab24d4a5e7ce9d8e9452",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_1992-01-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "0a3d9c1b9d0b4ca8dbef6fcf0af6e4ad1b1f3f313f111af7911eca513f381e94",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_1992-07-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "5794599300dea5db5cb7884d706aa2e8fa4b93a9d8c38cfc500204b99233f84e",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_1993-01-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "f9df8b57790c8abd4b3ca55aaa98cf1053aae43ca4fdb305729cc977a7bce357",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_1993-07-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "5653f92432510c0d110f790cff65c7d1ecc854a83f92b8b5a89b636ead3ec846",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_1994-01-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "ebba6db09c918cae43c4d8e6b913cc8b1f00aaf9134dbf32714619bcee689186",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_1994-07-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "1eb7bed1a6ce3148d008e8131976fad449842bf8eb63bbabe544082a503b73fc",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_1995-01-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "6ac06c81584be69bc70b055f04b5b622cbe372d6a4212a8230e4a1345c2e16a4",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_1995-07-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "e024b51a50483b5273e0ee57c1a2b1cd2ee61f73515350a235182cc23362f8b2",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_1996-01-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "a1875df1e8d18ab6992020debcdab6e004f5fb51b9e2c1607357b02244e37704",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_1996-07-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "a2657819b8ea4a7de4142d89371270ec5e696129aeee9a64ad6216d6255433bc",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_1997-01-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "6da3dfec9788ba9f05c280768f3ef398e9f80e5c289629d75f3c8db0fb4dde62",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_1997-07-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "fa57623b87a1cf1304f8f260f0e920458c86afbb60ca34612a19dfffa89674e8",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_1998-01-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "0ae562991d713b8f5056d3cb356279d47a0f740365abf0069aa7ae37e7288751",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_1998-07-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "d0308b42cf8dbf42bc33eca2e62c9d54b1a7c4c468897e9cde201b958a842d6d",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_1999-01-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "8c77b8527d9833f1903c9673036b35410278e8349536bdf777321d9de6067c25",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_1999-07-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "1c8e5a61cd2efa33593f0b483e3d086a1ff0c9dd608ff866fa43c33cdeea3e14",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_2000-01-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "0e41b5a6979bbe1b8c8138cc801323edbcdb13c6079f53f11aab29ba0897b696",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_2000-07-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "e561599362bda774c0991b73f2ab6a17468abf2cbe8ee44f21377503753e20e4",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_2001-01-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "c509c60b8a9f0ba796553d75eb1a1ab6d460111e88c31fb615e3cacf566eb98f",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_2001-07-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "a4b52dde0370dafa2d19ca5f064828f2709dd8b4ca005d4530602e2784d0fa43",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_2002-01-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "3b66be1381784c6984b601e6a015752ac72ea9e19080a8d23152d1f79be9ab81",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_2002-07-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "c7733bf3e98868351700a984cdef6562f911b957b092a3d531e1e6f2f5b54686",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_2003-01-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "996a92019b19e7a0ffccc5b189a00d00ccca71a1865b40ba65a87e8265b2dfbb",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_2003-07-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "4338d65c14f95f1e153a24463fb1ff3bda7eae2b9300f4e7389e383f95962536",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_2004-01-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "31b5aa03664d891826f67efc4042e689e4b691b11a21cac88592c025c446df66",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_2004-07-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "b5e3828a893b886cfc70e2817efadd90d6d828269947321d7972841e10731fe8",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_2005-01-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "dd0f8bf06aa5195ac4b477199b68e0e97513c2884b85994adf3c2907a20e7fb1",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_2005-07-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "9fc1594b244f72d0055771f18ea54213902dc6bab5250eae4db40f30ac031791",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_2006-01-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "b1d4e5046463169dbbcf8161bed584de2cf4e25d13a2b0ae31577e7317ee9c55",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_2006-07-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "f5a98d8b8024aed04a678f90381a31bf09d3ee99ca723f7dc824e131fcdf1bf9",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_2007-01-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "78746402992d651ca5f5714250beab7f74f874156ab8c32ee699fbc61092266b",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_2007-07-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "bcf2dc824349758c81741c106c841751ff72a2e05f9d988e95225754aa40ba07",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_2008-01-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "f9cfe4f0e5c94841b2eb247c682da04c3caf038ae6eb7c416cfd7f79cee60af1",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_2008-07-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "0a17b74230a3707cc6285c6b207e276b684cefa91bdb13791a5286af135a6aa6",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_2009-01-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "98f2dff40210c3912e169a44defe26654a4ad6ed6b0234681fe7350da4cd0949",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_2009-07-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "363e52dbfbc2335c0403f707e87cc659d97dfd2cf29a93cb99bb80f7b22e062c",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_2010-01-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "5b64519608fe1c037a839699b1cf028e9d4ce76f8998fd1f13dceaa306ef1d34",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_2010-07-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "b8106f1ca6038bac9753c87d21ec7beeaec8d40d5e671bee71192cb4b94d3ed6",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_2011-01-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "5d7147210cb06bd25968aaa6d9d57afd4a891eadd3faadae0d535fbb0220a578",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_2011-07-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "357ac847f205f0616dbcfbb72d363edd9113be80ae1f1595f526598554a48ef8",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_2012-01-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "22484080e9e5395ffc9adf335b5cfc315278da7f561382d5edda56811559d60d",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_2012-07-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "46b55a43116c1b36585e147c672b45dc7b8e938a6750d45b5e817cca3a2a6263",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_2013-01-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "257b24c0aaec6a57573d6cc3de372dcdbf8abc1837b02fa743bd4003999f4613",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_2013-07-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "c61bfe1e6a4de488a5c20a66931b7009abb85cc91580f1fa3be1e1a59496a172",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_2014-01-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "291c8e688936ac8a81847723d6f34f8b8edf81ff77fe7adbecc61d67269104b8",
+    "on_demand": true
+   },
+   "initial_conditions/init_camulator_condition_tensor_2014-07-01T00Z.pth": {
+    "size": 30082527,
+    "sha256": "bb7a0a13fac92abe0f94f76db839f246973f37afb4ac7d406a6db28f957634f1",
+    "on_demand": true
+   },
+   "metadata/camulator_metadata.yaml": {
+    "size": 4519,
+    "sha256": "d9b935b47396a612125712e397042de70b5ae92fd3b02508c3d641feb33a0457"
+   },
+   "normalization/b.e21.CREDIT_climate.statics_1.0deg_32levs_latlon_F32_hyai_fixed.nc": {
+    "size": 52019418,
+    "sha256": "5942874e547d3dd3d9f7ce1af0fdd33f3a91bc458631d2b19ef118ae9778742b"
+   },
+   "normalization/f.e21.CREDIT_climate.statics_1.0deg_32levs_latlon_F32_hyai_fixed.nc": {
+    "size": 52017401,
+    "sha256": "a008d14e88faa01a6f4f0000f63edd93dbb36995ecd41af0f983258a9d019b96"
+   },
+   "normalization/mean_6h_Coupled_1980_2014_32lev_1.0deg_ERA5scaled_F32_Qtot_Mixed_Modal.nc": {
+    "size": 481278,
+    "sha256": "cb6a8abb605bbdb82b021966dc584c1aa7d67ffd5338d1fba7af2d2edda81128"
+   },
+   "normalization/statics_b_credit_runs_f32_02.nc": {
+    "size": 52012114,
+    "sha256": "a546af516f1d7e21f12084951072c6adf01a7a62f78f4e55b522c747037b3865"
+   },
+   "normalization/std_6h_Coupled_1980_2014_32lev_1.0deg_ERA5scaled_F32_Qtot_Mixed_Modal.nc": {
+    "size": 480702,
+    "sha256": "43db055719e43c07c0ae65baaa168f5b52a9e3abfeac61f778bd1217ad0a2f5e"
+   }
+  }
+ },
+ "nvidia/cbottle": {
+  "revision": "e60ce82b236b953d79d3ead7f43445a3bb8e37d3",
+  "files": {
+   "amip_midmonth_sst.nc": {
+    "size": 476174130,
+    "sha256": "388d06b45aea206c3eda982f7cf7d3020d607ed685874951d5b62dd87a6919b9"
+   },
+   "cBottle-3d/training-state-000512000.checkpoint": {
+    "size": 595471094,
+    "sha256": "0f3c78a49ac331ff5fcb503f282eec02aaa75ad2df5564e2591463dc5dda930f"
+   },
+   "cBottle-3d/training-state-002048000.checkpoint": {
+    "size": 595471094,
+    "sha256": "a037294f096333a2ab9f4a73778bf5cb5600332698845fc67b6717f33ccf754f"
+   },
+   "cBottle-3d/training-state-009856000.checkpoint": {
+    "size": 1786464750,
+    "sha256": "95894e3e04e10e0e33d807b9605f33180bf1ca6feb1a79ccded23c57c40c97d1"
+   }
+  }
+ },
+ "salv47/spherical-dyffusion": {
+  "revision": "56fcb5d995717e91ba770f5ee41e8c3a8cfb00f6",
+  "files": {
+   "forecaster-sfno-best-inference_avg_crps.ckpt": {
+    "size": 3370273818,
+    "sha256": "cd2f836b5c2238201f65cb620cf885b283209d5d778bca13bea890df76694618"
+   },
+   "interpolator-sfno-best-val_avg_crps.ckpt": {
+    "size": 3370550315,
+    "sha256": "aecd9a59b893d750241054b8e7b162cd26c5304ded3eb180692b19bd0d7cf1db"
+   },
+   "interpolator_sfno_paper_v0_hydra_config.yaml": {
+    "size": 5265,
+    "sha256": "f7535343996a7dbba3826775906d0026153e40b4f53111d1f1adc503bcf4f2df"
+   }
+  }
+ },
+ "zenodo:10791087": {
+  "source_kind": "zenodo",
+  "record": "10791087",
+  "files": {
+   "2021010100.nc": {
+    "size": 1735886648,
+    "md5": "e889455aa6023ace37a71fe23731dc1f",
+    "sha256": "a7275a79ca038be393796c4cecd5ae1f1b2078b9410f5c340aa7d538d9ceb042",
+    "url": "https://zenodo.org/records/10791087/files/2021010100.nc?download=1"
+   },
+   "2021020100.nc": {
+    "size": 1567925000,
+    "md5": "8827dd2ca796fccf719e10a6bdcbd291",
+    "sha256": "a859ef1ed4966867772229a03211eae6dccd1a37a9fb6509e39e4688295f8d28",
+    "url": "https://zenodo.org/records/10791087/files/2021020100.nc?download=1"
+   },
+   "2021030100.nc": {
+    "size": 1735886648,
+    "md5": "49ca3b82a7c9ca6a62959eed51bd8608",
+    "sha256": "858c2c02c3a088f49323ea70f2f528bac81e2549416c315508b7b012aa592ae6",
+    "url": "https://zenodo.org/records/10791087/files/2021030100.nc?download=1"
+   },
+   "2021040100.nc": {
+    "size": 1679899432,
+    "md5": "f086f500af85256fa264a13baa2e2401",
+    "sha256": "1b379842913fd8570dee4dc05fe46ce6828ad4b5fae36c989faa941b3e0d8129",
+    "url": "https://zenodo.org/records/10791087/files/2021040100.nc?download=1"
+   },
+   "2021050100.nc": {
+    "size": 1735886648,
+    "md5": "7bdb1e428842cdce1a8f93e20bdda3f3",
+    "sha256": "0003b1ab78bc8300ca1dbc03491153aaf235fb2327b4b196c4195dad6e6a7350",
+    "url": "https://zenodo.org/records/10791087/files/2021050100.nc?download=1"
+   },
+   "2021060100.nc": {
+    "size": 1679899432,
+    "md5": "09f578ea272fe3a2bad7d14dcb424348",
+    "sha256": "496d638a0ba5e2499c306a25d28e7b13afdb8fdf717c805566829d5c1c6bd121",
+    "url": "https://zenodo.org/records/10791087/files/2021060100.nc?download=1"
+   },
+   "2021070100.nc": {
+    "size": 1735886648,
+    "md5": "017fe77ca320db54029d902592069343",
+    "sha256": "8ec44868bd2df28cdc6c8401b8066a8a984d22c1053d3bd9e8f1601d45f86df4",
+    "url": "https://zenodo.org/records/10791087/files/2021070100.nc?download=1"
+   },
+   "2021080100.nc": {
+    "size": 1735886648,
+    "md5": "09ad3ab34600ac9f75da6a2a77374b5b",
+    "sha256": "ec4d6cb5f39e3e1c7d15ea2a8dc035cd2c521c2c72ab36a451af2b96acff77bd",
+    "url": "https://zenodo.org/records/10791087/files/2021080100.nc?download=1"
+   },
+   "2021090100.nc": {
+    "size": 1679899432,
+    "md5": "a47e120e408445b0738780295ed2fcb0",
+    "sha256": "bfb12eac6e81515fd3c8dd592fe2258804dc5672fe34b211b1bcd0c1717649a3",
+    "url": "https://zenodo.org/records/10791087/files/2021090100.nc?download=1"
+   },
+   "2021100100.nc": {
+    "size": 1735886648,
+    "md5": "64dfa8ce8d96221e5de13cf8c8dd04d1",
+    "sha256": "06e0bbc032f19a3c5a348986ef360cb31fa277beb4aee7fd954c3680d3dd582b",
+    "url": "https://zenodo.org/records/10791087/files/2021100100.nc?download=1"
+   },
+   "2021110100.nc": {
+    "size": 1679899432,
+    "md5": "4f14bafd59b6aa5c9d78450819434bf8",
+    "sha256": "01e789c74c8159b8ddba2c7ed3419a9653d30068c2e237b921dbd2071384c188",
+    "url": "https://zenodo.org/records/10791087/files/2021110100.nc?download=1"
+   },
+   "2021120100.nc": {
+    "size": 1735886648,
+    "md5": "11d2ac46dad4c6d859b03f9419a07dfb",
+    "sha256": "736380bf11c8a80a8d20802c57f799e8542f15f74b0450d064786cb3338b92c6",
+    "url": "https://zenodo.org/records/10791087/files/2021120100.nc?download=1"
+   }
+  }
+ },
+ "github:kjhall01/monthly-diffusion": {
+  "source_kind": "github_archive",
+  "repo_type": "archive",
+  "revision": "b077d3bcbf602a6b363d5a9da28cf1dc3583c4fb",
+  "archive_url": "https://github.com/kjhall01/monthly-diffusion/archive/b077d3bcbf602a6b363d5a9da28cf1dc3583c4fb.tar.gz",
+  "archive_sha256": "a11ce4d8c5434653d19426a0a45346b2cf0aa43338167514ed55c8fec09fdded",
+  "zenodo_record": "21430292",
+  "files": {
+   "models/MD-1p5-latest.pth/config.pkl": {
+    "size": 582803,
+    "sha256": "52c60da6176378889cecf5d6656ebcfbbd8d818215d8d43af47b9d39e89d5a9f"
+   },
+   "models/MD-1p5-latest.pth/weights.pt": {
+    "size": 26319522,
+    "sha256": "dac25623a523c9d05e1a788a8258b68f72d55f4643a3a0034c6a1ec32424f022"
+   },
+   "scripts/variable_statistics_197901-201412.json": {
+    "size": 3645,
+    "sha256": "443e684601519cb4c29e20e2e00dce359e7e4b8f476a8af2b3ad8f623b2cafc4"
+   }
+  }
  }
 }

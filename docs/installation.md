@@ -84,7 +84,7 @@ container on this machine's GPU.
 
 ```bash
 install/install-native.sh --prefix DIR --site <preset> [--account A|none] [--partition P] [--gres G|none] \
-                          [--run-root R] [--with-emu] [--python python3.12] [--dry-run]
+                          [--run-root R] [--with-emu] [--with-camulator] [--with-sdyff] [--python python3.12] [--dry-run]
 ```
 
 `--dry-run` writes `site.json` and the launcher and checks the options without creating environments.
@@ -95,12 +95,23 @@ It creates, inside `DIR`:
 |---|---|
 | `venv/` | Python 3.12 with PyTorch 2.14 (CUDA 13.0 wheels), Ai2 `fme` 2026.5.1 and `aimip`, pinned like the image |
 | `overlay-fme-2026.10.0/` | `fme` 2026.10.0, used only by `hiro-acev2` and `samudrace-e3smv3` |
-| `venv-emu/` | with `--with-emu`: the environment for DLESyM and ArchesClimate-SSP (Earth2Studio, PhysicsNeMo, earth2grid with its CUDA padding kernel and ArchesClimate-SSP's Python dependencies), pinned like the image. The ArchesClimate-SSP source itself is downloaded on first use ([models](models.md)) |
+| `venv-emu/` | with `--with-emu`: the environment for DLESyM, ArchesClimate-SSP, Samudra-OM4 and cBottle-3d (Earth2Studio, PhysicsNeMo, earth2grid with its CUDA padding kernel, `NVlabs/cBottle`, and ArchesClimate-SSP's Python dependencies), pinned like the image. The ArchesClimate-SSP source itself is downloaded on first use ([models](models.md)) |
+| `venv-camulator/` | with `--with-camulator`: isolated native environment for `camulator` (PyTorch 2.4.1, `torch_harmonics` 0.7.2, `numpy` 1.26.4, and `WillyChap/miles-credit@d0eb9add` staged non-packaged under `venv-camulator/src/miles-credit` via `miles_credit_camulator.pth`; pinned via `container/constraints-camulator.txt`) |
+| `venv-sdyff/` | with `--with-sdyff`: isolated native environment for `spherical-dyffusion` (PyTorch 2.4.1, `torch_harmonics` 0.7.2, `ai2cm/modulus@94f62e1c` with a local `apex.normalization.FusedLayerNorm = torch.nn.LayerNorm` shim; pinned via `container/constraints-sdyff.txt`; `Rose-STL-Lab/spherical-dyffusion@a10b3e7f` is downloaded into `data/code/spherical-dyffusion` on first use) |
 | `bin/aimip` | the launcher that sets the paths and starts `venv/bin/python -m aimip` |
 | `site.json`, `data/` | site settings, model data |
 
 The installer runs the package tests in the new environment and prints the next steps. Without `--with-emu` the
 ten `fme` models work; DLESyM and ArchesClimate-SSP report that their environment is missing.
+
+**Package and checkpoint pinning.** Like `venv/` and `venv-emu/`, `venv-camulator/` and `venv-sdyff/` pin exact `==`
+package versions in `container/constraints-camulator.txt` and `container/constraints-sdyff.txt` (with `#sha256=` on
+direct GitHub source archives such as `NVlabs/cBottle` and `ai2cm/modulus`, and `torch_harmonics==0.7.2` built with
+`--no-deps`), without `--require-hashes` on wheel installs and with configurable PyTorch wheel indices
+(`AIMIP_CAMULATOR_TORCH_INDEX` / `AIMIP_SDYFF_TORCH_INDEX`). Because those two environments pin `torch==2.4.1`
+(predating PyTorch 2.6's hardened `WeightsUnpickler`), cryptographic SHA-256 verification on `O_NOFOLLOW` file
+descriptors is the primary checkpoint gate, while `weights_only=True` and closed pickle allowlists act as a second
+defense-in-depth layer.
 
 ## Model data
 
@@ -123,7 +134,10 @@ Every file is checked against `aimip.lock`: downloads by size and sha256, files 
 packages) are rebuilt on your machine and must match the lock bit for bit.
 
 **Several users, one install.** Only the owner of the prefix downloads. Other users see the data read-only; a model
-that is missing gives `model X is not installed here: ask the install owner to run 'aimip fetch -m X'`.
+that is missing gives `model X is not installed here: ask the install owner to run 'aimip fetch -m X'`. Checkpoints,
+initial-condition files and code directories must be owned by `root`, the user running `aimip`, or the owner of a
+non-writable install/data prefix, and must not be writable by group or others (`chmod go-w`); files owned by another
+colleague outside the prefix are refused.
 
 ## GPUs
 

@@ -525,7 +525,8 @@ def test_install_native_dry_run_launcher_env_and_emu_discovery(
         "keys = [\n"
         "    'AIMIP_HOME', 'AIMIP_PLAYGROUND', 'AIMIP_DATA', 'AIMIP_SITE_CONFIG',\n"
         "    'AIMIP_DEFAULT_OUT_ROOT', 'AIMIP_SCHEDULER', 'AIMIP_FME_2026_10_OVERLAY',\n"
-        "    'AIMIP_EMU_PYTHON', 'AIMIP_IMAGE_SHA', 'AIMIP_DATA_MODE', 'PYTHONNOUSERSITE',\n"
+        "    'AIMIP_EMU_PYTHON', 'AIMIP_CAMULATOR_PYTHON', 'AIMIP_SDYFF_PYTHON',\n"
+        "    'AIMIP_IMAGE_SHA', 'AIMIP_DATA_MODE', 'PYTHONNOUSERSITE',\n"
         "    'GEMINI_API_KEY',\n"
         "]\n"
         "doc = {k: os.environ.get(k) for k in keys}\n"
@@ -538,6 +539,8 @@ def test_install_native_dry_run_launcher_env_and_emu_discovery(
     launch_env = dict(os.environ)
     launch_env["GEMINI_API_KEY"] = "SECRET_SHOULD_NOT_LEAK_TO_MODELS"
     launch_env.pop("AIMIP_EMU_PYTHON", None)
+    launch_env.pop("AIMIP_CAMULATOR_PYTHON", None)
+    launch_env.pop("AIMIP_SDYFF_PYTHON", None)
     r1 = subprocess.run(
         [str(prefix / "bin" / "aimip"), "models"],
         env=launch_env,
@@ -557,16 +560,21 @@ def test_install_native_dry_run_launcher_env_and_emu_discovery(
     assert exported1["AIMIP_SCHEDULER"] == "slurm"
     assert exported1["AIMIP_FME_2026_10_OVERLAY"] == str(prefix / "overlay-fme-2026.10.0")
     assert exported1["AIMIP_EMU_PYTHON"] is None
+    assert exported1["AIMIP_CAMULATOR_PYTHON"] is None
+    assert exported1["AIMIP_SDYFF_PYTHON"] is None
     assert exported1["AIMIP_IMAGE_SHA"] == "native"
     assert exported1["AIMIP_DATA_MODE"] == "ro"
     assert exported1["PYTHONNOUSERSITE"] == "1"
     assert exported1["GEMINI_API_KEY"] is None
 
-    # Create venv-emu/bin/python -> launcher exports AIMIP_EMU_PYTHON and `chat` forwards GEMINI_API_KEY.
+    # Create venv-emu, venv-camulator, venv-sdyff -> launcher exports all three and `chat` forwards GEMINI_API_KEY.
     emu_py = prefix / "venv-emu" / "bin" / "python"
-    emu_py.parent.mkdir(parents=True)
-    emu_py.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
-    emu_py.chmod(0o755)
+    cam_py = prefix / "venv-camulator" / "bin" / "python"
+    sdyff_py = prefix / "venv-sdyff" / "bin" / "python"
+    for py_p in (emu_py, cam_py, sdyff_py):
+        py_p.parent.mkdir(parents=True)
+        py_p.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        py_p.chmod(0o755)
 
     r2 = subprocess.run(
         [str(prefix / "bin" / "aimip"), "chat"],
@@ -578,6 +586,8 @@ def test_install_native_dry_run_launcher_env_and_emu_discovery(
     assert r2.returncode == 0, r2.stderr
     exported2 = json.loads(env_dump.read_text(encoding="utf-8"))
     assert exported2["AIMIP_EMU_PYTHON"] == str(emu_py)
+    assert exported2["AIMIP_CAMULATOR_PYTHON"] == str(cam_py)
+    assert exported2["AIMIP_SDYFF_PYTHON"] == str(sdyff_py)
     assert exported2["GEMINI_API_KEY"] == "SECRET_SHOULD_NOT_LEAK_TO_MODELS"
 
     # Also check `emu_python()` discovers `$AIMIP_HOME/venv-emu/bin/python` automatically when AIMIP_EMU_PYTHON is unset.
@@ -753,6 +763,141 @@ def test_installers_honour_gres_none_and_account_none_through_sbatch_rendering(
     assert "--account" not in sbatch_cnt
 
 
+def _build_fake_miles_credit_archive(
+    out_tar: pathlib.Path,
+    *,
+    include_deprecated_transforms: bool = True,
+    postblock_available_override: bool | None = None,
+) -> dict[str, Any]:
+    """Create an offline `miles-credit` commit archive exercising PEP 420 namespace subpackages & relative symlinks."""
+    import hashlib
+    import io
+    import tarfile
+    from aimip.safe_pickle import compute_sha256sum_tree_digest
+
+    top = "miles-credit-d0eb9add439f09bd25883f4393296f3266b5876d"
+    files: dict[str, str] = {
+        "applications/train.py": "def main_cli():\n    return 0\n",
+        "credit/__init__.py": "",
+        "credit/parser.py": "def credit_main_parser(*a, **k):\n    return {}\n",
+        "credit/models/__init__.py": (
+            "from credit.models.crossformer import CrossFormer\n"
+            "from credit.models.camulator import Camulator\n"
+            "from credit.models.wxformer.crossformer import CrossFormer as WXFormer\n"
+            "model_types = {\n"
+            "    'crossformer': (CrossFormer, 'CrossFormer'),\n"
+            "    'camulator': (Camulator, 'CAMulator'),\n"
+            "    'wxformer': (WXFormer, 'WXFormer'),\n"
+            "}\n"
+            "def load_model(*a, **k):\n    return Camulator()\n"
+            "def load_model_name(*a, **k):\n    return 'checkpoint.pt'\n"
+        ),
+        "credit/models/crossformer.py": (
+            "from credit.postblock import PostBlock\n"
+            "class CrossFormer:\n    pass\n"
+        ),
+        "credit/models/camulator.py": (
+            "from credit.postblock import PostBlock\n"
+            "class Camulator:\n    pass\n"
+        ),
+        "credit/models/wxformer/__init__.py": "",
+        "credit/models/wxformer/crossformer.py": (
+            "from credit.postblock import PostBlock\n"
+            "class CrossFormer:\n    pass\n"
+        ),
+        "credit/models/checkpoint.py": "def load_model_state(*a, **k):\n    return None\n",
+        "credit/postblock/__init__.py": (
+            "from credit.transforms import load_transforms\n"
+            "class PostBlock:\n    pass\n"
+            "class TracerFixer:\n    pass\n"
+            "class GlobalMassFixer:\n    pass\n"
+            "class GlobalWaterFixer:\n    pass\n"
+            "class GlobalEnergyFixer:\n    pass\n"
+            "class GlobalEnergyFixerUpDown:\n    pass\n"
+        ),
+        "credit/transforms/__init__.py": (
+            "from credit.transforms.deprecated._transforms import ToTensor\n"
+            "def load_transforms(*a, **k):\n    return ToTensor()\n"
+            "class Normalize_ERA5_and_Forcing:\n    pass\n"
+        ),
+        # Deliberately NO `credit/preblock/__init__.py` or `credit/transforms/deprecated/__init__.py`
+        # to mirror upstream's PEP 420 namespace directories omitted by `pyproject.toml`.
+        "credit/preblock/scaler.py": "class Scaler:\n    pass\n",
+        "credit/distributed.py": "def distributed_model_wrapper(m, *a, **k):\n    return m\n",
+        "credit/output.py": (
+            "def load_metadata(*a, **k):\n    return {}\n"
+            "def make_xarray(*a, **k):\n    return None\n"
+            "def save_netcdf_increment(*a, **k):\n    return None\n"
+        ),
+        "climate/Quick_Climate.py": "# Quick_Climate entrypoint\n",
+        "climate/WindPP.py": "def post_process_wind_artifacts(*a, **k):\n    return None\n",
+        "climate/Model_State.py": (
+            "try:\n"
+            "    from credit.models import load_model, load_model_name\n"
+            "    from credit.transforms import load_transforms, Normalize_ERA5_and_Forcing\n"
+            "    from credit.distributed import distributed_model_wrapper\n"
+            "    from credit.models.checkpoint import load_model_state\n"
+            "    from credit.parser import credit_main_parser\n"
+            "    from credit.output import load_metadata\n"
+            "    CREDIT_AVAILABLE = True\n"
+            "except ImportError:\n"
+            "    CREDIT_AVAILABLE = False\n"
+            "try:\n"
+            "    from credit.postblock import GlobalMassFixer, GlobalWaterFixer, GlobalEnergyFixer, GlobalEnergyFixerUpDown\n"
+            "    POSTBLOCK_AVAILABLE = True\n"
+            "except ImportError:\n"
+            "    POSTBLOCK_AVAILABLE = False\n"
+            + (
+                f"POSTBLOCK_AVAILABLE = {postblock_available_override!r}\n"
+                if postblock_available_override is not None
+                else ""
+            )
+            + "try:\n"
+            "    from WindPP import post_process_wind_artifacts\n"
+            "    WINDPP_AVAILABLE = True\n"
+            "except ImportError:\n"
+            "    WINDPP_AVAILABLE = False\n"
+            "def initialize_camulator(*a, **k):\n    return None\n"
+            "class CAMulatorStepper:\n    pass\n"
+        ),
+    }
+    if include_deprecated_transforms:
+        files["credit/transforms/deprecated/_transforms.py"] = "class ToTensor:\n    pass\n"
+
+    stage_tree = out_tar.parent / f"_stage_{out_tar.stem}"
+    if stage_tree.exists():
+        import shutil as _sh
+        _sh.rmtree(stage_tree)
+    for rel, txt in sorted(files.items()):
+        fp = stage_tree / rel
+        fp.parent.mkdir(parents=True, exist_ok=True)
+        fp.write_text(txt, encoding="utf-8")
+    tree_sha, tree_files = compute_sha256sum_tree_digest(str(stage_tree))
+    import shutil as _sh
+    _sh.rmtree(stage_tree)
+
+    with tarfile.open(out_tar, "w:gz") as tf:
+        for rel, txt in sorted(files.items()):
+            raw = txt.encode("utf-8")
+            ti = tarfile.TarInfo(f"{top}/{rel}")
+            ti.size = len(raw)
+            ti.mode = 0o644
+            tf.addfile(ti, io.BytesIO(raw))
+        sym = tarfile.TarInfo(f"{top}/credit/applications/train.py")
+        sym.type = tarfile.SYMTYPE
+        sym.linkname = "../../applications/train.py"
+        tf.addfile(sym)
+
+    ar_bytes = out_tar.read_bytes()
+    return {
+        "url": f"file://{out_tar}",
+        "archive_size": str(len(ar_bytes)),
+        "archive_sha256": hashlib.sha256(ar_bytes).hexdigest(),
+        "tree_sha256": tree_sha,
+        "tree_files": str(tree_files),
+    }
+
+
 def _make_stub_native_python(work_dir: pathlib.Path, real_version: str) -> pathlib.Path:
     """Build an offline stub Python >= 3.12 whose `-m venv` creates stub `python`/`pip` controlled by env vars."""
     import textwrap
@@ -761,21 +906,33 @@ def _make_stub_native_python(work_dir: pathlib.Path, real_version: str) -> pathl
     py_driver.write_text(
         textwrap.dedent(
             """\
-            import os, pathlib, stat, sys
+            import os, pathlib, site, stat, sys
             sp = sys.argv[1]
             a = sys.argv[2:]
             isolated = False
             while a and a[0] in ("-I", "-B"):
                 if a[0] == "-I":
                     isolated = True
+                elif a[0] == "-B":
+                    sys.dont_write_bytecode = True
                 a = a[1:]
             if isolated:
-                sys.path = [sp] + [p for p in sys.path if p and "site-packages" not in p and p != os.getcwd()]
+                base_paths = [p for p in sys.path if p and "site-packages" not in p and p != os.getcwd()]
+                sys.path = []
+                site.addsitedir(sp)
+                pth_added = [p for p in sys.path if p != sp]
+                sys.path = [sp, *pth_added, *base_paths]
             else:
                 env_pp = [p for p in os.environ.get("PYTHONPATH", "").split(":") if p]
-                sys.path = env_pp + [sp] + sys.path
+                base_paths = list(sys.path)
+                sys.path = []
+                site.addsitedir(sp)
+                pth_added = [p for p in sys.path if p != sp]
+                sys.path = [*env_pp, sp, *pth_added, *base_paths]
             if a and a[0] == "-c":
                 code = a[1]
+                if os.environ.get("FAKE_NATIVE_OMIT_APEX_SHIM") == "1" and "install_sdyff_apex_shim" in code:
+                    sys.exit(0)
                 sys.argv = ["-c", *a[2:]]
                 exec(compile(code, "<string>", "exec"), {"__name__": "__main__"})
             elif a[:2] == ["-m", "pytest"]:
@@ -811,6 +968,7 @@ def _make_stub_native_python(work_dir: pathlib.Path, real_version: str) -> pathl
             import os, pathlib, sys
             SP = pathlib.Path(sys.argv[1])
             REAL_VER = {real_version!r}
+            REAL_AIMIP_DIR = {str(REPO_ROOT / "src" / "aimip")!r}
             args = sys.argv[2:]
             cmdline = " ".join(args)
             fail_sub = os.environ.get("FAKE_NATIVE_FAIL_MATCH", "")
@@ -830,6 +988,37 @@ def _make_stub_native_python(work_dir: pathlib.Path, real_version: str) -> pathl
                 (d / "__init__.py").write_text(
                     f"__version__ = {{os.environ.get('FAKE_NATIVE_TORCH_VER', '2.14.0+cu130')!r}}\\n"
                 )
+            if "torch==2.4.1" in cmdline:
+                d = target / "torch"
+                d.mkdir(parents=True, exist_ok=True)
+                (d / "nn.py").write_text("class LayerNorm:\\n    pass\\n")
+                (d / "__init__.py").write_text(
+                    "from . import nn\\n"
+                    f"__version__ = {{os.environ.get('FAKE_NATIVE_TORCH24_VER', '2.4.1+cu121')!r}}\\n"
+                )
+            if "numpy==1.26.4" in cmdline:
+                np_d = target / "numpy"
+                np_d.mkdir(parents=True, exist_ok=True)
+                (np_d / "__init__.py").write_text("__version__ = '1.26.4'\\n")
+            if "torch_harmonics==0.7.2" in cmdline:
+                th_d = target / "torch_harmonics"
+                th_d.mkdir(parents=True, exist_ok=True)
+                (th_d / "__init__.py").write_text("__version__ = '0.7.2'\\n")
+            if "pytorch-lightning==2.4.0" in cmdline:
+                for mname, mver in (
+                    ("pytorch_lightning", "2.4.0"),
+                    ("hydra", "1.3.2"),
+                    ("omegaconf", "2.3.0"),
+                    ("dacite", "1.8.1"),
+                    ("tensorly", "0.9.0"),
+                    ("tltorch", "0.5.0"),
+                    ("tensordict", "0.5.0"),
+                    ("toolz", "1.0.0"),
+                    ("boto3", "1.37.1"),
+                ):
+                    md = target / mname
+                    md.mkdir(parents=True, exist_ok=True)
+                    (md / "__init__.py").write_text(f"__version__ = {{mver!r}}\\n")
             if "fme==2026.5.1" in cmdline:
                 d = target / "fme"
                 (d / "ace").mkdir(parents=True, exist_ok=True)
@@ -839,6 +1028,16 @@ def _make_stub_native_python(work_dir: pathlib.Path, real_version: str) -> pathl
                 (d / "core.py").write_text("def set_seed(*a, **k): pass\\n")
                 (d / "ace" / "__init__.py").write_text("")
                 (d / "ace" / "inference.py").write_text("")
+                # Tight 0600/0700 entries to exercise `ensure_world_readable()` selective `find ... ! -perm` repair.
+                tf = target / "_tight_file.txt"
+                tf.write_text("x\\n")
+                tf.chmod(0o600)
+                tx = target / "_tight_exec.sh"
+                tx.write_text("#!/bin/sh\\n")
+                tx.chmod(0o700)
+                td = target / "_tight_dir"
+                td.mkdir(exist_ok=True)
+                td.chmod(0o700)
             if "fme==2026.10.0" in cmdline:
                 d = target / "fme"
                 (d / "coupled").mkdir(parents=True, exist_ok=True)
@@ -847,13 +1046,30 @@ def _make_stub_native_python(work_dir: pathlib.Path, real_version: str) -> pathl
                 )
                 (d / "coupled" / "__init__.py").write_text("")
                 (d / "coupled" / "inference.py").write_text("")
-            if "--no-deps" in args and "--target" not in args:
+            if "--no-deps" in args and "--target" not in args and "torch_harmonics==0.7.2" not in cmdline:
                 d = target / "aimip"
                 d.mkdir(parents=True, exist_ok=True)
                 (d / "__init__.py").write_text(
+                    "import os as _os\\n"
                     f"__version__ = {{os.environ.get('FAKE_NATIVE_AIMIP_VER', REAL_VER)!r}}\\n"
+                    f"__path__ = [_os.path.dirname(__file__), {{REAL_AIMIP_DIR!r}}]\\n"
                 )
                 (d / "emu_job.py").write_text("")
+                if "cbottle @" in cmdline:
+                    cb = target / "cbottle"
+                    cb.mkdir(parents=True, exist_ok=True)
+                    (cb / "__init__.py").write_text("")
+                if "nvidia-modulus @" in cmdline:
+                    mod = target / "modulus" / "models" / "sfno"
+                    mod.mkdir(parents=True, exist_ok=True)
+                    (target / "modulus" / "__init__.py").write_text("")
+                    (target / "modulus" / "models" / "__init__.py").write_text("")
+                    (mod / "__init__.py").write_text("")
+                    (mod / "initialization.py").write_text("def trunc_normal_(*a, **k): pass\\n")
+                    (mod / "sfnonet.py").write_text(
+                        "from apex.normalization import FusedLayerNorm\\n"
+                        "class SphericalFourierNeuralOperatorNet: pass\\n"
+                    )
             if "earth2studio" in cmdline:
                 e2s = target / "earth2studio"
                 (e2s / "models" / "px").mkdir(parents=True, exist_ok=True)
@@ -861,7 +1077,7 @@ def _make_stub_native_python(work_dir: pathlib.Path, real_version: str) -> pathl
                 (e2s / "models" / "__init__.py").write_text("")
                 (e2s / "models" / "px" / "__init__.py").write_text("class DLESyMLatLon: pass\\n")
                 (e2s / "models" / "px" / "dlesym_v0_isccp_era5.py").write_text("class DLESyMv0_ISCCP_ERA5LatLon: pass\\n")
-                (e2s / "data.py").write_text("class ARCO_ERA5: pass\\n")
+                (e2s / "data.py").write_text("class ARCO_ERA5: pass\\nclass CBottle3D: pass\\n")
                 pn = target / "physicsnemo"
                 pn.mkdir(parents=True, exist_ok=True)
                 (pn / "__init__.py").write_text("__version__ = '1.0.0'\\n")
@@ -916,11 +1132,36 @@ def _make_stub_native_python(work_dir: pathlib.Path, real_version: str) -> pathl
 def test_install_native_fails_on_step_or_version_errors_without_launcher_and_uses_safe_pytest_tmp(
     safe_gate_root: pathlib.Path,
 ) -> None:
-    """`install-native.sh` chains every build command, asserts exact versions, leaves no launcher on failure, and picks a `selftest_dir_ok` pytest tmpdir."""
+    """`install-native.sh` chains every build command, stages verified `miles-credit` via `.pth`, asserts exact imports/versions, leaves no launcher on failure, and picks a `selftest_dir_ok` pytest tmpdir."""
+    from aimip.safe_pickle import compute_sha256sum_tree_digest
+
     real_version = (REPO_ROOT / "container" / "VERSION").read_text(encoding="utf-8").strip()
     stub_py = _make_stub_native_python(safe_gate_root, real_version)
     runs_root = safe_gate_root / "runs_native"
     runs_root.mkdir()
+
+    good_cam = _build_fake_miles_credit_archive(
+        safe_gate_root / "fake_miles_credit_good.tar.gz",
+        include_deprecated_transforms=True,
+    )
+    missing_ns_cam = _build_fake_miles_credit_archive(
+        safe_gate_root / "fake_miles_credit_missing_deprecated.tar.gz",
+        include_deprecated_transforms=False,
+    )
+    degraded_ms_cam = _build_fake_miles_credit_archive(
+        safe_gate_root / "fake_miles_credit_degraded_ms.tar.gz",
+        include_deprecated_transforms=True,
+        postblock_available_override=False,
+    )
+
+    def _cam_env(spec: dict[str, str]) -> dict[str, str]:
+        return {
+            "AIMIP_CAMULATOR_ARCHIVE_URL": spec["url"],
+            "AIMIP_CAMULATOR_ARCHIVE_SIZE": spec["archive_size"],
+            "AIMIP_CAMULATOR_ARCHIVE_SHA256": spec["archive_sha256"],
+            "AIMIP_CAMULATOR_TREE_SHA256": spec["tree_sha256"],
+            "AIMIP_CAMULATOR_TREE_FILES": spec["tree_files"],
+        }
 
     def _run_native(prefix: pathlib.Path, extra_args: list[str], env_overrides: dict[str, str]) -> subprocess.CompletedProcess[str]:
         env = dict(os.environ)
@@ -929,12 +1170,20 @@ def test_install_native_fails_on_step_or_version_errors_without_launcher_and_use
             "FAKE_NATIVE_FME_VER",
             "FAKE_NATIVE_OVERLAY_VER",
             "FAKE_NATIVE_TORCH_VER",
+            "FAKE_NATIVE_TORCH24_VER",
             "FAKE_NATIVE_AIMIP_VER",
             "FAKE_NATIVE_OMIT_HEALPIXPAD",
+            "FAKE_NATIVE_OMIT_APEX_SHIM",
             "FAKE_PYTEST_LOG",
             "FAKE_PYTEST_RC",
+            "AIMIP_CAMULATOR_ARCHIVE_URL",
+            "AIMIP_CAMULATOR_ARCHIVE_SIZE",
+            "AIMIP_CAMULATOR_ARCHIVE_SHA256",
+            "AIMIP_CAMULATOR_TREE_SHA256",
+            "AIMIP_CAMULATOR_TREE_FILES",
         ):
             env.pop(k, None)
+        env.update(_cam_env(good_cam))
         env.update(env_overrides)
         return subprocess.run(
             [
@@ -957,15 +1206,25 @@ def test_install_native_fails_on_step_or_version_errors_without_launcher_and_use
         )
 
     # 1. Failure cases: intermediate pip failure (followed by succeeding `pip freeze`), wrong aimip/fme/overlay/torch version,
-    #    or missing `healpixpad_cuda` under --with-emu -> ALL must exit non-zero at the exact guard and leave NO bin/aimip and NO VERSION!
+    #    missing `healpixpad_cuda` under --with-emu, tampered `miles-credit` archive SHA, missing namespace subpackage
+    #    `credit.transforms.deprecated`, or degraded `Model_State.POSTBLOCK_AVAILABLE=False` -> ALL must exit non-zero at
+    #    the exact guard and leave NO bin/aimip and NO VERSION!
     failure_cases: list[tuple[str, list[str], dict[str, str], str]] = [
         ("mid_block_pip_fail", [], {"FAKE_NATIVE_FAIL_MATCH": "requirements-agent.txt"}, "venv build failed"),
         ("wrong_aimip_ver", [], {"FAKE_NATIVE_AIMIP_VER": "0.0.1"}, "import/version check failed"),
         ("wrong_fme_ver", [], {"FAKE_NATIVE_FME_VER": "2026.4.0"}, "import/version check failed"),
         ("wrong_overlay_ver", [], {"FAKE_NATIVE_OVERLAY_VER": "2026.5.1"}, "overlay check failed"),
         ("wrong_torch_ver", [], {"FAKE_NATIVE_TORCH_VER": "2.13.0+cu130"}, "import/version check failed"),
-        ("emu_mid_pip_fail", ["--with-emu"], {"FAKE_NATIVE_FAIL_MATCH": "nvidia-cuda-nvcc"}, "venv-emu build failed"),
+        ("emu_mid_pip_fail", ["--with-emu"], {"FAKE_NATIVE_FAIL_MATCH": "nvidia-cuda-nvcc"}, "rerun without --with-emu"),
         ("emu_missing_healpixpad", ["--with-emu"], {"FAKE_NATIVE_OMIT_HEALPIXPAD": "1"}, "venv-emu import/version check failed"),
+        ("camulator_mid_pip_fail", ["--with-camulator"], {"FAKE_NATIVE_FAIL_MATCH": "constraints-camulator.txt"}, "rerun without --with-camulator"),
+        ("camulator_bad_archive_sha", ["--with-camulator"], {"AIMIP_CAMULATOR_ARCHIVE_SHA256": "0" * 64}, "rerun without --with-camulator"),
+        ("camulator_missing_deprecated_ns", ["--with-camulator"], _cam_env(missing_ns_cam), "venv-camulator import/version check failed"),
+        ("camulator_degraded_postblock", ["--with-camulator"], _cam_env(degraded_ms_cam), "venv-camulator import/version check failed"),
+        ("camulator_wrong_torch", ["--with-camulator"], {"FAKE_NATIVE_TORCH24_VER": "2.14.0+cu130"}, "venv-camulator import/version check failed"),
+        ("sdyff_mid_pip_fail", ["--with-sdyff"], {"FAKE_NATIVE_FAIL_MATCH": "constraints-sdyff.txt"}, "rerun without --with-sdyff"),
+        ("sdyff_missing_apex_shim", ["--with-sdyff"], {"FAKE_NATIVE_OMIT_APEX_SHIM": "1"}, "venv-sdyff import/version check failed"),
+        ("sdyff_wrong_torch", ["--with-sdyff"], {"FAKE_NATIVE_TORCH24_VER": "2.14.0+cu130"}, "venv-sdyff import/version check failed"),
     ]
     for case_name, extra, overrides, expected_err in failure_cases:
         pfx = safe_gate_root / f"fail_{case_name}"
@@ -976,7 +1235,8 @@ def test_install_native_fails_on_step_or_version_errors_without_launcher_and_use
         assert not (pfx / "VERSION").exists(), f"{case_name} left {pfx / 'VERSION'}"
 
     # 2. Group-writable prefix parent + world-writable non-sticky TMPDIR -> installer skips both via `selftest_dir_ok`
-    #    (selecting safe `runs_root` or `/tmp`), runs pytest cleanly, and writes VERSION + bin/aimip only at the end!
+    #    (selecting safe `runs_root` or `/tmp`), stages `venv-camulator/src/miles-credit` + `miles_credit_camulator.pth`
+    #    with zero `.pyc` pollution and zero symlinks, runs pytest cleanly, and writes VERSION + bin/aimip only at the end!
     shared_parent = safe_gate_root / "shared_group_parent"
     shared_parent.mkdir(mode=0o775)
     os.chmod(shared_parent, 0o775)
@@ -987,12 +1247,30 @@ def test_install_native_fails_on_step_or_version_errors_without_launcher_and_use
     ok_pfx = shared_parent / "aimip_native_ok"
     ok_res = _run_native(
         ok_pfx,
-        ["--with-emu"],
+        ["--with-emu", "--with-camulator", "--with-sdyff"],
         {"TMPDIR": str(bad_tmp), "FAKE_PYTEST_LOG": str(pytest_log)},
     )
     assert ok_res.returncode == 0, ok_res.stderr + ok_res.stdout
     assert (ok_pfx / "bin" / "aimip").is_file()
     assert (ok_pfx / "VERSION").read_text(encoding="utf-8").strip() == real_version
+    pth_file = ok_pfx / "venv-camulator" / "lib" / "python3.12" / "site-packages" / "miles_credit_camulator.pth"
+    cam_src_dir = ok_pfx / "venv-camulator" / "src" / "miles-credit"
+    assert pth_file.is_file()
+    assert pth_file.read_text(encoding="utf-8").strip() == os.path.realpath(cam_src_dir)
+    assert not (cam_src_dir / "credit" / "applications" / "train.py").exists()
+    assert compute_sha256sum_tree_digest(str(cam_src_dir)) == (
+        good_cam["tree_sha256"],
+        int(good_cam["tree_files"]),
+    )
+    sdyff_sp = ok_pfx / "venv-sdyff" / "lib" / "python3.12" / "site-packages"
+    main_sp = ok_pfx / "venv" / "lib" / "python3.12" / "site-packages"
+    assert (sdyff_sp / "apex" / "normalization.py").is_file()
+    for other_v in ("venv", "venv-emu", "venv-camulator"):
+        assert not (ok_pfx / other_v / "lib" / "python3.12" / "site-packages" / "apex").exists()
+    assert stat.S_IMODE((main_sp / "_tight_file.txt").stat().st_mode) & 0o444 == 0o444
+    assert stat.S_IMODE((main_sp / "_tight_file.txt").stat().st_mode) & 0o111 == 0
+    assert stat.S_IMODE((main_sp / "_tight_exec.sh").stat().st_mode) & 0o555 == 0o555
+    assert stat.S_IMODE((main_sp / "_tight_dir").stat().st_mode) & 0o555 == 0o555
     logged = pytest_log.read_text(encoding="utf-8")
     assert str(bad_tmp) not in logged
     assert str(shared_parent) not in logged

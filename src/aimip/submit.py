@@ -96,6 +96,9 @@ TRUSTED_RUN_FILES: tuple[str, ...] = (
     "ic_members.nc",
     "ic_members_atmosphere.nc",
     "ic_members_ocean.nc",
+    "staged_om4.zarr",
+    "camulator_runtime_config.yaml",
+    "sdyff_runtime_config.yaml",
 )
 
 

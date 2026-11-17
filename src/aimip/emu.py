@@ -37,11 +37,64 @@ from collections.abc import Sequence
 from typing import Any
 
 from . import __version__
+from .camulator import (
+    CAMULATOR_BRANCH_FORCING_NAME,
+    CAMULATOR_BRANCH_WINDOW,
+    CAMULATOR_CONFIG_REL_PATH,
+    CAMULATOR_CYCLIC_FORCING_NAME,
+    CAMULATOR_CYCLIC_WINDOW,
+    CAMULATOR_MEAN_REL_PATH,
+    CAMULATOR_METADATA_REL_PATH,
+    CAMULATOR_PUBLISHED_STARTS,
+    CAMULATOR_SECONDS_PER_YEAR,
+    CAMULATOR_STATICS_B_REL_PATH,
+    CAMULATOR_STATICS_BE21_REL_PATH,
+    CAMULATOR_STATICS_FE21_REL_PATH,
+    CAMULATOR_STD_REL_PATH,
+    camulator_python,
+    verify_camulator_code_dir,
+)
+from .cbottle import (
+    CBOTTLE_BATCH_SIZE,
+    CBOTTLE_CHECKPOINT_REL_PATHS,
+    CBOTTLE_DATE_ORDER,
+    CBOTTLE_DEFAULT_CADENCE,
+    CBOTTLE_SECONDS_PER_YEAR,
+    CBOTTLE_SST_REL_PATH,
+    cbottle_sample_timestamps,
+)
 from .errors import EXIT_UNSTABLE, ConfigError, MissingAssetsError, ValidationError
-from .emu_catalog import DLESYM_IC_WINDOW
+from .emu_catalog import DLESYM_IC_WINDOW, SAMUDRA_WINDOW
 from .lora import sha256_file
+from .md15 import (
+    MD15_CODE_REL_DIR,
+    MD15_CONFIG_REL_PATH,
+    MD15_FORCING_WINDOW,
+    MD15_PUBLISHED_STARTS,
+    MD15_STATS_REL_PATH,
+    MD15_WEIGHTS_REL_PATH,
+    md15_months_between,
+    md15_step_months,
+    md15_wall_seconds_estimate,
+    verify_md15_code_dir,
+)
 from .registry import ModelSpec, resolve_data_dir, resolve_playground_dir
+from .safe_pickle import compute_tree_digest
+from .samudra import SAMUDRA_OSN_SOURCE, SAMUDRA_SECONDS_PER_YEAR
+from .sdyff import (
+    SDYFF_COARSEN_FACTOR,
+    SDYFF_DATA_REL_DIR,
+    SDYFF_FORECASTER_CKPT_REL_PATH,
+    SDYFF_INTERPOLATOR_CFG_REL_PATH,
+    SDYFF_INTERPOLATOR_CKPT_REL_PATH,
+    SDYFF_SECONDS_PER_YEAR,
+    SDYFF_ZENODO_FILES,
+    sdyff_plan_schedule,
+    sdyff_python,
+    verify_sdyff_code_dir,
+)
 from .site_config import SiteConfig, load_site_config
+from .time_utils import format_cftime, parse_cftime
 from .validators import (
     makedirs_no_group_other_write,
     strip_group_other_write,
@@ -53,9 +106,18 @@ from .validators import (
     validate_seed,
     validate_slurm_job_id,
     validate_slurm_time,
+    validate_visible_input_path,
 )
 
-EMU_FAMILIES: tuple[str, ...] = ("e2s-dlesym", "arches")
+EMU_FAMILIES: tuple[str, ...] = (
+    "e2s-dlesym",
+    "arches",
+    "samudra",
+    "md",
+    "camulator",
+    "cbottle",
+    "sdyff",
+)
 EMU_JOB_MODULE = "aimip.emu_job"
 DEFAULT_EMU_PYTHON = "/opt/aimip/venv-emu/bin/python"
 
@@ -100,6 +162,15 @@ def emu_python() -> str:
     return path
 
 
+def _runtime_python_for_family(family: str) -> str:
+    """Resolve the isolated Python executable for *family* (`venv-camulator`, `venv-sdyff`, vs `venv-emu`)."""
+    if family == "camulator":
+        return camulator_python()
+    if family == "sdyff":
+        return sdyff_python()
+    return emu_python()
+
+
 def _now_utc() -> str:
     return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -131,6 +202,16 @@ def _parse_hms(value: str) -> int:
 def _walltime(family: str, steps: int, members: int, max_time: str) -> tuple[str, str, bool]:
     if family == "e2s-dlesym":
         work = steps * 6 / (365.25 * 24) * DLESYM_SECONDS_PER_YEAR * members
+    elif family == "samudra":
+        work = steps * 120 / (365.25 * 24) * SAMUDRA_SECONDS_PER_YEAR * members
+    elif family == "md":
+        work = md15_wall_seconds_estimate(steps, members)
+    elif family == "camulator":
+        work = steps * 6 / (365.0 * 24) * CAMULATOR_SECONDS_PER_YEAR * members
+    elif family == "cbottle":
+        work = steps / 365.25 * CBOTTLE_SECONDS_PER_YEAR * members
+    elif family == "sdyff":
+        work = steps * 6 / (365.0 * 24) * SDYFF_SECONDS_PER_YEAR * members
     else:
         work = steps * ARCHES_SECONDS_PER_MONTH * members
     want = max(EMU_MIN_WALLTIME, int(EMU_SAFETY * (EMU_FIXED_SECONDS + work)))
@@ -142,6 +223,16 @@ def _gpu_hours(family: str, steps: int, members: int) -> float:
     """Expected GPU time (no padding): rollout plus about one minute of loading."""
     if family == "e2s-dlesym":
         return (60 + steps * 6 / (365.25 * 24) * DLESYM_SECONDS_PER_YEAR * members) / 3600
+    if family == "samudra":
+        return (60 + steps * 120 / (365.25 * 24) * SAMUDRA_SECONDS_PER_YEAR * members) / 3600
+    if family == "md":
+        return (60 + md15_wall_seconds_estimate(steps, members)) / 3600
+    if family == "camulator":
+        return (60 + steps * 6 / (365.0 * 24) * CAMULATOR_SECONDS_PER_YEAR * members) / 3600
+    if family == "cbottle":
+        return (60 + steps / 365.25 * CBOTTLE_SECONDS_PER_YEAR * members) / 3600
+    if family == "sdyff":
+        return (60 + steps * 6 / (365.0 * 24) * SDYFF_SECONDS_PER_YEAR * members) / 3600
     return (60 + steps * ARCHES_SECONDS_PER_MONTH * members) / 3600
 
 
@@ -153,6 +244,8 @@ def model_package_files(model: ModelSpec, data_dir: str) -> dict[str, str]:
     for rel in model.required_files:
         if model.family == "arches" and rel.startswith("inputs/") and rel.endswith(".memmap"):
             continue      # scenario arrays (GBs): recorded by size, like fme forcing files; side files are hashed
+        if model.family == "camulator" and rel.startswith("inputs/camulator/"):
+            continue      # selected IC `.pth` and forcing `.nc` are hashed via `ensure_camulator_selected_assets`
         out[rel] = os.path.join(data_dir, rel)
     return out
 
@@ -215,12 +308,42 @@ def precheck_emu_request(
     n_members = validate_int_range(1 if members is None else members, "--members", min_value=1, max_value=64)
     for flag, value in (("--ic", ic_path), ("--ocean-ic", ocean_ic_path), ("--lora", lora_path)):
         if value is not None:
+            if flag == "--ic" and model.family == "md":
+                continue
+            if model.family == "e2s-dlesym":
+                reason = (
+                    "DLESyM starts from ERA5 at --start (fetched from ARCO-ERA5) and cannot be continued yet; "
+                    "run the whole period in one job (about 40 s of GPU time per simulated year)."
+                )
+            elif model.family == "samudra":
+                reason = (
+                    "samudra-om4 replays two 5-day OM4 ocean states ending at --start plus OM4 surface boundary "
+                    "fluxes from s3://m2lines-pubs/Samudra/OM4 and does not support custom --ic or --lora."
+                )
+            elif model.family == "md":
+                reason = "md-1.5 is an atmosphere-only latent diffusion model and does not support --ocean-ic or --lora."
+            elif model.family == "camulator":
+                reason = (
+                    "camulator starts only from its 69 published noleap initial-condition tensors "
+                    "(1980-01-01, Jan 1 & Jul 1 of 1981-2014; training Zarr archive is not public) "
+                    "and does not support custom --ic, --ocean-ic, or --lora."
+                )
+            elif model.family == "cbottle":
+                reason = (
+                    "cbottle-3d is a conditional atmospheric state generator without state memory "
+                    "(conditioned only on date/time and monthly SST tosbcs) and does not accept "
+                    "--ic, --ocean-ic, or --lora."
+                )
+            elif model.family == "sdyff":
+                reason = (
+                    "spherical-dyffusion initializes from its repeating 365-day FV3GFS reference cycle "
+                    "(Zenodo 10791087) and does not support custom --ic, --ocean-ic, or --lora."
+                )
+            else:
+                reason = "ArchesClimate-SSP always starts from the scenario's 2015 state."
             raise ConfigError(
-                f"{flag} is not supported for {model.name!r}: "
-                + ("DLESyM starts from ERA5 at --start (fetched from ARCO-ERA5) and cannot be continued yet; "
-                   "run the whole period in one job (about 40 s of GPU time per simulated year)."
-                   if model.family == "e2s-dlesym"
-                   else "ArchesClimate-SSP always starts from the scenario's 2015 state.")
+                f"{flag} is not supported for {model.name!r}: {reason}",
+                field=flag.lstrip("-").replace("-", "_"),
             )
     if model.family == "e2s-dlesym":
         info = DLESYM_MODELS.get(model.name)
@@ -265,8 +388,179 @@ def precheck_emu_request(
         y, m = ARCHES_FIRST_OUTPUT_MONTH
         k = m - 1 + n_steps - 1
         end_iso = f"{y + k // 12:04d}-{k % 12 + 1:02d}-01T00:00:00"
+    elif model.family == "samudra":
+        if norm_start[11:] != "12:00:00":
+            raise ConfigError(
+                f"--start for {model.name} must be on the OM4 5-day noon grid (YYYY-MM-DDT12:00:00, "
+                f"e.g. 2014-10-10T12:00:00), got {norm_start}.",
+                field="start",
+            )
+        if n_steps < 2 or n_steps % 2 != 0:
+            raise ConfigError(
+                f"--steps for {model.name} must be an even integer >= 2 (each model call predicts two 5-day states), "
+                f"got {n_steps}.",
+                field="steps",
+            )
+        if n_members > 1:
+            raise ConfigError(
+                f"{model.name} is deterministic (--members must be 1): upstream seed1..seed5 are five separately "
+                "trained networks, not stochastic ensemble members.",
+                field="members",
+                allowed=[1],
+            )
+        names = [fs.name for fs in model.forcing_sets]
+        if forcing_set_name is None:
+            scenario = names[0]
+        else:
+            scenario = validate_forcing_set_name(forcing_set_name)
+            if scenario not in names:
+                raise ConfigError(
+                    f"Unknown --forcing-set {scenario!r} for {model.name}: {model.name} replays OM4 surface fluxes "
+                    f"({', '.join(names)}) and accepts no custom forcing.",
+                    field="forcing_set",
+                    allowed=names,
+                )
+        start_dt = parse_cftime(norm_start, calendar="julian")
+        win_first = parse_cftime(SAMUDRA_WINDOW[0], calendar="julian")
+        win_last = parse_cftime(SAMUDRA_WINDOW[1], calendar="julian")
+        if start_dt < win_first or start_dt > win_last:
+            raise ConfigError(
+                f"--start {norm_start} is outside the OM4 replay window "
+                f"({SAMUDRA_WINDOW[0]} .. {SAMUDRA_WINDOW[1]}, julian calendar).",
+                field="start",
+            )
+        step_td = datetime.timedelta(hours=120)
+        end_dt = start_dt + (step_td * n_steps)
+        end_iso = format_cftime(end_dt)
+        if end_dt > win_last:
+            max_even = int(((win_last - start_dt) // step_td) // 2 * 2)
+            raise ConfigError(
+                f"--steps {n_steps} (end {end_iso}) exceeds the OM4 replay window end {SAMUDRA_WINDOW[1]}; "
+                f"at most {max_even} even 5-day steps are available from {norm_start}.",
+                field="steps",
+            )
+    elif model.family == "md":
+        if norm_start[8:] != "01T00:00:00":
+            raise ConfigError(
+                f"--start for {model.name} must be month-start midnight YYYY-MM-01T00:00:00 "
+                f"(published starts: {', '.join(MD15_PUBLISHED_STARTS)}), got {norm_start}.",
+                field="start",
+                allowed=list(MD15_PUBLISHED_STARTS),
+            )
+        if ic_path is not None:
+            validated_custom_ic = validate_visible_input_path(ic_path, label="--ic")
+            if not os.path.isfile(validated_custom_ic) or os.path.islink(validated_custom_ic):
+                raise ConfigError(
+                    f"Initial condition file not found (or symlinked) at --ic {validated_custom_ic!r}.",
+                    field="ic",
+                )
+        elif norm_start not in MD15_PUBLISHED_STARTS:
+            raise ConfigError(
+                f"--start {norm_start} has no published prebuilt initial state for {model.name} "
+                f"(published starts: {', '.join(MD15_PUBLISHED_STARTS)}; or pass an explicit `--ic <path.nc>`).",
+                field="start",
+                allowed=list(MD15_PUBLISHED_STARTS),
+            )
+        names = [fs.name for fs in model.forcing_sets]
+        if forcing_set_name is None:
+            scenario = names[0]
+        else:
+            scenario = validate_forcing_set_name(forcing_set_name)
+            if scenario not in names:
+                raise ConfigError(
+                    f"Unknown --forcing-set {scenario!r} for {model.name}: choose one of {', '.join(names)}.",
+                    field="forcing_set",
+                    allowed=names,
+                )
+        if not (MD15_FORCING_WINDOW[0] <= norm_start <= MD15_FORCING_WINDOW[1]):
+            raise ConfigError(
+                f"--start {norm_start} is outside the AIMIP forcing window "
+                f"({MD15_FORCING_WINDOW[0]} .. {MD15_FORCING_WINDOW[1]}).",
+                field="start",
+            )
+        ey, em = md15_step_months(int(norm_start[0:4]), int(norm_start[5:7]), n_steps - 1)
+        end_iso = f"{ey:04d}-{em:02d}-01T00:00:00"
+        if end_iso > MD15_FORCING_WINDOW[1]:
+            max_avail = md15_months_between(norm_start, MD15_FORCING_WINDOW[1]) + 1
+            raise ConfigError(
+                f"--steps {n_steps} (last month {end_iso[:7]}) exceeds AIMIP forcing end {MD15_FORCING_WINDOW[1][:10]}; "
+                f"at most {max_avail} monthly steps are available from {norm_start[:10]}.",
+                field="steps",
+            )
+    elif model.family == "camulator":
+        if norm_start not in CAMULATOR_PUBLISHED_STARTS:
+            raise ConfigError(
+                f"--start {norm_start} is not one of the 69 published initial states for {model.name} "
+                "(1980-01-01T00:00:00, or YYYY-01-01T00:00:00 / YYYY-07-01T00:00:00 for 1981..2014; "
+                "a new initial state requires the training Zarr archive, which is not public).",
+                field="start",
+                allowed=list(CAMULATOR_PUBLISHED_STARTS),
+            )
+        if n_members > 1:
+            raise ConfigError(
+                f"{model.name} (checkpoint.pt00069.pt) is deterministic: --members must be 1.",
+                field="members",
+                allowed=[1],
+            )
+        names = [fs.name for fs in model.forcing_sets]
+        if forcing_set_name is None:
+            scenario = names[0]
+        else:
+            scenario = validate_forcing_set_name(forcing_set_name)
+            if scenario not in names:
+                raise ConfigError(
+                    f"Unknown --forcing-set {scenario!r} for {model.name}: choose one of {', '.join(names)} "
+                    "(upstream b.e21 SST source is undocumented, so it is not named 'amip-hist').",
+                    field="forcing_set",
+                    allowed=names,
+                )
+        win = CAMULATOR_BRANCH_WINDOW if scenario == CAMULATOR_BRANCH_FORCING_NAME else CAMULATOR_CYCLIC_WINDOW
+        start_dt = parse_cftime(norm_start, calendar="noleap")
+        win_first = parse_cftime(win[0], calendar="noleap")
+        win_last = parse_cftime(win[1], calendar="noleap")
+        step_td = datetime.timedelta(hours=6)
+        last_step_dt = start_dt + (step_td * (n_steps - 1))
+        end_dt = start_dt + (step_td * n_steps)
+        end_iso = format_cftime(end_dt)
+        if start_dt < win_first or last_step_dt > win_last:
+            max_steps = int((win_last - start_dt) // step_td) + 1
+            raise ConfigError(
+                f"--steps {n_steps} (end {end_iso}, noleap calendar) exceeds forcing set {scenario!r} "
+                f"end {win[1]}; at most {max_steps} 6-hourly steps are available from {norm_start}.",
+                field="steps",
+            )
+    elif model.family == "cbottle":
+        names = [fs.name for fs in model.forcing_sets]
+        if forcing_set_name is None:
+            scenario = names[0]
+        else:
+            scenario = validate_forcing_set_name(forcing_set_name)
+            if scenario not in names:
+                raise ConfigError(
+                    f"Unknown --forcing-set {scenario!r} for {model.name}: choose one of {', '.join(names)}.",
+                    field="forcing_set",
+                    allowed=names,
+                )
+        cbottle_sample_timestamps(norm_start, n_steps, cadence=CBOTTLE_DEFAULT_CADENCE)
+        start_dt_g = datetime.datetime.strptime(norm_start, "%Y-%m-%dT%H:%M:%S")
+        end_iso = (start_dt_g + datetime.timedelta(hours=24 * n_steps)).strftime("%Y-%m-%dT%H:%M:%S")
+    elif model.family == "sdyff":
+        names = [fs.name for fs in model.forcing_sets]
+        if forcing_set_name is None:
+            scenario = names[0]
+        else:
+            scenario = validate_forcing_set_name(forcing_set_name)
+            if scenario not in names:
+                raise ConfigError(
+                    f"Unknown --forcing-set {scenario!r} for {model.name}: choose one of {', '.join(names)}.",
+                    field="forcing_set",
+                    allowed=names,
+                )
+        sdyff_plan_schedule(norm_start, n_steps)
+        start_dt_nl = parse_cftime(norm_start, calendar="noleap")
+        end_iso = format_cftime(start_dt_nl + datetime.timedelta(hours=6 * n_steps))
     else:
-        raise ConfigError(f"Model {model.name!r} is not a DLESyM/ArchesClimate model.")
+        raise ConfigError(f"Model {model.name!r} is not an installed emulator model.")
     return {"start": norm_start, "steps": n_steps, "members": n_members, "scenario": scenario, "end": end_iso}
 
 
@@ -315,6 +609,54 @@ def _stage_dlesym_ic(out_dir: str) -> str:
     return ic
 
 
+def _stage_samudra_window(out_dir: str) -> tuple[str, str, int, int]:
+    """Stage the OM4 evaluation window into `<out>/window` and return `(window_json_path, tree_sha, files, bytes)`."""
+    py = emu_python()
+    print(
+        f"aimip: staging OM4 5-day window from OSN (s3://m2lines-pubs/Samudra/OM4) into {out_dir}/window",
+        file=sys.stderr,
+    )
+    t0 = time.monotonic()
+    try:
+        try:
+            sys.stderr.fileno()
+            has_stderr_fd = True
+        except (AttributeError, OSError, io.UnsupportedOperation):
+            has_stderr_fd = False
+        if has_stderr_fd:
+            res = subprocess.run(
+                [py, "-I", "-m", EMU_JOB_MODULE, "stage", out_dir],
+                env=_job_env(out_dir, py),
+                stdout=sys.stderr,
+                stderr=sys.stderr,
+                check=False,
+            )
+        else:
+            res = subprocess.run(
+                [py, "-I", "-m", EMU_JOB_MODULE, "stage", out_dir],
+                env=_job_env(out_dir, py),
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if res.stdout:
+                sys.stderr.write(res.stdout)
+            if res.stderr:
+                sys.stderr.write(res.stderr)
+    finally:
+        shutil.rmtree(os.path.join(out_dir, ".aimip-tmp"), ignore_errors=True)
+    print(f"aimip: OM4 window staged in {time.monotonic() - t0:.0f} s", file=sys.stderr)
+    window_dir = os.path.join(out_dir, "window")
+    window_json = os.path.join(window_dir, "window.json")
+    if res.returncode != 0 or not os.path.isfile(window_json) or not os.path.isdir(os.path.join(window_dir, "OM4.zarr")):
+        raise ConfigError(
+            f"Could not stage the Samudra OM4 window (rc={res.returncode}); check --start is on the 5-day OM4 grid "
+            "and internet access is available on the staging node."
+        )
+    tree_sha, tree_files, tree_bytes = compute_tree_digest(window_dir, label="staged Samudra OM4 window")
+    return window_json, tree_sha, tree_files, tree_bytes
+
+
 def _job_env(out_dir: str, py_exe: str | None = None) -> dict[str, str]:
     from .submit import sanitized_subprocess_env
 
@@ -332,8 +674,10 @@ def _job_env(out_dir: str, py_exe: str | None = None) -> dict[str, str]:
         "AIMIP_EMU_TMP": tmp,
         "EARTH2STUDIO_CACHE": os.path.join(tmp, "e2s-cache"),
         "MPLCONFIGDIR": os.path.join(tmp, "mpl"),
+        "MPLBACKEND": "Agg",
         "HF_HUB_OFFLINE": "1",
         "WANDB_MODE": "disabled",
+        "WANDB_DISABLED": "true",
         "OMP_NUM_THREADS": os.environ.get("OMP_NUM_THREADS", "16"),
     })
     return env
@@ -372,10 +716,15 @@ def prepare_emu_run(
         model, start_iso=start_iso, steps=steps, members=members, forcing_set_name=forcing_set_name,
         ic_path=ic_path, ocean_ic_path=ocean_ic_path, lora_path=lora_path,
     )
-    if model.family == "e2s-dlesym" and not auto_fetch:
+    if model.family in ("e2s-dlesym", "samudra") and not auto_fetch:
         # --no-fetch forbids network downloads during preparation.
+        src_desc = (
+            "its ERA5 initial state from ARCO-ERA5"
+            if model.family == "e2s-dlesym"
+            else "its OM4 ocean window from OSN (s3://m2lines-pubs/Samudra/OM4)"
+        )
         raise MissingAssetsError(
-            f"{model.name} reads its ERA5 initial state from ARCO-ERA5 when the run is prepared, and --no-fetch forbids "
+            f"{model.name} reads {src_desc} when the run is prepared, and --no-fetch forbids "
             f"downloads. Prepare it on the host: aimip run -m {model.name} --start {req['start']} --steps {req['steps']} "
             "--submit",
             field="model",
@@ -430,12 +779,239 @@ def prepare_emu_run(
     makedirs_no_group_other_write(validated_out)
 
     scenario_rows: list[dict[str, Any]] = []
+    window_meta: dict[str, Any] = {}
+    ic_is_custom = False
+    precomputed_ic_file: str | None = None
     if model.family == "e2s-dlesym":
         info = DLESYM_MODELS[model.name]
         package_dir = os.path.join(data_root, info["package"])
         job = {"family": model.family, "model": model.name, "version": info["version"], "flavor": info["flavor"],
                "package_dir": package_dir}
         ic_provenance = f"ERA5 state at {req['start']} from ARCO-ERA5 (gs://gcp-public-data-arco-era5), staged at prepare time"
+    elif model.family == "samudra":
+        means_zip = os.path.join(data_root, "models/samudra-om4/OM4_means.zip")
+        stds_zip = os.path.join(data_root, "models/samudra-om4/OM4_stds.zip")
+        window_dir = os.path.join(validated_out, "window")
+        osn_source = (os.environ.get("AIMIP_SAMUDRA_SOURCE") or SAMUDRA_OSN_SOURCE).strip()
+        job = {
+            "family": model.family,
+            "model": model.name,
+            "window_dir": window_dir,
+            "osn_source": osn_source,
+            "checkpoint_sha256": pkg_sha[model.checkpoint],
+            "means_zip": means_zip,
+            "means_zip_sha256": pkg_sha[means_zip],
+            "stds_zip": stds_zip,
+            "stds_zip_sha256": pkg_sha[stds_zip],
+        }
+        ic_provenance = (
+            f"Two 5-day OM4 ocean states ending at {req['start']} plus surface boundary fluxes "
+            f"staged from {osn_source}/OM4"
+        )
+    elif model.family == "md":
+        if not os.environ.get("AIMIP_MD15_CODE"):
+            verify_md15_code_dir(data_root)
+        ckpt_dir = os.path.dirname(model.checkpoint)
+        config_pkl = os.path.join(ckpt_dir, "config.pkl")
+        stats_file = os.path.join(data_root, MD15_STATS_REL_PATH)
+        for req_p, req_lbl in ((config_pkl, "config.pkl"), (stats_file, "variable_statistics JSON")):
+            if req_p not in pkg_sha:
+                raise ConfigError(f"{model.name}: {req_lbl} ({req_p}) is missing from required_files.")
+        selected_fs = next(fs for fs in model.forcing_sets if fs.name == req["scenario"])
+        forcing_file = os.path.join(selected_fs.dir, "ERA5-0.25deg-monthly-mean-forcing-1978-2024.nc")
+        forcing_rel = os.path.relpath(forcing_file, data_root).replace(os.sep, "/")
+        if forcing_file in pkg_sha:
+            scenario_rows = [
+                {
+                    "rel_path": forcing_rel,
+                    "path": forcing_file,
+                    "size": os.path.getsize(forcing_file),
+                    "sha256": pkg_sha[forcing_file],
+                }
+            ]
+        else:
+            if not os.path.isfile(forcing_file) or os.path.islink(forcing_file):
+                raise ConfigError(
+                    f"{model.name}: AIMIP forcing file is missing ({forcing_file}); run `aimip fetch -m {model.name}`."
+                )
+            forcing_sha = sha256_file(forcing_file)
+            _check_against_lock(model.name, {forcing_rel: forcing_file}, {forcing_file: forcing_sha}, data_root)
+            scenario_rows = [
+                {
+                    "rel_path": forcing_rel,
+                    "path": forcing_file,
+                    "size": os.path.getsize(forcing_file),
+                    "sha256": forcing_sha,
+                }
+            ]
+        if ic_path is not None:
+            precomputed_ic_file = validate_visible_input_path(ic_path, label="--ic")
+            ic_is_custom = True
+            ic_provenance = f"Explicit user initial condition {precomputed_ic_file} at {req['start'][:10]}"
+        else:
+            ymd_tag = req["start"][:10]
+            matched_ics = [p for p in model.ic_files if ymd_tag in os.path.basename(p) or ymd_tag.replace("-", "") in os.path.basename(p)]
+            precomputed_ic_file = (
+                matched_ics[0]
+                if matched_ics
+                else os.path.join(data_root, f"inputs/md-1.5/ic/ic_{ymd_tag}.nc")
+            )
+            if not os.path.isfile(precomputed_ic_file) or os.path.islink(precomputed_ic_file):
+                raise ConfigError(
+                    f"{model.name}: no initial condition is staged at {precomputed_ic_file} "
+                    f"(upstream publishes no initial-state file); pass `--ic <era5_monthly_state.nc>` "
+                    f"(under $AIMIP_DATA or your run root) or stage the {ymd_tag} 1.5 deg ERA5 monthly state at {precomputed_ic_file}.",
+                    field="ic",
+                )
+            ic_provenance = (
+                f"Staged 1.5 deg ERA5 monthly-mean initial state {precomputed_ic_file} ({ymd_tag}, Copernicus/ECMWF attribution applies)"
+            )
+        md_ic_sha = sha256_file(precomputed_ic_file)
+        job = {
+            "family": model.family,
+            "model": model.name,
+            "scenario": req["scenario"],
+            "data_root": data_root,
+            "ckpt_dir": ckpt_dir,
+            "config_sha256": pkg_sha[config_pkl],
+            "weights_sha256": pkg_sha[model.checkpoint],
+            "stats_file": stats_file,
+            "stats_sha256": pkg_sha[stats_file],
+            "forcing_file": forcing_file,
+            "ic_file": precomputed_ic_file,
+            "ic_sha256": md_ic_sha,
+        }
+    elif model.family == "camulator":
+        from .setup_data import ensure_camulator_selected_assets
+
+        if not os.environ.get("AIMIP_CAMULATOR_CODE"):
+            verify_camulator_code_dir(data_root)
+        selected_assets = ensure_camulator_selected_assets(
+            data_root,
+            start_iso=req["start"],
+            scenario=req["scenario"],
+            auto_fetch=auto_fetch,
+            progress_stream=sys.stderr,
+        )
+        cam_ic_info = selected_assets["ic"]
+        cam_forcing_info = selected_assets["forcing"]
+        precomputed_ic_file = str(cam_ic_info["abs_path"])
+        scenario_rows = [
+            {
+                "rel_path": cam_forcing_info["rel_path"],
+                "path": cam_forcing_info["abs_path"],
+                "size": int(cam_forcing_info["size"]),
+                "sha256": str(cam_forcing_info["sha256"]),
+            }
+        ]
+        base_cfg_p = os.path.join(data_root, CAMULATOR_CONFIG_REL_PATH)
+        meta_yaml_p = os.path.join(data_root, CAMULATOR_METADATA_REL_PATH)
+        mean_nc_p = os.path.join(data_root, CAMULATOR_MEAN_REL_PATH)
+        std_nc_p = os.path.join(data_root, CAMULATOR_STD_REL_PATH)
+        statics_b_p = os.path.join(data_root, CAMULATOR_STATICS_B_REL_PATH)
+        statics_be21_p = os.path.join(data_root, CAMULATOR_STATICS_BE21_REL_PATH)
+        statics_fe21_p = os.path.join(data_root, CAMULATOR_STATICS_FE21_REL_PATH)
+        job = {
+            "family": model.family,
+            "model": model.name,
+            "scenario": req["scenario"],
+            "data_root": data_root,
+            "checkpoint_sha256": pkg_sha[model.checkpoint],
+            "base_config_file": base_cfg_p,
+            "base_config_sha256": pkg_sha[base_cfg_p],
+            "metadata_file": meta_yaml_p,
+            "metadata_sha256": pkg_sha[meta_yaml_p],
+            "mean_file": mean_nc_p,
+            "mean_sha256": pkg_sha[mean_nc_p],
+            "std_file": std_nc_p,
+            "std_sha256": pkg_sha[std_nc_p],
+            "statics_b_file": statics_b_p,
+            "statics_b_sha256": pkg_sha[statics_b_p],
+            "statics_be21_file": statics_be21_p,
+            "statics_be21_sha256": pkg_sha[statics_be21_p],
+            "statics_fe21_file": statics_fe21_p,
+            "statics_fe21_sha256": pkg_sha[statics_fe21_p],
+            "forcing_file": str(cam_forcing_info["abs_path"]),
+            "forcing_sha256": str(cam_forcing_info["sha256"]),
+            "ic_file": precomputed_ic_file,
+            "ic_sha256": str(cam_ic_info["sha256"]),
+        }
+        ic_provenance = (
+            f"Published CAMulator initial-condition tensor ({os.path.basename(precomputed_ic_file)}) "
+            f"from hf://willychap/camulator@{model.checkpoint_sha256[:8]} (Apache-2.0)"
+        )
+    elif model.family == "cbottle":
+        sst_p = os.path.join(data_root, CBOTTLE_SST_REL_PATH)
+        expert_ckpts = []
+        for c_rel in CBOTTLE_CHECKPOINT_REL_PATHS:
+            c_abs = os.path.join(data_root, c_rel)
+            if c_abs not in pkg_sha:
+                raise ConfigError(f"{model.name}: expert checkpoint {c_abs} missing from required_files.")
+            expert_ckpts.append({"path": c_abs, "sha256": pkg_sha[c_abs]})
+        if sst_p not in pkg_sha:
+            raise ConfigError(f"{model.name}: conditioning SST file {sst_p} missing from required_files.")
+        job = {
+            "family": model.family,
+            "model": model.name,
+            "scenario": req["scenario"],
+            "expert_checkpoints": expert_ckpts,
+            "sst_file": sst_p,
+            "sst_sha256": pkg_sha[sst_p],
+            "batch_size": CBOTTLE_BATCH_SIZE,
+            "cadence": CBOTTLE_DEFAULT_CADENCE,
+            "date_order": CBOTTLE_DATE_ORDER,
+        }
+        window_meta = {
+            "batch_size": CBOTTLE_BATCH_SIZE,
+            "cadence": CBOTTLE_DEFAULT_CADENCE,
+            "date_order": CBOTTLE_DATE_ORDER,
+        }
+        ic_provenance = (
+            "None (conditional atmospheric state generator without state memory; conditioned on "
+            "day_of_year, hour_of_day, and PCMDI-AMIP-1-1-9 monthly mid-point SST tosbcs)"
+        )
+    elif model.family == "sdyff":
+        if not os.environ.get("AIMIP_SDYFF_CODE"):
+            verify_sdyff_code_dir(data_root)
+        f_ckpt_p = os.path.join(data_root, SDYFF_FORECASTER_CKPT_REL_PATH)
+        i_ckpt_p = os.path.join(data_root, SDYFF_INTERPOLATOR_CKPT_REL_PATH)
+        i_cfg_p = os.path.join(data_root, SDYFF_INTERPOLATOR_CFG_REL_PATH)
+        fv3gfs_dir = os.path.join(data_root, SDYFF_DATA_REL_DIR)
+        ref_shas: dict[str, str] = {}
+        for fname in sorted(SDYFF_ZENODO_FILES):
+            f_abs = os.path.join(fv3gfs_dir, fname)
+            if f_abs not in pkg_sha:
+                raise ConfigError(f"{model.name}: FV3GFS reference file {f_abs} missing from required_files.")
+            ref_shas[fname] = pkg_sha[f_abs]
+        start_month = int(req["start"][5:7])
+        precomputed_ic_file = os.path.join(fv3gfs_dir, f"2021{start_month:02d}0100.nc")
+        sdyff_sched = sdyff_plan_schedule(req["start"], req["steps"])
+        job = {
+            "family": model.family,
+            "model": model.name,
+            "scenario": req["scenario"],
+            "data_dir": data_root,
+            "forecaster_ckpt": f_ckpt_p,
+            "forecaster_sha256": pkg_sha[f_ckpt_p],
+            "interpolator_ckpt": i_ckpt_p,
+            "interpolator_sha256": pkg_sha[i_ckpt_p],
+            "interpolator_cfg": i_cfg_p,
+            "interpolator_cfg_sha256": pkg_sha[i_cfg_p],
+            "fv3gfs_data_dir": fv3gfs_dir,
+            "fv3gfs_file_sha256s": ref_shas,
+            "coarsen_factor": SDYFF_COARSEN_FACTOR,
+        }
+        window_meta = {
+            "coarsen_factor": SDYFF_COARSEN_FACTOR,
+            "nominal_cycle_months": [m["label"] for m in sdyff_sched["complete_months"]],
+            "calendar_note": (
+                "repeating single-year SST cycle; year numbers are nominal cycle indices, not historical calendar years"
+            ),
+        }
+        ic_provenance = (
+            f"1 deg FV3GFS repeating-annual-SST reference state at {req['start']} "
+            "(Zenodo 10791087, CC-BY-4.0; nominal year label 2021)"
+        )
     else:
         scen = req["scenario"]
         scenario_rows = _scenario_files(model, data_root, scen)
@@ -466,9 +1042,22 @@ def prepare_emu_run(
 
     if model.family == "e2s-dlesym":
         ic_file = _stage_dlesym_ic(validated_out)
+    elif model.family == "samudra":
+        ic_file, win_sha, win_files, win_bytes = _stage_samudra_window(validated_out)
+        window_meta = {
+            "window_dir": os.path.join(validated_out, "window"),
+            "window_tree_sha256": win_sha,
+            "window_tree_files": win_files,
+            "window_tree_bytes": win_bytes,
+        }
+    elif model.family in ("md", "camulator", "sdyff"):
+        assert precomputed_ic_file is not None
+        ic_file = precomputed_ic_file
+    elif model.family == "cbottle":
+        ic_file = None
     else:
         ic_file = os.path.join(data_root, f"inputs/archesclimate-ssp/memmap_filled_in/r1i1p1f1_{req['scenario']}_interpolation.memmap/meta.json")
-    ic_sha = sha256_file(ic_file)
+    ic_sha = sha256_file(ic_file) if ic_file is not None else None
 
     max_time = getattr(active_site, "max_time", "12:00:00") or "12:00:00"
     default_walltime, unclamped, capped = _walltime(model.family, req["steps"], req["members"], max_time)
@@ -501,26 +1090,52 @@ def prepare_emu_run(
         "source_ic_path": ic_file,
         "source_ic_sha256": ic_sha,
         "ic_calendar": model.calendar,
-        "ic_is_custom": False,
-        "ensemble_strategy": "seeded_noise_members" if req["members"] > 1 else "single_member",
-        "ensemble_note": ("members share the ERA5 state and differ by the conditional-layer-norm noise seed (seed + k)"
-                          if req["members"] > 1 else None),
+        "ic_is_custom": ic_is_custom,
+        "ensemble_strategy": (
+            ("independent_conditional_draws" if model.family == "cbottle" else "seeded_noise_members")
+            if (req["members"] > 1 or model.family == "cbottle")
+            else "single_member"
+        ),
+        "ensemble_note": (
+            (
+                f"independent conditional diffusion draws (batch_size={CBOTTLE_BATCH_SIZE}, cadence={CBOTTLE_DEFAULT_CADENCE}, seed + k)"
+                if model.family == "cbottle"
+                else (
+                    "batched latent-diffusion reverse DDPM noise seeded from --seed"
+                    if model.family == "md"
+                    else (
+                        "probabilistic Spherical DYffusion rollout seeded from --seed"
+                        if model.family == "sdyff"
+                        else "members share the ERA5 state and differ by the conditional-layer-norm noise seed (seed + k)"
+                    )
+                )
+            )
+            if (req["members"] > 1 or model.family == "cbottle")
+            else None
+        ),
         "lora_checkpoint": None,
         "lora_info": None,
-        "n_ic_samples": 1,
+        "n_ic_samples": 0 if model.family == "cbottle" else 1,
         "n_ensemble_per_ic": req["members"],
         "gpu_hours_estimate": round(_gpu_hours(model.family, req["steps"], req["members"]), 6),
         "ic_provenance": ic_provenance,
         "start_time": req["start"],
         "end_time": req["end"],
         "steps": req["steps"],
-        "step_unit": "6h" if model.family == "e2s-dlesym" else "month",
+        "step_unit": {
+            "e2s-dlesym": "6h",
+            "camulator": "6h",
+            "sdyff": "6h",
+            "cbottle": "1d",
+            "samudra": "5d",
+        }.get(model.family, "month"),
         "members": req["members"],
         "seed": resolved_seed,
         "seed_explicit": seed is not None,
         "member_seeds": [resolved_seed + k for k in range(req["members"])],
         "forcing_set": next(fs.to_dict() for fs in model.forcing_sets if fs.name == req["scenario"]),
         "forcing_files": scenario_rows,
+        **window_meta,
         "site": {"name": active_site.name, "scheduler": effective_slurm.scheduler, "runtime": active_site.runtime},
         "slurm": {
             "scheduler": effective_slurm.scheduler, "partition": effective_slurm.partition,
@@ -531,8 +1146,8 @@ def prepare_emu_run(
         },
         "slurm_job_id": None,
         "image_sha": (os.environ.get("AIMIP_IMAGE_SHA") or "")[:256],
-        "runtime_env": os.path.dirname(os.path.dirname(emu_python())),
-        "runtime_python": emu_python(),
+        "runtime_env": os.path.dirname(os.path.dirname(_runtime_python_for_family(model.family))),
+        "runtime_python": _runtime_python_for_family(model.family),
         "config_sha256": _config_sha(config_path),
         "created_utc": _now_utc(),
     }
@@ -583,6 +1198,98 @@ def _check_job_matches_manifest(job: dict[str, Any], manifest: dict[str, Any]) -
             fail("memmap_dir")
         if os.path.dirname(job.get("reference_dir", "")) != os.path.dirname(os.path.dirname(job["checkpoint"])):
             fail("reference_dir")
+    elif job["family"] == "samudra":
+        exp_win = os.path.join(job["out_dir"], "window")
+        if job.get("window_dir") != exp_win or manifest.get("window_dir") != exp_win:
+            fail("window_dir")
+        if str(manifest.get("ic_path")) != os.path.join(exp_win, "window.json"):
+            fail("window.json")
+        pkg_map = manifest.get("package_files_sha256") or {}
+        if str(job.get("checkpoint_sha256", "")).lower() != str(manifest.get("checkpoint_sha256", "")).lower():
+            fail("checkpoint_sha256")
+        for zip_key, sha_key in (("means_zip", "means_zip_sha256"), ("stds_zip", "stds_zip_sha256")):
+            zpath = str(job.get(zip_key) or "")
+            if zpath not in pinned or str(job.get(sha_key, "")).lower() != str(pkg_map.get(zpath, "")).lower():
+                fail(zip_key)
+    elif job["family"] == "md":
+        pkg_map = manifest.get("package_files_sha256") or {}
+        if job.get("ckpt_dir") != os.path.dirname(job["checkpoint"]):
+            fail("ckpt_dir")
+        cfg_pkl = os.path.join(str(job.get("ckpt_dir") or ""), "config.pkl")
+        if cfg_pkl not in pinned or str(job.get("config_sha256", "")).lower() != str(pkg_map.get(cfg_pkl, "")).lower():
+            fail("config_sha256")
+        if str(job.get("weights_sha256", "")).lower() != str(manifest.get("checkpoint_sha256", "")).lower():
+            fail("weights_sha256")
+        st_path = str(job.get("stats_file") or "")
+        if st_path not in pinned or str(job.get("stats_sha256", "")).lower() != str(pkg_map.get(st_path, "")).lower():
+            fail("stats_file")
+        if str(job.get("ic_file")) != str(manifest.get("ic_path")) or str(job.get("ic_sha256", "")).lower() != str(
+            manifest.get("ic_sha256", "")
+        ).lower():
+            fail("ic_file")
+        f_path = str(job.get("forcing_file") or "")
+        f_rows = manifest.get("forcing_files") or []
+        if f_path not in pinned and not any(str(r.get("path")) == f_path for r in f_rows):
+            fail("forcing_file")
+    elif job["family"] == "camulator":
+        pkg_map = manifest.get("package_files_sha256") or {}
+        if str(job.get("checkpoint_sha256", "")).lower() != str(manifest.get("checkpoint_sha256", "")).lower():
+            fail("checkpoint_sha256")
+        for f_key, sha_key in (
+            ("base_config_file", "base_config_sha256"),
+            ("metadata_file", "metadata_sha256"),
+            ("mean_file", "mean_sha256"),
+            ("std_file", "std_sha256"),
+            ("statics_b_file", "statics_b_sha256"),
+            ("statics_be21_file", "statics_be21_sha256"),
+            ("statics_fe21_file", "statics_fe21_sha256"),
+        ):
+            p_val = str(job.get(f_key) or "")
+            if p_val not in pinned or str(job.get(sha_key, "")).lower() != str(pkg_map.get(p_val, "")).lower():
+                fail(f_key)
+        if str(job.get("ic_file")) != str(manifest.get("ic_path")) or str(job.get("ic_sha256", "")).lower() != str(
+            manifest.get("ic_sha256", "")
+        ).lower():
+            fail("ic_file")
+        f_rows = manifest.get("forcing_files") or []
+        f_path = str(job.get("forcing_file") or "")
+        f_sha = str(job.get("forcing_sha256") or "").lower()
+        if len(f_rows) != 1 or str(f_rows[0].get("path")) != f_path or str(f_rows[0].get("sha256", "")).lower() != f_sha:
+            fail("forcing_file")
+    elif job["family"] == "cbottle":
+        pkg_map = manifest.get("package_files_sha256") or {}
+        experts = job.get("expert_checkpoints")
+        if not isinstance(experts, list) or len(experts) != 3:
+            fail("expert_checkpoints")
+        for ex in experts:
+            if not isinstance(ex, dict):
+                fail("expert_checkpoints")
+            ex_p = str(ex.get("path") or "")
+            if ex_p not in pinned or str(ex.get("sha256", "")).lower() != str(pkg_map.get(ex_p, "")).lower():
+                fail("expert_checkpoints")
+        sst_p = str(job.get("sst_file") or "")
+        if sst_p not in pinned or str(job.get("sst_sha256", "")).lower() != str(pkg_map.get(sst_p, "")).lower():
+            fail("sst_file")
+        if job.get("batch_size") != manifest.get("batch_size") or job.get("cadence") != manifest.get("cadence"):
+            fail("batch_size/cadence")
+    elif job["family"] == "sdyff":
+        pkg_map = manifest.get("package_files_sha256") or {}
+        for f_key, sha_key in (
+            ("forecaster_ckpt", "forecaster_sha256"),
+            ("interpolator_ckpt", "interpolator_sha256"),
+            ("interpolator_cfg", "interpolator_cfg_sha256"),
+        ):
+            p_val = str(job.get(f_key) or "")
+            if p_val not in pinned or str(job.get(sha_key, "")).lower() != str(pkg_map.get(p_val, "")).lower():
+                fail(f_key)
+        fv3_dir = str(job.get("fv3gfs_data_dir") or "")
+        ref_shas = job.get("fv3gfs_file_sha256s") or {}
+        if not isinstance(ref_shas, dict) or len(ref_shas) != len(SDYFF_ZENODO_FILES):
+            fail("fv3gfs_file_sha256s")
+        for fname in SDYFF_ZENODO_FILES:
+            f_abs = os.path.join(fv3_dir, fname)
+            if f_abs not in pinned or str(ref_shas.get(fname, "")).lower() != str(pkg_map.get(f_abs, "")).lower():
+                fail("fv3gfs_file_sha256s")
     else:
         fail("family")
 
@@ -605,7 +1312,8 @@ def exec_emu(validated_out: str, manifest: dict[str, Any], manifest_path: str) -
     _check_job_matches_manifest(job, manifest)
 
     pinned = dict(manifest.get("package_files_sha256") or {})
-    pinned[str(manifest.get("ic_path"))] = str(manifest.get("ic_sha256"))
+    if manifest.get("ic_path") is not None:
+        pinned[str(manifest.get("ic_path"))] = str(manifest.get("ic_sha256"))
     if str(manifest.get("checkpoint_path")) not in pinned:
         raise ValidationError("Manifest does not pin the checkpoint.")
     for path, want in pinned.items():
@@ -628,6 +1336,29 @@ def exec_emu(validated_out: str, manifest: dict[str, Any], manifest_path: str) -
                 f"SHA-256 mismatch at job time for scenario file {p}: "
                 f"manifest expects {want_scen_sha}, got {got_scen_sha}."
             )
+    if job["family"] == "samudra":
+        win_dir = validate_safe_path(str(manifest.get("window_dir") or ""), label="staged Samudra OM4 window")
+        want_win_sha = str(manifest.get("window_tree_sha256") or "").strip().lower()
+        if len(want_win_sha) != 64:
+            raise ValidationError("Manifest does not pin window_tree_sha256 for samudra-om4.")
+        got_win_sha, got_win_files, got_win_bytes = compute_tree_digest(
+            win_dir, label="staged Samudra OM4 window"
+        )
+        if (
+            got_win_sha.lower() != want_win_sha
+            or got_win_files != manifest.get("window_tree_files")
+            or got_win_bytes != manifest.get("window_tree_bytes")
+        ):
+            raise ValidationError(
+                f"Staged Samudra OM4 window changed at job time ({win_dir}): "
+                f"manifest expects tree SHA-256 {want_win_sha}, got {got_win_sha}."
+            )
+    elif job["family"] == "md" and not os.environ.get("AIMIP_MD15_CODE"):
+        verify_md15_code_dir(str(job.get("data_root") or ""))
+    elif job["family"] == "camulator" and not os.environ.get("AIMIP_CAMULATOR_CODE"):
+        verify_camulator_code_dir(str(job.get("data_root") or ""))
+    elif job["family"] == "sdyff" and not os.environ.get("AIMIP_SDYFF_CODE"):
+        verify_sdyff_code_dir(str(job.get("data_dir") or ""))
 
     raw_job_id = os.environ.get("SLURM_JOB_ID")
     if raw_job_id:
@@ -646,7 +1377,7 @@ def exec_emu(validated_out: str, manifest: dict[str, Any], manifest_path: str) -
     rc = 1
     err: str | None = None
     try:
-        py = emu_python()
+        py = _runtime_python_for_family(str(job["family"]))
         res = subprocess.run([py, "-I", "-m", EMU_JOB_MODULE, "run", validated_out],
                              env=_job_env(validated_out, py), check=False)
         rc = int(res.returncode)

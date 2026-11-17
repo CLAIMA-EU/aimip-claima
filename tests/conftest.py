@@ -44,7 +44,16 @@ def _isolate_aimip_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "AIMIP_IMAGE_SHA",
         "AIMIP_FME_2026_10_OVERLAY",
         "AIMIP_EMU_PYTHON",
+        "AIMIP_CAMULATOR_PYTHON",
+        "AIMIP_SDYFF_PYTHON",
         "AIMIP_ARCHES_URL",
+        "AIMIP_ARCHES_CODE",
+        "AIMIP_CAMULATOR_URL",
+        "AIMIP_CAMULATOR_CODE",
+        "AIMIP_SDYFF_URL",
+        "AIMIP_SDYFF_CODE",
+        "AIMIP_ZENODO_MIRROR",
+        "AIMIP_SAMUDRA_OSN_ROOT",
     ):
         monkeypatch.delenv(key, raising=False)
 

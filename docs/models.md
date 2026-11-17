@@ -18,15 +18,20 @@
 | `dlesym-v1.1` | coupled, stochastic; adds 6-hour precipitation | as above | as above | `--members K` (noise seed + k) |
 | `dlesym-v0-isccp` | coupled, deterministic | as above | as above | — |
 | `archesclimate-ssp` | monthly emulator of IPSL-CM6A-LR (144 × 144: 1.25° lat × 2.5° lon; atmosphere and upper-ocean temperature), deterministic | scenarios `ssp434` (default) and `ssp585`; outputs March 2015 … November 2100 | the scenario's 2015 state (`--start 2015-01-01T00:00:00`) | — |
+| `samudra-om4` | 1° global **ocean** emulator of GFDL OM4 (180 × 360, 19 depths 2.5–6000 m), deterministic | OM4 JRA55-do OMIP-2 surface fluxes 1975-01-08 … 2022-12-29 (julian; independent test period starts 2014-09-30T12:00:00) | two 5-day OM4 states ending at `--start`, staged from OSN by `aimip run` | — |
+| `md-1.5` | 1.5° monthly latent-diffusion atmosphere emulator (121 × 240, 37 prognostic channels; `MD-1p5-latest.pth`), stochastic | AIMIP Phase 1 monthly SST/SIC (Zenodo 17065758, 556 month-start-centred points 1978-10-01 … 2025-01-01; training 1985–2014, test 2015–2022) | none published upstream — pass `--ic <era5_monthly.nc>` or stage `$AIMIP_DATA/inputs/md-1.5/ic/ic_<YYYY-MM-DD>.nc` | `--members K` (15 reverse DDPM steps/month) |
+| `camulator` | 6-hourly 1° 32-level atmosphere emulator of CAM6 / ERA5-scaled climate target (MILES/CREDIT), deterministic | `camulator-cyclic-1yr` (1980–2100) and `camulator-branch-1980-2014` (1980–2014); noleap | 69 published noleap tensors (1980-01-01, Jan 1 & Jul 1 of 1981–2014) | — |
+| `cbottle-3d` | conditional atmospheric **state generator** (not a time-stepping simulation; Earth2Studio `CBottle3D`, output 0.25°) | PCMDI-AMIP-1-1-9 monthly mid-point SST 1940-01-01 … 2022-12-16 (training range 1980–2017; no CO2 or sea-ice input) | none (independent diffusion draws given day-of-year, hour-of-day, and SST) | `--members K` (seed + k) |
+| `spherical-dyffusion` | 6-hourly 1° probabilistic atmosphere emulator of FV3GFS (180 × 360, 8 layers), stochastic | repeating 365-day annual SST cycle (labelled 2021 in reference files; nominal cycle months `0001-01…` in outputs); noleap | 1° FV3GFS reference simulation (Zenodo 10791087, 2021-01-01 … 2021-12-31) | `--members K` |
 
 ## Steps
 
 | models | one step | one year |
 |---|---|---|
-| the eight `fme` atmosphere models | 6 hours | 1460 steps (1464 in a leap year with a Gregorian or Julian calendar) |
-| `samudrace-cm4`, `samudrace-e3smv3` | 5 days | 73 steps |
-| `dlesym-*` | 6 hours | 1460 or 1464 steps |
-| `archesclimate-ssp` | 1 month | 12 steps (at most 1029) |
+| the eight `fme` atmosphere models, `dlesym-*`, `camulator`, `spherical-dyffusion` | 6 hours | 1460 steps (1464 in a leap year with a Gregorian or Julian calendar) |
+| `samudrace-cm4`, `samudrace-e3smv3`, `samudra-om4` | 5 days | 73 steps (`samudra-om4` takes even `--steps >= 2`) |
+| `cbottle-3d` | 1 day (`daily_synoptic`: 00/06/12/18 UTC per day) | 365 or 366 steps |
+| `archesclimate-ssp`, `md-1.5` | 1 month (`md-1.5` outputs one single monthly state per step, `counts = 1`) | 12 steps (`archesclimate-ssp` up to 1029; `md-1.5` up to 556) |
 
 ## Notes per model family
 
@@ -74,6 +79,14 @@ not part of the image or this repository: `aimip fetch -m archesclimate-ssp` (or
 its author's GitHub repository into `$AIMIP_DATA/code/ArchesClimate-SSP` and checks it against the tree digest pinned in
 `src/aimip/setup_data.py`. See
 [THIRD_PARTY.md](../THIRD_PARTY.md) for the licences of everything the image installs.
+
+**Samudra-OM4, MD-1.5, CAMulator, cBottle-3d and Spherical DYffusion.**
+- `samudra-om4` runs in `venv-emu` (Apache-2.0 `M2LInES/Samudra@0c2a1bd8` UNet) and stages only the requested 5-day OM4 state pair + surface boundary fluxes from OSN (`s3://m2lines-pubs/Samudra/OM4`) into the run directory at prepare time. Dates before `2014-09-30T12:00:00` lie inside the 1975–2014 training/validation window. The OSN `OM4.zarr` store has 73 timestamps per year (`Jan 3 .. Dec 28`) with no time bounds or averaging attribute ("5-day mean" is the paper's statement); each leap year in `1976..2020` ends with a 6-day `Dec 28 -> Jan 3` step, so `Dec 31` of a leap year is covered by no 5-day state and gets weight `1/31` from the `Jan 3` state. Non-finite or out-of-band `thetao_0` (`[-5, 45]` °C) stops with exit code 5.
+- `md-1.5` runs in `venv-emu` (`kjhall01/monthly-diffusion@b077d3bc`, MIT; `MD-1p5-latest.pth`, Hall & Molina 2026, arXiv:2604.13481). The first output month (`step 0`) is the deterministic encoder–decoder reconstruction of the initial state (`md/cvae.py:475-481`), not a forecast step; each subsequent step performs `T = 15` reverse DDPM steps (`md/diffusion.py:106` default; `config.pkl` omits `T`) batched across `--members` (with 5 static subgrid-orography and land-sea-mask channels `SDORSFC`, `ANORSFC`, `ISORSFC`, `SLORSFC`, `LSMSFC` embedded in `config.pkl`) and writes a single monthly state (`counts = 1`, not a sub-monthly average) across all 37 prognostic channels plus `restart.nc`. Driven by AIMIP Phase 1 monthly SST/SIC (Zenodo 17065758, 556 month-start-centred points `1978-10-01 .. 2025-01-01`); requires at least a 10-year spin-up (QBO bias in the first ~5 years). Upstream publishes no initial-state file: pass `--ic <path.nc>` (1.5° or 0.25° monthly-mean ERA5 NetCDF, or `<prev_run>/restart.nc`) or stage `$AIMIP_DATA/inputs/md-1.5/ic/ic_<YYYY-MM-DD>.nc`. Non-finite or out-of-band `TMP2m` (`[200, 330]` K) stops with exit code 5.
+- `camulator` runs in its own isolated native environment `venv-camulator` (`install-native.sh --with-camulator`: PyTorch 2.4.1, `torch_harmonics` 0.7.2, `numpy<2`, and `WillyChap/miles-credit@d0eb9add` staged non-packaged under `venv-camulator/src/miles-credit` via `miles_credit_camulator.pth` because upstream `pyproject.toml` omits `credit.transforms.deprecated` and `credit.preblock`). Note that `checkpoint.pt00069.pt` uses 4 dynamic forcings (`SOLIN`, `SST`, `ICEFRAC`, `co2vmr_3d` over 1980–2014), differing from the 2-forcing 1979–2010 model in arXiv:2504.06007. Non-finite or out-of-band `TREFHT` (`[200, 330]` K) stops with exit code 5.
+- `cbottle-3d` runs in `venv-emu` (`NVlabs/cBottle@f0f51998` via Earth2Studio `CBottle3D`). It is a conditional state generator without temporal memory: each day (`00/06/12/18` UTC, `batch_size=4`) is drawn independently conditioned on `(day_of_year, hour_of_day)` and monthly mid-point SST (`PCMDI-AMIP-1-1-9` `tosbcs`), with no initial state, CO2, or sea-ice input. Non-finite or out-of-band `t2m` (`[200, 330]` K) stops with exit code 5.
+- `spherical-dyffusion` runs in its own isolated native environment `venv-sdyff` (`install-native.sh --with-sdyff`: PyTorch 2.4.1, `torch_harmonics` 0.7.2, `ai2cm/modulus@94f62e1c` with `apex FusedLayerNorm` replaced by `torch.nn.LayerNorm` — numerically equivalent up to float rounding, while the published checkpoints configure `normalization_layer='instance_norm'` / `torch.nn.InstanceNorm2d` — and `Rose-STL-Lab/spherical-dyffusion@a10b3e7f` fetched into `$AIMIP_DATA/code/spherical-dyffusion`). It emulates a repeating 365-day annual SST cycle (labelled 2021 in Zenodo 10791087); output months use nominal cycle indices (`0001-01…`) over complete months (`coarsen_factor=4`), rename ocean-prescribed `surface_temperature` to `surface_temperature_prescribed_ocean`, and summarize predicted `air_temperature_7` (stopping with exit code 5 outside `[180, 340]` K).
+- **Checkpoint verification gate.** Across all five models, SHA-256 verification on `O_NOFOLLOW` file descriptors (with trusted-owner and non-group/world-writable directory/file checks) is the primary integrity boundary before loading from that same handle; `weights_only=True` and closed pickle global allowlists serve as a second defense-in-depth layer (especially in `venv-camulator` and `venv-sdyff`, which pin `torch==2.4.1`).
 
 ## Forcing of the AMIP models
 

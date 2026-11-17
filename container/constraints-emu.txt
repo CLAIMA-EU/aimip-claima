@@ -145,6 +145,7 @@ termcolor==3.3.0
 timm==1.0.30
 toolz==1.2.0
 torch==2.14.0
+torch_harmonics==0.8.0
 torchmetrics==1.9.0
 torchvision==0.29.0
 tornado==6.6.1

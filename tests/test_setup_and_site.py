@@ -472,7 +472,12 @@ def _create_synthetic_upstream_mirrors(
     from aimip.emu_catalog import artifacts as _emu_artifacts
 
     for a in _emu_artifacts():
-        p_emu = hf_mirror / a["repo"] / a["path"]
+        if a.get("source_kind") == "github_archive":
+            continue
+        if a.get("source_kind") == "zenodo":
+            p_emu = zenodo_mirror / a["record"] / a["path"]
+        else:
+            p_emu = hf_mirror / a["repo"] / a["path"]
         p_emu.parent.mkdir(parents=True, exist_ok=True)
         p_emu.write_bytes(f"FAKE_EMU {a['repo']} {a['path']}".encode("ascii"))
 
@@ -968,6 +973,29 @@ def test_setup_end_to_end_file_mirrors_write_lock_and_verify_pass_fail(
         code_dir.mkdir(parents=True, exist_ok=True)
         return {"code_dir": str(code_dir), "downloaded": False}
 
+    def _synthetic_camulator_fetcher(dest: str, **_kw: object) -> dict[str, object]:
+        code_dir = pathlib.Path(dest) / "code" / "miles-credit-camulator"
+        code_dir.mkdir(parents=True, exist_ok=True)
+        return {"code_dir": str(code_dir), "downloaded": False}
+
+    def _synthetic_sdyff_fetcher(dest: str, **_kw: object) -> dict[str, object]:
+        code_dir = pathlib.Path(dest) / "code" / "spherical-dyffusion"
+        code_dir.mkdir(parents=True, exist_ok=True)
+        return {"code_dir": str(code_dir), "downloaded": False}
+
+    def _synthetic_md15_fetcher(dest: str, **_kw: object) -> dict[str, object]:
+        from aimip.md15 import MD15_CONFIG_REL_PATH, MD15_STATS_REL_PATH, MD15_WEIGHTS_REL_PATH
+
+        dest_p = pathlib.Path(dest)
+        code_dir = dest_p / "code" / "monthly-diffusion"
+        code_dir.mkdir(parents=True, exist_ok=True)
+        for rel_m in (MD15_CONFIG_REL_PATH, MD15_WEIGHTS_REL_PATH, MD15_STATS_REL_PATH):
+            pm = dest_p / rel_m
+            pm.parent.mkdir(parents=True, exist_ok=True)
+            if not pm.is_file():
+                pm.write_bytes(f"FAKE_MD15 {rel_m}".encode("ascii"))
+        return {"code_dir": str(code_dir), "downloaded": False}
+
     run_setup(
         models="all",
         dest_dir=str(bootstrap_dest),
@@ -975,6 +1003,9 @@ def test_setup_end_to_end_file_mirrors_write_lock_and_verify_pass_fail(
         strict_unpinned=False,
         years=yc,
         arches_code_fetcher=_synthetic_arches_fetcher,
+        md15_code_fetcher=_synthetic_md15_fetcher,
+        camulator_code_fetcher=_synthetic_camulator_fetcher,
+        sdyff_code_fetcher=_synthetic_sdyff_fetcher,
         co2_year_reader=_synthetic_co2_reader,
     )
 
@@ -1002,6 +1033,9 @@ def test_setup_end_to_end_file_mirrors_write_lock_and_verify_pass_fail(
         lock_path=str(golden_lock_path),
         years=yc,
         arches_code_fetcher=_synthetic_arches_fetcher,
+        md15_code_fetcher=_synthetic_md15_fetcher,
+        camulator_code_fetcher=_synthetic_camulator_fetcher,
+        sdyff_code_fetcher=_synthetic_sdyff_fetcher,
         co2_year_reader=_synthetic_co2_reader,
     )
     assert setup_res["mode"] == "full"
@@ -1019,6 +1053,9 @@ def test_setup_end_to_end_file_mirrors_write_lock_and_verify_pass_fail(
         lock_path=str(golden_lock_path),
         years=yc,
         arches_code_fetcher=_synthetic_arches_fetcher,
+        md15_code_fetcher=_synthetic_md15_fetcher,
+        camulator_code_fetcher=_synthetic_camulator_fetcher,
+        sdyff_code_fetcher=_synthetic_sdyff_fetcher,
         co2_year_reader=_synthetic_co2_reader,
     )
     assert rerun_res["downloaded_files"] == 0
@@ -1033,6 +1070,9 @@ def test_setup_end_to_end_file_mirrors_write_lock_and_verify_pass_fail(
         verify_only=True,
         years=yc,
         arches_code_fetcher=_synthetic_arches_fetcher,
+        md15_code_fetcher=_synthetic_md15_fetcher,
+        camulator_code_fetcher=_synthetic_camulator_fetcher,
+        sdyff_code_fetcher=_synthetic_sdyff_fetcher,
     )
     assert ver_res["verified_files"] == len(cat)
 
@@ -1049,6 +1089,9 @@ def test_setup_end_to_end_file_mirrors_write_lock_and_verify_pass_fail(
             verify_only=True,
             years=yc,
             arches_code_fetcher=_synthetic_arches_fetcher,
+            md15_code_fetcher=_synthetic_md15_fetcher,
+            camulator_code_fetcher=_synthetic_camulator_fetcher,
+            sdyff_code_fetcher=_synthetic_sdyff_fetcher,
         )
     corrupt_abs.write_bytes(orig_bytes)
 
@@ -1065,6 +1108,9 @@ def test_setup_end_to_end_file_mirrors_write_lock_and_verify_pass_fail(
             verify_only=True,
             years=yc,
             arches_code_fetcher=_synthetic_arches_fetcher,
+            md15_code_fetcher=_synthetic_md15_fetcher,
+            camulator_code_fetcher=_synthetic_camulator_fetcher,
+            sdyff_code_fetcher=_synthetic_sdyff_fetcher,
         )
 
     # Step 7: Wrong derived hash in lock -> fresh `setup` rebuilds then raises naming the derived file!
@@ -1205,8 +1251,12 @@ def test_cli_setup_ace2_era5_only_download_write_lock_and_verify(
 def test_shipped_aimip_lock_covers_all_models_with_pinned_revisions_and_output_shas(
     tmp_path: pathlib.Path,
 ) -> None:
-    """Verify the shipped `aimip.lock` covers all 14 models with 64-hex sha256 and size pins across all 264 entries."""
+    """Verify the shipped `aimip.lock` covers all canonical models with 64-hex sha256 and size pins across all entries."""
     import aimip
+    from aimip.emu_catalog import (
+        artifacts as emu_artifacts,
+        on_demand_artifacts as emu_on_demand_artifacts,
+    )
     from aimip.setup_data import CO2_TABLE_REL_PATH, MD5_TBD, verify_file_against_lock
 
     pkg_dir = pathlib.Path(aimip.__file__).resolve().parent
@@ -1219,15 +1269,19 @@ def test_shipped_aimip_lock_covers_all_models_with_pinned_revisions_and_output_s
     shipped_lock = load_lock_file(str(lock_file))
     files = shipped_lock["files"]
     catalog = build_artifact_catalog()
+    n_emu = len(emu_artifacts())
+    on_demand_rels = {a["rel_path"] for a in emu_on_demand_artifacts()}
+    assert n_emu >= 63 and len(on_demand_rels) >= 68
 
     extra_aux = {
         "models/hiro-acev2/HiROv2.ckpt",
         "models/samudrace-e3smv3/SamudrACE-E3SMv3-atmosphere.tar",
         "models/samudrace-e3smv3/SamudrACE-E3SMv3-ocean.tar",
+        *on_demand_rels,
     }
     assert set(files.keys()) == set(catalog.keys()) | extra_aux
-    assert len(catalog) == 212 + 49   # 212 fme + 49 DLESyM / ArchesClimate-SSP files (emu_sources.json)
-    assert len(files) == 215 + 49   # + 3 companion checkpoints pinned in aimip.lock
+    assert len(catalog) == 212 + n_emu  # 212 fme + default emu_sources.json artifacts
+    assert len(files) == 215 + n_emu + len(on_demand_rels)    # + 3 companion checkpoints + on-demand emu assets
 
     hex64_re = re.compile(r"^[0-9a-f]{64}$")
     hex40_re = re.compile(r"^[0-9a-f]{40}$")
@@ -1245,8 +1299,14 @@ def test_shipped_aimip_lock_covers_all_models_with_pinned_revisions_and_output_s
             assert hex40_re.match(src["revision"]), f"Unpinned HF revision on {rel_path}"
             assert isinstance(entry["size"], int) and entry["size"] > 0
         elif spec.source_kind == "zenodo":
-            assert isinstance(entry["size"], int) and entry["size"] == 4622266486
+            assert isinstance(entry["size"], int) and entry["size"] > 0
+            if rel_path == ZENODO_AIMIP_REL_PATH:
+                assert entry["size"] == 4622266486
             assert hex32_re.match(src["md5"]), f"Unpinned Zenodo md5 on {rel_path}"
+        elif spec.source_kind == "github_archive":
+            assert hex40_re.match(src["revision"]), f"Unpinned archive revision on {rel_path}"
+            assert hex64_re.match(src["archive_sha256"]), f"Unpinned archive sha256 on {rel_path}"
+            assert isinstance(entry["size"], int) and entry["size"] > 0
         elif spec.source_kind == "derived":
             for in_ref, in_sha in src["inputs"].items():
                 assert hex64_re.match(in_sha), f"Unpinned derived input sha on {rel_path} -> {in_ref}"
@@ -1262,7 +1322,7 @@ def test_shipped_aimip_lock_covers_all_models_with_pinned_revisions_and_output_s
         assert isinstance(aux_entry["size"], int) and aux_entry["size"] > 0
         assert hex40_re.match(aux_entry["source"]["revision"]), aux_rel
 
-    assert output_count == 206 + 49   # 206 fme + 49 DLESyM / ArchesClimate-SSP outputs
+    assert output_count == 206 + n_emu   # 206 fme + emu_sources.json outputs
     assert raw_count == 6
     assert files[ZENODO_AIMIP_REL_PATH]["sha256"] == (
         "a52caf3722bc85a58075118fa06f0c6cce5ace279458edda0a2c9d68ec179fb7"

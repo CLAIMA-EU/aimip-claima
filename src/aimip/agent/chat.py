@@ -40,7 +40,21 @@ ace2-som (slab ocean, scenarios 1xCO2 and 3xCO2: name the forcing set), ace2s an
 = 5 days, noleap calendar); dlesym-v1.0, dlesym-v1.1, dlesym-v0-isccp (Earth2Studio DLESyM,
 coupled, start from ERA5 at any 6-hourly --start 1940-2023, steps are 6 h, no forcing; only
 dlesym-v1.1 takes --members); archesclimate-ssp (monthly IPSL emulator, --start
-2015-01-01T00:00:00 only, steps are months up to 1029, forcing set ssp434 or ssp585).
+2015-01-01T00:00:00 only, steps are months up to 1029, forcing set ssp434 or ssp585);
+samudra-om4 (global ocean emulator of GFDL OM4, 5-day julian steps on YYYY-MM-DDT12:00:00,
+even --steps >= 2, replays OM4 window staged from OSN);
+md-1.5 (Monthly Diffusion v0.9 at 1.5 deg, stochastic monthly latent-diffusion atmosphere
+emulator, AIMIP monthly SST/SIC forcing 1978-10-01..2025-01-01, requires >= 10y spin-up,
+upstream publishes no initial state so pass --ic <era5_monthly.nc> or stage inputs/md-1.5/ic/);
+camulator (CAM6 / ERA5-scaled atmosphere emulator, 6-hourly noleap steps, 69 published starts
+1980-01-01 and Jan 1 / Jul 1 of 1981-2014, forcing sets camulator-cyclic-1yr or
+camulator-branch-1980-2014);
+cbottle-3d (conditional atmospheric state generator, NOT a time-stepping simulation: independent
+draws conditioned on date/time + PCMDI AMIP monthly SST 1940-01-01..2022-12-16, no --ic,
+batch_size=4, daily_synoptic cadence);
+spherical-dyffusion (probabilistic 6-hourly 1 deg FV3GFS emulator, repeating 365-day SST cycle
+from --start 2021-MM-DDT00:00:00, exact daily coarsening coarsen_factor=4 -> nominal cycle
+months 0001-01.., summarized by predicted air_temperature_7 rather than prescribed ocean SST).
 Call list_models or show_model for the current catalogue, forcing windows, calendars, and limits.
 If a model's files are missing and automatic download is disabled, tell the user to run
 `aimip fetch -m <model>` on the host or approve the host download prompt.

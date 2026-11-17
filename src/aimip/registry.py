@@ -27,7 +27,16 @@ PACKAGE_DEFAULT_REGISTRY_PATH = os.path.join(
 PLAYGROUND_PLACEHOLDER = "${PLAYGROUND}"
 DATA_PLACEHOLDER = "${DATA}"
 
-SUPPORTED_FAMILIES: tuple[str, ...] = ("fme", "e2s-dlesym", "arches")
+SUPPORTED_FAMILIES: tuple[str, ...] = (
+    "fme",
+    "e2s-dlesym",
+    "arches",
+    "samudra",
+    "md",
+    "camulator",
+    "cbottle",
+    "sdyff",
+)
 ALLOWED_FME_MODULES: tuple[str, ...] = (
     "fme.ace.inference",
     "fme.coupled.inference",
@@ -114,6 +123,33 @@ MODEL_IC_PROVENANCE: dict[str, str] = {
     "dlesym-v1.1": "ERA5 state at --start fetched from ARCO-ERA5 at prepare time (no shipped IC).",
     "dlesym-v0-isccp": "ERA5 state at --start fetched from ARCO-ERA5 at prepare time (no shipped IC).",
     "archesclimate-ssp": "IPSL-CM6A-LR r1i1p1f1 scenario state of 2015-02 (previous state 2015-01) from gclyne/ArchesClimate-data.",
+    "samudra-om4": (
+        "Two 5-day OM4 ocean states ending at --start plus surface boundary fluxes "
+        "staged from OSN s3://m2lines-pubs/Samudra/OM4 at prepare time (no shipped IC; "
+        "starts before 2014-09-30T12:00:00 lie inside training/validation)."
+    ),
+    "md-1.5": (
+        "Upstream publishes no initial-state file (kjhall01/monthly-diffusion@b077d3bc). "
+        "Pass `--ic <path.nc>` (1.5 deg 121x240 or 0.25 deg 721x1440 monthly-mean ERA5 NetCDF, "
+        "or `<prev_run>/restart.nc`, under $AIMIP_DATA or your run root) or stage "
+        "`$AIMIP_DATA/inputs/md-1.5/ic/ic_<YYYY-MM-DD>.nc` (preset dates without `--ic`: "
+        "1978-10-01 authors' AIMIP start, 1979-01-01, 1985-01-01, 2015-01-01; ERA5 from "
+        "Copernicus/ECMWF Climate Data Store after 2025-07-02 is CC-BY-4.0)."
+    ),
+    "camulator": (
+        "69 published noleap initial-condition tensors (`init_camulator_condition_tensor_<date>T00Z.pth`: "
+        "1980-01-01, plus Jan 1 and Jul 1 of 1981-2014) from hf://willychap/camulator@01afc272 "
+        "(1980-01-01 and 1981-01-01 staged by default; other starts fetched & lock-verified on demand)."
+    ),
+    "cbottle-3d": (
+        "None — conditional atmospheric state generator without state memory "
+        "(each state is drawn independently given day_of_year, hour_of_day, and PCMDI-AMIP-1-1-9 "
+        "monthly mid-point SST tosbcs; --ic is refused)."
+    ),
+    "spherical-dyffusion": (
+        "1 deg FV3GFS repeating-annual-SST reference simulation (Zenodo 10791087, CC-BY-4.0; "
+        "12 monthly files labelled 2021, 2021-01-01T00:00:00 .. 2021-12-31T00:00:00)."
+    ),
 }
 
 SAMUDRACE_CM4_IC_SLUGS: tuple[tuple[str, str], ...] = (
