@@ -5,6 +5,7 @@ of the downloaded git file).
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from typing import Any
@@ -36,6 +37,8 @@ AW_FORCING = f"{AW_INPUTS}/ERA5-0.25deg-monthly-mean-forcing-1978-2024_regridded
 AW_FORCING_STATS = f"{AW_DIR}/stats/ERA5-0.25deg-monthly-mean-forcing-1978-2013_regridded_conservative_norm_stats.nc"
 AW_NORM_STATS = f"{AW_DIR}/stats/daily_averaged_aimip_norm_stats.nc"
 AW_RESIDUAL_STATS = f"{AW_DIR}/stats/residual_std_aimip_213852624.nc"
+AW_RESTART = "restart.nc"                 # written by every run, read by `aimip run --ic <run-dir>` (continuation)
+AW_RESTART_FORMAT = "aimip-geoarches-restart-1"
 _AW_BOTH = AW_MODELS
 _AW_GEN_ONLY = ("archesweathergen",)
 # rel_path -> (Zenodo file, size, md5, sha256, models that need it)
@@ -75,6 +78,16 @@ for _name, _cfg_sha, _ckpt_size, _ckpt_sha, _models in (
                                                      _models)
 
 _SOURCES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "emu_sources.json")
+
+
+def aw_package_digest(shas: Any) -> str:
+    """SHA-256 over the sorted SHA-256 values of a run's pinned ArchesWeather files (independent of paths and order).
+
+    A restart records it; a continuation must pin the same checkpoints, statistics, initial state and forcing."""
+    h = hashlib.sha256()
+    for value in sorted(str(x).lower() for x in shas):
+        h.update(value.encode("ascii") + b"\n")
+    return h.hexdigest()
 
 
 def _load_sources() -> dict[str, Any]:

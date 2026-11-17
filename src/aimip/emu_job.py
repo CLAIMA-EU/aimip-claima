@@ -6,7 +6,7 @@
 Outputs follow the fme layout so `aimip summary` reads them: variables (sample, time, lat, lon), `valid_time`
 (sample, time) and `counts` (sample, time). For ArchesClimate-SSP, dataset item 0 uses state 2015-02 with previous
 state 2015-01, so the first output month is March 2015. ArchesWeather writes the pressure-level variables to
-`atmosphere/monthly_levels.nc` (sample, time, level, lat, lon).
+`atmosphere/monthly_levels.nc` (sample, time, level, lat, lon) and its last states to `restart.nc` (continuation).
 """
 from __future__ import annotations
 
@@ -580,6 +580,100 @@ def _aw_module(model_dir: str, dotlist: list, torch, allow_unexpected: tuple = (
     return module.eval(), cfg, unused
 
 
+def _aw_write_restart(path: str, job: dict, saved: list, *, valid_time: str, step_index: int, month: str,
+                      sv: list, lv: list, levels: list, lat_internal, lon_internal) -> None:
+    """Write the states the next step needs, per member, exactly as the model consumes them.
+
+    state_* / prev_state_*: normalized float32 tensors on geoarches' internal grid (latitude north first, longitude
+    rolled by half the globe); surface SST / sea-ice cover are 0 over land, as fed back. month_sum_* / month_days: the
+    float64 sums of the physical daily states of *month* when the run stopped inside it (written only then), so the
+    continuation completes that month's mean."""
+    import netCDF4
+    import numpy as np
+
+    from .emu_catalog import AW_RESTART_FORMAT
+    from .geoarches_src import GEOARCHES_COMMIT
+
+    s0 = saved[0]
+    ds = netCDF4.Dataset(path + ".part", "w", format="NETCDF4")
+    try:
+        for name, size in (("sample", len(saved)), ("surface_variable", s0["state_surface"].shape[0]),
+                           ("surface_level", s0["state_surface"].shape[1]),
+                           ("level_variable", s0["state_level"].shape[0]), ("level", s0["state_level"].shape[1]),
+                           ("lat", s0["state_level"].shape[2]), ("lon", s0["state_level"].shape[3])):
+            ds.createDimension(name, size)
+        for name, vals, units in (("level", levels, "hPa"), ("lat", lat_internal, "degrees_north"),
+                                  ("lon", lon_internal, "degrees_east")):
+            v = ds.createVariable(name, "f8", (name,))
+            v[:] = np.asarray(vals, dtype="f8")
+            v.units = units
+        sdims = ("sample", "surface_variable", "surface_level", "lat", "lon")
+        ldims = ("sample", "level_variable", "level", "lat", "lon")
+        carry = month != ""
+        arrays = [("state_surface", "f4", sdims), ("prev_state_surface", "f4", sdims),
+                  ("state_level", "f4", ldims), ("prev_state_level", "f4", ldims)]
+        if carry:
+            arrays += [("month_sum_surface", "f8", sdims), ("month_sum_level", "f8", ldims)]
+        for name, dtype, dims in arrays:
+            v = ds.createVariable(name, dtype, dims, zlib=True, complevel=1, fill_value=False,
+                                  chunksizes=(1, 1) + tuple(len(ds.dimensions[d]) for d in dims[2:]))
+            for k, m in enumerate(saved):
+                v[k] = m[name]
+        days = ds.createVariable("month_days", "i4", ("sample",))
+        days[:] = np.asarray([m["month_days"] for m in saved], dtype="i4")
+        attrs = {"aimip_restart_format": AW_RESTART_FORMAT, "model": job["model"], "valid_time": valid_time,
+                 "step_index": int(step_index), "seed": int(job["seed"]), "package_digest": job["package_digest"],
+                 "geoarches_commit": GEOARCHES_COMMIT, "month": month,
+                 "surface_variables": ",".join(sv), "level_variables": ",".join(lv),
+                 "comment": "states at valid_time and one day earlier, normalized with the pinned statistics, on "
+                            "geoarches' internal grid; continue with: aimip run -m " + job["model"] + " --ic <this run "
+                            "directory> --start " + valid_time}
+        for k, val in attrs.items():
+            setattr(ds, k, val)
+    finally:
+        ds.close()
+    os.replace(path + ".part", path)
+
+
+def _aw_read_restart(path: str, job: dict, *, sv: list, lv: list, levels: list, shapes: dict) -> dict:
+    """Read a restart written by _aw_write_restart and check it against this job (the file's SHA-256 was verified
+    against the manifest before the job started)."""
+    import netCDF4
+    import numpy as np
+
+    from .emu_catalog import AW_RESTART_FORMAT
+    from .geoarches_src import GEOARCHES_COMMIT
+
+    with netCDF4.Dataset(path) as ds:
+        ds.set_auto_mask(False)
+        a = {k: ds.getncattr(k) for k in ds.ncattrs()}
+        want = {"aimip_restart_format": AW_RESTART_FORMAT, "model": job["model"], "valid_time": job["start"],
+                "seed": int(job["seed"]), "package_digest": job["package_digest"], "geoarches_commit": GEOARCHES_COMMIT,
+                "surface_variables": ",".join(sv), "level_variables": ",".join(lv)}
+        bad = [k for k, v in want.items() if str(a.get(k)) != str(v)]
+        if len(ds.dimensions["sample"]) != int(job["members"]):
+            bad.append("sample")
+        if not np.array_equal(np.asarray(ds["level"][:], dtype="f8"), np.asarray(levels, dtype="f8")):
+            bad.append("level")
+        for name in ("state_surface", "state_level"):
+            if tuple(ds[name].shape[1:]) != tuple(shapes[name]):
+                bad.append(name)
+        if bad:
+            raise SystemExit(f"restart {path} does not match this run: {', '.join(bad)}")
+        month = str(a.get("month", ""))
+        members = []
+        for k in range(int(job["members"])):
+            m = {n: np.array(ds[n][k]) for n in ("state_surface", "prev_state_surface", "state_level", "prev_state_level")}
+            m["month_days"] = int(ds["month_days"][k])
+            if month:
+                m["month_sum_surface"] = np.array(ds["month_sum_surface"][k])
+                m["month_sum_level"] = np.array(ds["month_sum_level"][k])
+            elif m["month_days"]:
+                raise SystemExit(f"restart {path}: member {k} has month_days without a month")
+            members.append(m)
+    return {"month": month, "step_index": int(a["step_index"]), "members": members}
+
+
 def run_geoarches(out_dir: str, job: dict) -> dict:
     """ArchesWeather-Mx4 / ArchesWeatherGen rollout as described in arXiv:2605.29976 section 2.3.
 
@@ -590,7 +684,10 @@ def run_geoarches(out_dir: str, job: dict) -> dict:
     - ArchesWeatherGen: flow-matching sample (25 steps) around the Mx4 prediction; step i of member k uses the
       noise seed (seed + k) + 1000 i, the authors' sample_rollout scheme;
     - predicted SST and sea-ice cover are set to 0 (normalized) where the initial state has no ocean value before
-      they are fed back, and written as NaN there.
+      they are fed back, and written as NaN there;
+    - steps are counted from 1978-09-30, also in a continuation (job["restart_file"]): it reads the two states and
+      the unfinished month's sums from restart.nc and continues the same noise sequence, so the result equals one
+      longer run. Every run that ends without an unstable month writes restart.nc.
     """
     _geoarches_code()
     import numpy as np
@@ -600,6 +697,8 @@ def run_geoarches(out_dir: str, job: dict) -> dict:
     from geoarches.dataloaders import nan_util
     from geoarches.dataloaders.era5 import Era5Forecast
     from tensordict import TensorDict
+
+    from .emu_catalog import AW_RESTART, AW_START
 
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     torch.set_grad_enabled(False)
@@ -644,9 +743,12 @@ def run_geoarches(out_dir: str, job: dict) -> dict:
                       forcings_stats_path=job["forcing_stats_file"],
                       forcing_vars=["sea_surface_temperature", "sea_ice_cover"])
     ic = ds[0]
-    t0 = pd.Timestamp(int(ic["timestamp"]), unit="s")
-    if t0 != pd.Timestamp(job["start"]):
-        raise SystemExit(f"initial state is {t0}, expected {job['start']}")
+    t_aw = pd.Timestamp(int(ic["timestamp"]), unit="s")
+    if t_aw != pd.Timestamp(AW_START):
+        raise SystemExit(f"initial state is {t_aw}, expected {AW_START}")
+    i0 = (pd.Timestamp(job["start"]) - t_aw).days          # global index of the first step (0 unless continuing)
+    if job.get("restart_file") is None and i0 != 0:
+        raise SystemExit(f"start {job['start']} without a restart")
     land = {k: ic["nan_mask"][k][None].to(dev) for k in ("surface", "level")}
     sv = list(cfg.stats.module.variables["surface"])
     lv = list(cfg.stats.module.variables["level"])
@@ -677,10 +779,22 @@ def run_geoarches(out_dir: str, job: dict) -> dict:
     lat = np.sort(np.asarray(ds.coords["latitude"], dtype="f8"))[::-1]
     lon = np.asarray(ds.coords["longitude"], dtype="f8")
     half = len(lon) // 2
+    restart = None
+    if job.get("restart_file"):
+        restart = _aw_read_restart(job["restart_file"], job, sv=sv, lv=lv, levels=levels,
+                                   shapes={"state_surface": ic["state"]["surface"].shape,
+                                           "state_level": ic["state"]["level"].shape})
+        if restart["step_index"] != i0:
+            raise SystemExit(f"restart step_index {restart['step_index']} != {i0}")
+    first_day = t_aw + pd.Timedelta(days=i0 + 1)
     attrs = {"source": f"{job['model']} (geoarches, Zenodo 22795233), daily steps from the ERA5 daily mean of "
-                       "1978-09-30", "aimip_family": "geoarches", "first_output_day": "1978-10-01",
+                       "1978-09-30", "aimip_family": "geoarches", "first_output_day": first_day.strftime("%Y-%m-%d"),
              "comment": "monthly means of the model's daily-mean states; sst and sic are the model's own daily "
-                        "predictions (it also receives the monthly forcing), NaN over land"}
+                        "predictions (it also receives the monthly forcing), NaN over land; counts = days in the mean"}
+    if restart is not None:
+        attrs["continues"] = (f"{job['restart_file']} (step {i0}, state of {job['start'][:10]})"
+                              + (f"; month {restart['month']} includes the days of the run it continues"
+                                 if restart["month"] else ""))
     surf_names = [AW_SURFACE_OUT[v][0] for v in sv]
     lev_names = [AW_LEVEL_OUT[v][0] for v in lv]
     n_members = int(job["members"])
@@ -711,6 +825,9 @@ def run_geoarches(out_dir: str, job: dict) -> dict:
         return g
 
     steps = int(job["steps"])
+    t_end = t_aw + pd.Timedelta(days=i0 + steps)              # last output day = state time of the restart
+    carry = (t_end + pd.Timedelta(days=1)).month == t_end.month
+    saved: list = []
     unstable = None
     first_year: list = []
     tw = time.time()
@@ -722,8 +839,18 @@ def run_geoarches(out_dir: str, job: dict) -> dict:
             for k in ("state", "prev_state"):
                 batch[k] = batch[k].auto_batch_size_()
             acc, n, month = None, 0, None
-            for i in range(steps):
-                t_cur = t0 + pd.Timedelta(days=i)
+            if restart is not None:
+                r = restart["members"][member]
+                for k in ("state", "prev_state"):
+                    # device=dev like the initial state's TensorDict: geoarches moves its constant masks to state.device
+                    batch[k] = TensorDict(surface=torch.from_numpy(r[f"{k}_surface"])[None],
+                                          level=torch.from_numpy(r[f"{k}_level"])[None], device=dev).auto_batch_size_()
+                if r["month_days"]:
+                    month = np.datetime64(restart["month"], "M")
+                    acc = {k: torch.from_numpy(r[f"month_sum_{k}"])[None].to(dev) for k in ("surface", "level")}
+                    n = r["month_days"]
+            for i in range(i0, i0 + steps):
+                t_cur = t_aw + pd.Timedelta(days=i)
                 t_next = t_cur + pd.Timedelta(days=1)
                 batch["forcings"] = forcing_for(t_cur)
                 batch["timestamp"] = torch.tensor([int(t_cur.timestamp())], device=dev)
@@ -745,8 +872,16 @@ def run_geoarches(out_dir: str, job: dict) -> dict:
                 fed = TensorDict(surface=torch.where(land["surface"], 0.0, pred["surface"]),
                                  level=pred["level"].clone()).auto_batch_size_()
                 batch["prev_state"], batch["state"] = batch["state"], fed
-                if (i + 1) % 365 == 0:
-                    _log(f"member {member}: {i + 1} days, {(time.time() - tw) / (i + 1 + member * steps):.3f} s/day")
+                done = i + 1 - i0
+                if done % 365 == 0:
+                    _log(f"member {member}: {done} days, {(time.time() - tw) / (done + member * steps):.3f} s/day")
+            saved.append({"state_surface": batch["state"]["surface"][0].cpu().numpy(),
+                          "state_level": batch["state"]["level"][0].cpu().numpy(),
+                          "prev_state_surface": batch["prev_state"]["surface"][0].cpu().numpy(),
+                          "prev_state_level": batch["prev_state"]["level"][0].cpu().numpy(),
+                          "month_days": n if carry else 0,
+                          **({"month_sum_surface": acc["surface"][0].cpu().numpy(),
+                              "month_sum_level": acc["level"][0].cpu().numpy()} if carry else {})})
             g = flush(member, month, acc, n)
             if member == 0 and len(first_year) < 12:
                 first_year.append(g)
@@ -755,6 +890,12 @@ def run_geoarches(out_dir: str, job: dict) -> dict:
         _log(f"UNSTABLE {exc}: the run stops; months before it are written")
     ws.close()
     wl.close()
+    restart_path = None
+    if unstable is None:
+        restart_path = os.path.join(out_dir, AW_RESTART)
+        _aw_write_restart(restart_path, job, saved, valid_time=t_end.strftime("%Y-%m-%dT%H:%M:%S"),
+                          step_index=i0 + steps, month=t_end.strftime("%Y-%m") if carry else "", sv=sv, lv=lv,
+                          levels=levels, lat_internal=lat, lon_internal=np.roll(lon, half))
     roll_s = time.time() - tw
     out = {"days_per_member": steps, "members": n_members, "load_seconds": round(load_s, 1),
            "rollout_seconds": round(roll_s, 1), "seconds_per_day": round(roll_s / max(1, steps * n_members), 4),
@@ -762,6 +903,10 @@ def run_geoarches(out_dir: str, job: dict) -> dict:
            "device": torch.cuda.get_device_name(0) if dev == "cuda" else "cpu"}
     if gen_unused is not None:
         out["gen_checkpoint_unused_det_model_keys"] = gen_unused
+    out["first_step_index"] = i0
+    if restart_path is not None:
+        out["restart"] = {"path": restart_path, "valid_time": t_end.strftime("%Y-%m-%dT%H:%M:%S"),
+                          "step_index": i0 + steps, "open_month": t_end.strftime("%Y-%m") if carry else None}
     if unstable is not None:
         out.update({"unstable_from": unstable.month, "unstable_member": unstable.member, "unstable_reason": unstable.why})
     return out

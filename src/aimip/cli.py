@@ -153,7 +153,8 @@ def _add_plan_and_run_spec_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--ic",
         default=None,
-        help="Custom/spun IC netCDF, <prev>/restart.nc, or <prev-run-dir> for coupled runs.",
+        help="Custom/spun IC netCDF, <prev>/restart.nc, or <prev-run-dir> for coupled runs and ArchesWeather "
+        "continuations.",
     )
     parser.add_argument(
         "--ocean-ic",

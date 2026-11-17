@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime
 import os
 import re
 from typing import Any
@@ -226,6 +227,18 @@ def merge_config_and_cli(
     )
 
 
+def _hms_seconds(value: str) -> int:
+    """Slurm time `[D-]HH:MM:SS` in seconds (0 if unparsable)."""
+    try:
+        days, _, hms = value.rpartition("-")
+        parts = [int(p) for p in hms.split(":")]
+        while len(parts) < 3:
+            parts.insert(0, 0)
+        return int(days or 0) * 86400 + parts[0] * 3600 + parts[1] * 60 + parts[2]
+    except ValueError:
+        return 0
+
+
 def render_plan_card(plan: ResolvedPlan, *, is_tty: bool = False) -> str:
     """Render a `ResolvedPlan` as either a rich TTY card or a deterministic plain-ASCII non-TTY card."""
     use_ansi = bool(is_tty and not os.environ.get("NO_COLOR"))
@@ -255,7 +268,16 @@ def render_plan_card(plan: ResolvedPlan, *, is_tty: bool = False) -> str:
             f"gres={res.get('gres') or '<none>'} wall={res.get('time')} "
             f"(~{res.get('gpu_hours_estimate', 0):.3f} GPU-h; basis: {basis})"
         )
-        if res.get("walltime_capped"):
+        over = float(res.get("gpu_hours_estimate") or 0) * 3600 > _hms_seconds(str(res.get("time") or ""))
+        if plan.family == "geoarches" and (res.get("walltime_capped") or over):
+            # ArchesWeather writes its monthly files and restart.nc only when the run ends.
+            res_line += (
+                (f" [CAPPED from {res.get('walltime_uncapped')}: " if res.get("walltime_capped") else " [")
+                + "outputs and restart.nc are written only at the end, so a job stopped at the limit keeps nothing"
+                + ("; the expected time exceeds the wall time: use fewer steps or members per run" if over else "")
+                + "]"
+            )
+        elif res.get("walltime_capped"):
             res_line += (
                 f" [CAPPED from {res.get('walltime_uncapped')}: job may stop before end; continue from restart.nc]"
             )
@@ -271,11 +293,16 @@ def render_plan_card(plan: ResolvedPlan, *, is_tty: bool = False) -> str:
         )
         ic_line = "2015-02 IPSL scenario state (previous 2015-01)"
     elif plan.family == "geoarches":
+        first_day = (datetime.date.fromisoformat(plan.start_time[:10]) + datetime.timedelta(days=1)).isoformat()
         period_line = (
-            f"outputs 1978-10-01 .. {plan.end_time[:10]}  ({plan.steps} daily steps / monthly means, "
+            f"outputs {first_day} .. {plan.end_time[:10]}  ({plan.steps} daily steps / monthly means, "
             f"start={plan.start_time[:10]}, calendar={plan.calendar})"
         )
-        ic_line = "ERA5 daily-mean state of 1978-09-30 (previous 1978-09-29), Zenodo 22795233"
+        ic_line = (
+            f"restart of a previous run (states of {plan.start_time[:10]} and the day before): {plan.ic_source}"
+            if plan.spec.ic
+            else "ERA5 daily-mean state of 1978-09-30 (previous 1978-09-29), Zenodo 22795233"
+        )
     else:
         period_line = (
             f"{plan.start_time} -> {plan.end_time}  "
@@ -299,7 +326,7 @@ def render_plan_card(plan: ResolvedPlan, *, is_tty: bool = False) -> str:
     elif plan.spec.prediction:
         outputs_line = "full step predictions only (--prediction: large output; monthly means disabled)"
     elif plan.spec.monthly and plan.family == "geoarches":
-        outputs_line = "monthly means (monthly_mean_predictions.nc; pressure levels in monthly_levels.nc)"
+        outputs_line = "monthly means (monthly_mean_predictions.nc; pressure levels in monthly_levels.nc) + restart.nc"
     elif plan.spec.monthly:
         outputs_line = "monthly means (monthly_mean_predictions.nc)"
     else:

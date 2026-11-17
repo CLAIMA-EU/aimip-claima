@@ -25,7 +25,8 @@ Model facts:
   dataset item 0 (state 2015-02, previous state 2015-01), so the first output is March 2015.
 - ArchesWeather-Mx4 / ArchesWeatherGen, AIMIP versions: Zenodo 22795233. Daily steps on the 1-degree grid from the ERA5
   daily-mean state of 1978-09-30 (previous state 1978-09-29), monthly ERA5 SST / sea-ice forcing through 2024; the
-  rollout follows arXiv:2605.29976 section 2.3 (see `emu_job.run_geoarches`).
+  rollout follows arXiv:2605.29976 section 2.3 (see `emu_job.run_geoarches`). Every run writes `restart.nc`;
+  `--ic <run-dir>` continues it, and the continuation gives the same result as one longer run (`check_aw_restart`).
 """
 from __future__ import annotations
 
@@ -42,7 +43,16 @@ from typing import Any
 
 from . import __version__
 from .errors import EXIT_UNSTABLE, ConfigError, MissingAssetsError, ValidationError
-from .emu_catalog import AW_FORCING, AW_IC, AW_LAST_DAY, AW_MAX_STEPS, AW_START, DLESYM_IC_WINDOW
+from .emu_catalog import (
+    AW_FORCING,
+    AW_IC,
+    AW_LAST_DAY,
+    AW_RESTART,
+    AW_RESTART_FORMAT,
+    AW_START,
+    DLESYM_IC_WINDOW,
+    aw_package_digest,
+)
 from .lora import sha256_file
 from .registry import ModelSpec, resolve_data_dir, resolve_playground_dir
 from .site_config import SiteConfig, load_site_config
@@ -57,6 +67,7 @@ from .validators import (
     validate_seed,
     validate_slurm_job_id,
     validate_slurm_time,
+    validate_visible_input_path,
 )
 
 EMU_FAMILIES: tuple[str, ...] = ("e2s-dlesym", "arches", "geoarches")
@@ -222,14 +233,13 @@ def precheck_emu_request(
     n_steps = validate_int_range(steps, "--steps", min_value=1, max_value=10_000_000)
     n_members = validate_int_range(1 if members is None else members, "--members", min_value=1, max_value=64)
     for flag, value in (("--ic", ic_path), ("--ocean-ic", ocean_ic_path), ("--lora", lora_path)):
-        if value is not None:
+        if value is not None and not (flag == "--ic" and model.family == "geoarches"):
             raise ConfigError(
                 f"{flag} is not supported for {model.name!r}: "
                 + ("DLESyM starts from ERA5 at --start (fetched from ARCO-ERA5) and cannot be continued yet; "
                    "run the whole period in one job (about 40 s of GPU time per simulated year)."
                    if model.family == "e2s-dlesym"
-                   else "ArchesWeather always starts from the ERA5 daily-mean state of 1978-09-30 and cannot be "
-                   "continued yet; run the whole period in one job."
+                   else "ArchesWeather takes --ic only to continue a previous run (--ic <run-dir> or its restart.nc)."
                    if model.family == "geoarches"
                    else "ArchesClimate-SSP always starts from the scenario's 2015 state.")
             )
@@ -277,15 +287,21 @@ def precheck_emu_request(
         k = m - 1 + n_steps - 1
         end_iso = f"{y + k // 12:04d}-{k % 12 + 1:02d}-01T00:00:00"
     elif model.family == "geoarches":
-        if norm_start != AW_START:
+        if ic_path is None and norm_start != AW_START:
             raise ConfigError(
                 f"{model.name} starts from the ERA5 daily-mean state of 1978-09-30 only: use --start {AW_START} "
-                "(the first output day is 1978-10-01)."
+                "(the first output day is 1978-10-01), or continue a previous run with --ic <run-dir> --start <its end>."
             )
-        if n_steps > AW_MAX_STEPS:
+        if ic_path is not None and not (AW_START < norm_start < AW_LAST_DAY and norm_start.endswith("T00:00:00")):
             raise ConfigError(
-                f"--steps {n_steps} exceeds the forcing: at most {AW_MAX_STEPS} daily steps (1978-10-01 .. "
-                f"{AW_LAST_DAY[:10]})."
+                f"A {model.name} continuation starts at 00 UTC on the last day of the run it continues, after "
+                f"{AW_START[:10]} and before {AW_LAST_DAY[:10]}; got --start {norm_start}."
+            )
+        max_steps = (datetime.datetime.fromisoformat(AW_LAST_DAY) - datetime.datetime.fromisoformat(norm_start)).days
+        if n_steps > max_steps:
+            raise ConfigError(
+                f"--steps {n_steps} exceeds the forcing: at most {max_steps} daily steps from {norm_start[:10]} "
+                f"(the last output day is {AW_LAST_DAY[:10]})."
             )
         if n_members > 1 and not model.stochastic:
             raise ConfigError(
@@ -302,6 +318,69 @@ def precheck_emu_request(
     else:
         raise ConfigError(f"Model {model.name!r} is not a DLESyM/ArchesClimate/ArchesWeather model.")
     return {"start": norm_start, "steps": n_steps, "members": n_members, "scenario": scenario, "end": end_iso}
+
+
+def aw_restart_path(ic_path: str) -> str:
+    """`--ic` for an ArchesWeather continuation: a run directory (its restart.nc) or the restart.nc itself."""
+    path = validate_visible_input_path(ic_path, label="--ic")
+    if os.path.isdir(path):
+        path = validate_visible_input_path(os.path.join(path, AW_RESTART), label=f"--ic {AW_RESTART}")
+    if os.path.islink(path) or not os.path.isfile(path):
+        raise ConfigError(f"--ic {path}: no restart file there (a finished ArchesWeather run writes {AW_RESTART}).")
+    return path
+
+
+def aw_restart_info(path: str, model_name: str) -> dict[str, Any]:
+    """Attributes and sizes of an ArchesWeather restart of *model_name* (no arrays are read)."""
+    import netCDF4
+
+    try:
+        with netCDF4.Dataset(path) as ds:
+            attrs = {k: ds.getncattr(k) for k in ds.ncattrs()}
+            members = len(ds.dimensions["sample"]) if "sample" in ds.dimensions else 0
+    except OSError as exc:
+        raise ConfigError(f"--ic {path} is not a readable netCDF file: {exc}") from exc
+    if attrs.get("aimip_restart_format") != AW_RESTART_FORMAT:
+        raise ConfigError(f"--ic {path} is not an ArchesWeather restart written by aimip "
+                          f"(aimip_restart_format={attrs.get('aimip_restart_format')!r}, expected {AW_RESTART_FORMAT}).")
+    try:
+        info = {"path": path, "model": str(attrs["model"]), "valid_time": str(attrs["valid_time"]),
+                "step_index": int(attrs["step_index"]), "seed": int(attrs["seed"]), "members": members,
+                "package_digest": str(attrs["package_digest"]), "geoarches_commit": str(attrs["geoarches_commit"])}
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ConfigError(f"--ic {path}: restart attribute missing or malformed ({exc}).") from exc
+    if info["model"] != model_name:   # before --members / --seed default to the restart's
+        raise ConfigError(f"--ic {path} continues a {info['model']} run, not {model_name}.")
+    return info
+
+
+def check_aw_restart(info: dict[str, Any], *, model_name: str, start: str, members: int, seed: int,
+                     package_digest: str | None = None) -> None:
+    """A continuation must pick up exactly where the restart left off, so that it matches one longer run: same model,
+    --start = the restart's state time, the same members and seed (the noise of step i of member k is drawn with seed
+    seed + k + 1000 i, i counted from 1978-09-30), and the same pinned files and geoarches source."""
+    from .geoarches_src import GEOARCHES_COMMIT
+
+    path = info["path"]
+    if info["model"] != model_name:
+        raise ConfigError(f"--ic {path} continues a {info['model']} run, not {model_name}.")
+    if start != info["valid_time"]:
+        raise ConfigError(f"--ic {path} holds the state of {info['valid_time']}: use --start {info['valid_time']}.")
+    if members != info["members"]:
+        raise ConfigError(f"--ic {path} holds {info['members']} member(s): use --members {info['members']} "
+                          "(or leave it out).")
+    if seed != info["seed"]:
+        raise ConfigError(f"--ic {path} comes from a run with --seed {info['seed']}: use that seed (or leave it out), so "
+                          "that the continuation draws the same noise as one longer run.")
+    days = (datetime.datetime.fromisoformat(start) - datetime.datetime.fromisoformat(AW_START)).days
+    if info["step_index"] != days:
+        raise ValidationError(f"--ic {path}: step_index {info['step_index']} does not match its state time {start}.")
+    if info["geoarches_commit"] != GEOARCHES_COMMIT:
+        raise ValidationError(f"--ic {path} was written with geoarches {info['geoarches_commit'][:12]}; this install "
+                              f"pins {GEOARCHES_COMMIT[:12]}.")
+    if package_digest is not None and info["package_digest"] != package_digest:
+        raise ValidationError(f"--ic {path} was written with other model or input files than this install pins "
+                              "(checkpoints, statistics, initial state or forcing differ).")
 
 
 def _stage_dlesym_ic(out_dir: str) -> str:
@@ -402,10 +481,19 @@ def prepare_emu_run(
         resolve_active_lock_sha256,
     )
 
+    seed_explicit = seed is not None
+    aw_restart = None
+    if model.family == "geoarches" and ic_path is not None:
+        aw_restart = aw_restart_info(aw_restart_path(ic_path), model.name)
+        members = aw_restart["members"] if members is None else members
+        seed = aw_restart["seed"] if seed is None else seed
     req = precheck_emu_request(
         model, start_iso=start_iso, steps=steps, members=members, forcing_set_name=forcing_set_name,
         ic_path=ic_path, ocean_ic_path=ocean_ic_path, lora_path=lora_path,
     )
+    if aw_restart is not None:   # before anything is written; the pinned files are compared once they are verified
+        check_aw_restart(aw_restart, model_name=model.name, start=req["start"], members=req["members"],
+                         seed=validate_seed(seed))
     if model.family == "e2s-dlesym" and not auto_fetch:
         # --no-fetch forbids network downloads during preparation.
         raise MissingAssetsError(
@@ -483,6 +571,10 @@ def prepare_emu_run(
         if not os.environ.get("AIMIP_GEOARCHES_CODE") and tree_digest(geo_dir) != (GEOARCHES_TREE_SHA256,
                                                                                 GEOARCHES_TREE_FILES):
             raise ValidationError(f"{model.name}: the geoarches source at {geo_dir} does not match the pinned commit.")
+        digest = aw_package_digest(pkg_sha.values())
+        if aw_restart is not None:
+            check_aw_restart(aw_restart, model_name=model.name, start=req["start"], members=req["members"],
+                             seed=resolved_seed, package_digest=digest)
         job = {"family": model.family, "model": model.name, "kind": "gen" if model.name == "archesweathergen" else "mx4",
                "seed_dirs": [os.path.join(data_root, AW_DIR, s) for s in AW_SEEDS],
                "gen_dir": os.path.join(data_root, AW_DIR, AW_GEN) if model.name == "archesweathergen" else None,
@@ -490,9 +582,15 @@ def prepare_emu_run(
                "forcing_stats_file": os.path.join(data_root, AW_FORCING_STATS),
                "norm_stats_file": os.path.join(data_root, AW_NORM_STATS),
                "residual_stats_file": (os.path.join(data_root, AW_RESIDUAL_STATS)
-                                       if model.name == "archesweathergen" else None)}
-        ic_provenance = ("ERA5 daily-mean state of 1978-09-30 (previous state 1978-09-29) from Zenodo 22795233 "
-                         "era5_1978_00h_sliced.nc; first output day 1978-10-01")
+                                       if model.name == "archesweathergen" else None),
+               "package_digest": digest, "restart_file": aw_restart["path"] if aw_restart else None}
+        if aw_restart is None:
+            ic_provenance = ("ERA5 daily-mean state of 1978-09-30 (previous state 1978-09-29) from Zenodo 22795233 "
+                             "era5_1978_00h_sliced.nc; first output day 1978-10-01")
+        else:
+            first_day = datetime.datetime.fromisoformat(req["start"]) + datetime.timedelta(days=1)
+            ic_provenance = (f"continues {aw_restart['path']} (states of {req['start'][:10]} and the day before, step "
+                             f"{aw_restart['step_index']} from 1978-09-30); first output day {first_day:%Y-%m-%d}")
     else:
         scen = req["scenario"]
         scenario_rows = _scenario_files(model, data_root, scen)
@@ -524,7 +622,7 @@ def prepare_emu_run(
     if model.family == "e2s-dlesym":
         ic_file = _stage_dlesym_ic(validated_out)
     elif model.family == "geoarches":
-        ic_file = job["ic_file"]
+        ic_file = job["restart_file"] or job["ic_file"]
     else:
         ic_file = os.path.join(data_root, f"inputs/archesclimate-ssp/memmap_filled_in/r1i1p1f1_{req['scenario']}_interpolation.memmap/meta.json")
     ic_sha = sha256_file(ic_file)
@@ -535,6 +633,12 @@ def prepare_emu_run(
     if effective_slurm.scheduler == "slurm" and walltime_capped:
         print(f"aimip warning: estimated walltime {unclamped} exceeds the site limit {max_time}; clamped. "
               "Split the run or pass --time.", file=sys.stderr)
+    expected_s = _gpu_hours(model.family, req["steps"], req["members"], model.name) * 3600
+    job_time = effective_slurm.time or default_walltime
+    if model.family == "geoarches" and effective_slurm.scheduler == "slurm" and expected_s > _parse_hms(job_time):
+        print(f"aimip warning: {model.name} is expected to need about {expected_s / 3600:.1f} h on one A100-80GB, "
+              f"more than the wall time {job_time}. It writes its monthly files and restart.nc only at the end, so a "
+              "job stopped at the limit keeps nothing: use fewer --steps or --members per run.", file=sys.stderr)
     sbatch_path = validate_run_path(f"{validated_out}/job.sbatch", label="job.sbatch")
     with open(sbatch_path, "w", encoding="utf-8") as fh:
         fh.write(render_sbatch_script(model_name=model.name, out_dir=validated_out, playground_dir=resolved_playground,
@@ -560,9 +664,11 @@ def prepare_emu_run(
         "source_ic_path": ic_file,
         "source_ic_sha256": ic_sha,
         "ic_calendar": model.calendar,
-        "ic_is_custom": False,
+        "ic_is_custom": aw_restart is not None,
         "ensemble_strategy": "seeded_noise_members" if req["members"] > 1 else "single_member",
-        "ensemble_note": (("members share the ERA5 state and differ by the sampler noise seed (seed + k)"
+        "ensemble_note": ((("members continue their own states from the restart and differ by the sampler noise seed "
+                            "(seed + k)") if aw_restart is not None else
+                           "members share the ERA5 state and differ by the sampler noise seed (seed + k)"
                            if model.family == "geoarches" else
                            "members share the ERA5 state and differ by the conditional-layer-norm noise seed (seed + k)")
                           if req["members"] > 1 else None),
@@ -578,7 +684,7 @@ def prepare_emu_run(
         "step_unit": {"e2s-dlesym": "6h", "geoarches": "day"}.get(model.family, "month"),
         "members": req["members"],
         "seed": resolved_seed,
-        "seed_explicit": seed is not None,
+        "seed_explicit": seed_explicit,
         "member_seeds": [resolved_seed + k for k in range(req["members"])],
         "forcing_set": next(fs.to_dict() for fs in model.forcing_sets if fs.name == req["scenario"]),
         "forcing_files": scenario_rows,
@@ -597,6 +703,8 @@ def prepare_emu_run(
         "config_sha256": _config_sha(config_path),
         "created_utc": _now_utc(),
     }
+    if model.family == "geoarches":
+        manifest["package_digest"] = job["package_digest"]
     _write_json_atomic(manifest_path, manifest)
     if mode == "local":
         return exec_emu(validated_out, manifest, manifest_path)
@@ -666,8 +774,16 @@ def _check_job_matches_manifest(job: dict[str, Any], manifest: dict[str, Any]) -
                 fail(key)
         if not gen and job.get("residual_stats_file") is not None:
             fail("residual_stats_file")
-        if str(manifest.get("ic_path")) != job["ic_file"]:
-            fail("initial state")
+        restart = job.get("restart_file")
+        if restart is None:
+            if str(manifest.get("ic_path")) != job["ic_file"] or manifest.get("ic_is_custom"):
+                fail("initial state")
+        elif str(manifest.get("ic_path")) != restart or not manifest.get("ic_is_custom"):
+            fail("restart_file")
+        digest = job.get("package_digest")
+        if digest != manifest.get("package_digest") or digest != aw_package_digest(
+                (manifest.get("package_files_sha256") or {}).values()):
+            fail("package_digest")
     else:
         fail("family")
 

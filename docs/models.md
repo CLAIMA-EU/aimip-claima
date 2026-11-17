@@ -82,16 +82,20 @@ state has no ocean value) are set to zero before they are fed back, and written 
 the ERA5 daily mean of 1978-09-30 (the authors' member r2; their other members start on 1978-09-29 and
 1978-10-01 … 03). Outputs: `atmosphere/monthly_mean_predictions.nc` (`tas`, `psl`, `uas`, `vas`, and the model's own
 daily `sst` and `sic` averaged per month) and `atmosphere/monthly_levels.nc` (`zg`, `ua`, `va`, `ta`, `hus`, `wap`
-on 13 pressure levels, `zg` = geopotential / 9.80665). A run cannot be continued yet: on one A100 a whole run
-1978-10 … 2024-12 takes about 5 hours for `archesweather` and about 21 hours per member for `archesweathergen`, so
-the latter covers about 9 years per member in a 12-hour job. The ArchesWeatherGen checkpoint also stores one
+on 13 pressure levels, `zg` = geopotential / 9.80665). On one A100 a whole run 1978-10 … 2024-12 takes about
+5 hours for `archesweather` and about 21 hours per member for `archesweathergen` (about 28 minutes per member-year).
+Every run writes `restart.nc` (the states of its last two days, and the running sums of a month it ended in), and
+`--ic <run directory>` continues it with the same result as one longer run, so long `archesweathergen` runs go in
+segments ([user-guide.md](user-guide.md#continue-a-run)). The ArchesWeatherGen checkpoint also stores one
 deterministic network of its own; like geoarches' loader with the published configuration, aimip uses the four
 ArchesWeather-M networks instead.
 
 Compared with the authors' AIMIP submission (`allenai/aimip-phase1-submissions`, `ArchesWeather/ArchesWeather-V2`),
 an `archesweather` run from 1978-09-30 gives a global-mean 2 m temperature of 286.95 K for October 1978 (authors'
 member r2: 286.96 K) and 287.18 K for 1979 (authors' five members: 287.11–287.19 K). The runs are not bit-identical:
-the authors ran on TPUs.
+the authors ran on TPUs. Continued runs are bit-identical to one run on the same GPU type: `archesweather` in
+segments of 40, 11 and 11 days (two of them ending inside a month) against 62 days, and `archesweathergen` with two
+members in segments of 12 and 19 days against 31 days, on an A100.
 
 **DLESyM, ArchesClimate-SSP and ArchesWeather software.** They run in a second Python environment (Earth2Studio 0.19
 at commit 8fa7acb, PhysicsNeMo 1dacf8d, earth2grid 11dcf1b with its CUDA HEALPix padding kernel; every other package
