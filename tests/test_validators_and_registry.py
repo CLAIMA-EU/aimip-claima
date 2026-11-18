@@ -167,7 +167,7 @@ def test_example_registry_loads_all_models_and_forcing_sets(
     from aimip.setup_data import CANONICAL_MODELS
 
     catalog = load_registry()
-    assert len(catalog) == len(CANONICAL_MODELS) == 22
+    assert len(catalog) == len(CANONICAL_MODELS) == 23
     assert list(catalog.keys())[:5] == [
         "ace2-era5",
         "ace2-shield",

@@ -11,7 +11,7 @@ the site settings at `<prefix>/site.json` and the model data at `<prefix>/data/`
   state). Compute nodes need no internet.
 - `bash`, `python3` (3.8+ for the installers themselves), `tar`, `sha256sum` or `shasum`.
 - Disk: about 25 GB for the software (image and build cache, or the virtual environments), plus the model data:
-  0.03–34 GB per model, about 258 GB for all twenty-two.
+  0.03–34 GB per model, about 258 GB for all twenty-three.
 - Container mode: one of Apptainer, Singularity, Docker or Podman; Docker and Podman need the NVIDIA Container Toolkit
   for `--gpus all`. Native mode: Python 3.12 (the pins were made for 3.12; newer versions are untested), and for
   `--with-emu` also a C/C++ compiler.
@@ -133,7 +133,7 @@ Two ways, in both modes:
 | `dlesym-aimip` | the `dlesym-v0-isccp` files plus the AIMIP SST forcing (4.3 GiB, Zenodo 17065758; shared with the ACE models that use it) |
 | `archesclimate-ssp` | 33.5 GiB (both scenarios) |
 | `archesweather`, `archesweathergen` | 2.0 GiB from Zenodo 22795233 (the checkpoint zip, the initial state, the forcing, statistics), plus 1.3 or 1.8 GiB of checkpoints extracted from the zip |
-| `samudra-om4` 1.5 · `md-1.5` 0.03 (+ AIMIP SST above) · `camulator` 5.9 (+ 10.7 GiB on demand) · `cbottle-3d` 3.2 · `spherical-dyffusion` 25.3 GiB | `samudra-om4` also stages its OM4 window per run (~1.5 GB/yr) |
+| `samudra-om4` 1.5 · `md-1.5` 0.03, `md-1.5-aimip` 0.04 (+ AIMIP SST above) · `camulator` 5.9 (+ 10.7 GiB on demand) · `cbottle-3d` 3.2 · `spherical-dyffusion` 25.3 GiB | `samudra-om4` also stages its OM4 window per run (~1.5 GB/yr) |
 
 Every file is checked against `aimip.lock`: downloads by size and sha256, files built on your machine by sha256. Derived files (forcing built from the authors'
 packages) are rebuilt on your machine and must match the lock bit for bit.
@@ -172,7 +172,7 @@ made before this option existed, `export APPTAINER_UNSQUASH=1` has the same effe
 ```bash
 A=DIR/bin/aimip
 $A --version
-$A models                       # twenty-two models
+$A models                       # twenty-three models
 $A run -m ace2-era5 --start 1979-01-01T00:00:00 --steps 8 --out <run root>/check --submit   # prepares the run
 $A submit <run root>/check                                                     # queues it (or use --local above instead)
 ```

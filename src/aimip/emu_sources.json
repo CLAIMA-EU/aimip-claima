@@ -765,9 +765,35 @@
     "size": 26319522,
     "sha256": "dac25623a523c9d05e1a788a8258b68f72d55f4643a3a0034c6a1ec32424f022"
    },
+   "models/MD-1p5.pth/config.pkl": {
+    "size": 582489,
+    "sha256": "c652426f3f425221b9105db42e34848a6f51e7da552c3c2362f0476e8328d29b"
+   },
+   "models/MD-1p5.pth/weights.pt": {
+    "size": 28998624,
+    "sha256": "7a217274bcb83d2d262412ccf21358d45dac4d4bac6fdb37c42da7f7339e2da2"
+   },
    "scripts/variable_statistics_197901-201412.json": {
     "size": 3645,
     "sha256": "443e684601519cb4c29e20e2e00dce359e7e4b8f476a8af2b3ad8f623b2cafc4"
+   }
+  }
+ },
+ "zenodo:md-1.5-aimip-inputs": {
+  "source_kind": "zenodo",
+  "record": "PENDING",
+  "files": {
+   "md15_era5_ic_1978-10-01_1p5.nc": {
+    "size": 6772803,
+    "md5": "20b7a1295c6318593d6fe897a600cca0",
+    "sha256": "8ea9bad7b0b3e62b45b21dd0a8719c1af68ecb33efcf22b4f911f11d822d3e7b",
+    "url": "https://zenodo.org/records/PENDING/files/md15_era5_ic_1978-10-01_1p5.nc?download=1"
+   },
+   "md15_variable_statistics_198501-201412.json": {
+    "size": 3651,
+    "md5": "d8b17c0dff9f6a79b98ad1425900fd16",
+    "sha256": "007d471b0187fb63ee2a8e1ed0ae8486eb5761e8958bc1d1d0d2933602a367d6",
+    "url": "https://zenodo.org/records/PENDING/files/md15_variable_statistics_198501-201412.json?download=1"
    }
   }
  }

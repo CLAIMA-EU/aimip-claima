@@ -999,12 +999,24 @@ def test_setup_end_to_end_file_mirrors_write_lock_and_verify_pass_fail(
         return {"code_dir": str(code_dir), "downloaded": False}
 
     def _synthetic_md15_fetcher(dest: str, **_kw: object) -> dict[str, object]:
-        from aimip.md15 import MD15_CONFIG_REL_PATH, MD15_STATS_REL_PATH, MD15_WEIGHTS_REL_PATH
+        from aimip.md15 import (
+            MD15_AIMIP_CONFIG_REL_PATH,
+            MD15_AIMIP_WEIGHTS_REL_PATH,
+            MD15_CONFIG_REL_PATH,
+            MD15_STATS_REL_PATH,
+            MD15_WEIGHTS_REL_PATH,
+        )
 
         dest_p = pathlib.Path(dest)
         code_dir = dest_p / "code" / "monthly-diffusion"
         code_dir.mkdir(parents=True, exist_ok=True)
-        for rel_m in (MD15_CONFIG_REL_PATH, MD15_WEIGHTS_REL_PATH, MD15_STATS_REL_PATH):
+        for rel_m in (
+            MD15_CONFIG_REL_PATH,
+            MD15_WEIGHTS_REL_PATH,
+            MD15_STATS_REL_PATH,
+            MD15_AIMIP_CONFIG_REL_PATH,
+            MD15_AIMIP_WEIGHTS_REL_PATH,
+        ):
             pm = dest_p / rel_m
             pm.parent.mkdir(parents=True, exist_ok=True)
             if not pm.is_file():

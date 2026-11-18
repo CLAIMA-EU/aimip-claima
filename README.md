@@ -13,12 +13,13 @@ aimip submit <run-dir>
 aimip summary <run-dir>                                                    # global-mean 2 m temperature per month
 ```
 
-Twenty-two models are supported: the Ai2 ACE family (`ace2-era5`, `ace2-shield`, `ace2s-shield-plus`, `ace2-eamv3`,
+Twenty-three models are supported: the Ai2 ACE family (`ace2-era5`, `ace2-shield`, `ace2s-shield-plus`, `ace2-eamv3`,
 `hiro-ace`, `ace2-som`, `ace2s`, `hiro-acev2`), the coupled atmosphere–ocean SamudrACE models (`samudrace-cm4`,
 `samudrace-e3smv3`), three DLESyM checkpoints (`dlesym-v1.0`, `dlesym-v1.1`, `dlesym-v0-isccp`) and DLESyM's AIMIP
 version with prescribed SST (`dlesym-aimip`), ArchesClimate-SSP
 (`archesclimate-ssp`), the AIMIP versions of ArchesWeather and ArchesWeatherGen (`archesweather`,
-`archesweathergen`), and `samudra-om4`, `md-1.5`, `camulator`, `cbottle-3d` and `spherical-dyffusion`. See [docs/models.md](docs/models.md).
+`archesweathergen`), `samudra-om4`, `md-1.5` and MD-1.5's AIMIP version (`md-1.5-aimip`), `camulator`, `cbottle-3d`
+and `spherical-dyffusion`. See [docs/models.md](docs/models.md).
 
 What `aimip` does for you:
 
@@ -86,7 +87,7 @@ Without Slurm, use `--local` instead of `--submit`.
 |---|---|
 | [docs/installation.md](docs/installation.md) | both install modes, presets, model data, checks |
 | [docs/user-guide.md](docs/user-guide.md) | running experiments: first run, ensembles, continued runs, scenarios, coupled models, LoRA, outputs |
-| [docs/models.md](docs/models.md) | the twenty-two models: type, forcing, initial conditions, calendars, known limits |
+| [docs/models.md](docs/models.md) | the twenty-three models: type, forcing, initial conditions, calendars, known limits |
 | [docs/slurm-and-paths.md](docs/slurm-and-paths.md) | job scripts, wall time, run directories, path rules |
 | [docs/agent.md](docs/agent.md) | the optional planning assistant `aimip chat` |
 | [docs/console.md](docs/console.md) | development version: new commands, approval, agent runs, MCP server, web UI |

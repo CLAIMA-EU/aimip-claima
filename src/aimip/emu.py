@@ -98,6 +98,7 @@ from .md15 import (
     MD15_WEIGHTS_REL_PATH,
     md15_months_between,
     md15_step_months,
+    md15_variant,
     md15_wall_seconds_estimate,
     resolve_md15_code_dir,
     verify_md15_code_dir,
@@ -347,7 +348,7 @@ def precheck_emu_request(
                     "fluxes from s3://m2lines-pubs/Samudra/OM4 and does not support custom --ic or --lora."
                 )
             elif model.family == "md":
-                reason = "md-1.5 is an atmosphere-only latent diffusion model and does not support --ocean-ic or --lora."
+                reason = f"{model.name} is an atmosphere-only latent diffusion model and does not support --ocean-ic or --lora."
             elif model.family == "camulator":
                 reason = (
                     "camulator starts only from its 69 published noleap initial-condition tensors "
@@ -513,12 +514,13 @@ def precheck_emu_request(
                 field="steps",
             )
     elif model.family == "md":
+        md_starts = tuple(md15_variant(model.name)["published_starts"])
         if norm_start[8:] != "01T00:00:00":
             raise ConfigError(
                 f"--start for {model.name} must be month-start midnight YYYY-MM-01T00:00:00 "
-                f"(published starts: {', '.join(MD15_PUBLISHED_STARTS)}), got {norm_start}.",
+                f"(published starts: {', '.join(md_starts)}), got {norm_start}.",
                 field="start",
-                allowed=list(MD15_PUBLISHED_STARTS),
+                allowed=list(md_starts),
             )
         if ic_path is not None:
             validated_custom_ic = validate_visible_input_path(ic_path, label="--ic")
@@ -527,12 +529,12 @@ def precheck_emu_request(
                     f"Initial condition file not found (or symlinked) at --ic {validated_custom_ic!r}.",
                     field="ic",
                 )
-        elif norm_start not in MD15_PUBLISHED_STARTS:
+        elif norm_start not in md_starts:
             raise ConfigError(
                 f"--start {norm_start} has no published prebuilt initial state for {model.name} "
-                f"(published starts: {', '.join(MD15_PUBLISHED_STARTS)}; or pass an explicit `--ic <path.nc>`).",
+                f"(published starts: {', '.join(md_starts)}; or pass an explicit `--ic <path.nc>`).",
                 field="start",
-                allowed=list(MD15_PUBLISHED_STARTS),
+                allowed=list(md_starts),
             )
         names = [fs.name for fs in model.forcing_sets]
         if forcing_set_name is None:
@@ -1022,9 +1024,10 @@ def prepare_emu_run(
             md_tree_sha = str(md_code_info["tree_sha256"])
             md_tree_files = int(md_code_info["files"])
             md_code_ovr = False
+        md_var = md15_variant(model.name)
         ckpt_dir = os.path.dirname(model.checkpoint)
         config_pkl = os.path.join(ckpt_dir, "config.pkl")
-        stats_file = os.path.join(data_root, MD15_STATS_REL_PATH)
+        stats_file = os.path.join(data_root, md_var["stats_rel"])
         for req_p, req_lbl in ((config_pkl, "config.pkl"), (stats_file, "variable_statistics JSON")):
             if req_p not in pkg_sha:
                 raise ConfigError(f"{model.name}: {req_lbl} ({req_p}) is missing from required_files.")
@@ -1094,6 +1097,8 @@ def prepare_emu_run(
             "stats_file": stats_file,
             "stats_sha256": pkg_sha[stats_file],
             "forcing_file": forcing_file,
+            "forcing_regrid": md_var["forcing_regrid"],
+            "arch": md_var["arch"],
             "ic_file": precomputed_ic_file,
             "ic_sha256": md_ic_sha,
         }
@@ -1593,6 +1598,11 @@ def _check_job_matches_manifest(job: dict[str, Any], manifest: dict[str, Any]) -
         st_path = str(job.get("stats_file") or "")
         if st_path not in pinned or str(job.get("stats_sha256", "")).lower() != str(pkg_map.get(st_path, "")).lower():
             fail("stats_file")
+        md_var = md15_variant(str(job.get("model") or ""))
+        if os.path.basename(st_path) != os.path.basename(md_var["stats_rel"]):
+            fail("stats_file")
+        if job.get("arch") != md_var["arch"] or job.get("forcing_regrid") != md_var["forcing_regrid"]:
+            fail("arch/forcing_regrid")
         if str(job.get("ic_file")) != str(manifest.get("ic_path")) or str(job.get("ic_sha256", "")).lower() != str(
             manifest.get("ic_sha256", "")
         ).lower():

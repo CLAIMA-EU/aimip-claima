@@ -1895,7 +1895,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "ic":
             from .emu_catalog import EMU_MODELS
 
-            no_ic_emu = {m for m in EMU_MODELS if m != "md-1.5"}
+            no_ic_emu = {m for m in EMU_MODELS if m not in ("md-1.5", "md-1.5-aimip")}
             if getattr(args, "model", None) in no_ic_emu:
                 if args.model == "archesclimate-ssp":
                     ic_origin = "the scenario's 2015 state."
@@ -1916,10 +1916,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             if args.ic_command == "list":
                 return _cmd_ic_list(args)
             if args.ic_command == "spin":
-                if getattr(args, "model", None) == "md-1.5":
+                if getattr(args, "model", None) in ("md-1.5", "md-1.5-aimip"):
                     raise ConfigError(
-                        "`aimip ic spin` uses fme's step runner; for md-1.5 run a multi-year rollout with "
-                        "`aimip run md-1.5 ...` and pass `<prev_run>/restart.nc` to `--ic`.",
+                        f"`aimip ic spin` uses fme's step runner; for {args.model} run a multi-year rollout with "
+                        f"`aimip run {args.model} ...` and pass `<prev_run>/restart.nc` to `--ic`.",
                         field="model",
                     )
                 return _cmd_ic_spin(args, recorded_argv)

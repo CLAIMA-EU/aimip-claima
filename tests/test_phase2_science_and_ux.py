@@ -187,6 +187,7 @@ def test_all_canonical_models_plan_through_services_and_check_ic_and_arches_card
         "archesweathergen": {"start": "1978-09-30", "length": "30d", "members": 2},
         "samudra-om4": {"start": "2014-10-10T12:00:00", "steps": 14},
         "md-1.5": {"start": "1978-10-01T00:00:00", "steps": 12, "members": 2, "seed": 0},
+        "md-1.5-aimip": {"start": "1978-10-01T00:00:00", "steps": 12, "members": 2, "seed": 0},
         "camulator": {"start": "1981-01-01T00:00:00", "length": "1y"},
         "cbottle-3d": {"start": "1995-01-01T00:00:00", "length": "2m", "seed": 42},
         "spherical-dyffusion": {"start": "2021-01-01T00:00:00", "steps": 240, "seed": 0},
@@ -206,7 +207,7 @@ def test_all_canonical_models_plan_through_services_and_check_ic_and_arches_card
             assert "outputs 1978-10-01 .." in card_txt and "daily steps / monthly means" in card_txt
             assert "ERA5 daily-mean state of 1978-09-30" in card_txt
             assert "pressure levels in monthly_levels.nc" in card_txt and "restart.nc" in card_txt
-        elif mname == "md-1.5":
+        elif mname in ("md-1.5", "md-1.5-aimip"):
             assert "outputs 1978-10 .. 1979-09" in card_txt
             assert "single monthly states" in card_txt and "730h" not in card_txt
             show_txt = services.render_show_card(services.show(mname))

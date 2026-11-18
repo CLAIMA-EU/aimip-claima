@@ -351,7 +351,7 @@ class AgentTools:
         from ..ic import list_model_ics, list_model_ocean_ics
         from ..registry import get_model, get_model_ic_provenance
 
-        if model in EMU_MODELS and model != "md-1.5":
+        if model in EMU_MODELS and model not in ("md-1.5", "md-1.5-aimip"):
             if model == "archesclimate-ssp":
                 ic_origin = "the scenario's 2015 state."
             elif model == "samudra-om4":

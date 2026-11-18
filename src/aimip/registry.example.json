@@ -1011,6 +1011,38 @@
       "notes": "Monthly Diffusion v0.9 at 1.5 deg (UMD, Hall & Molina 2026, arXiv:2604.13481; kjhall01/monthly-diffusion@b077d3bc MIT, MD-1p5-latest.pth): stochastic latent-diffusion atmosphere emulator on 121 x 240 regular lat-lon (37 prognostic channels, 250 reverse DDPM steps/month, single monthly state per step with counts=1). Forced by AIMIP Phase 1 monthly SST/SIC (Zenodo 17065758, CC-BY-4.0, 556 month-start-centred points 1978-10-01 .. 2025-01-01; training 1985-2014, independent test 2015-2022; requires >= 10-year spin-up). Upstream publishes no initial state: pass --ic <era5_monthly_state.nc> or stage inputs/md-1.5/ic/ic_<YYYY-MM-DD>.nc."
     },
     {
+      "name": "md-1.5-aimip",
+      "family": "md",
+      "fme_module": "aimip.emu_job",
+      "calendar": "proleptic_gregorian",
+      "checkpoint": "${DATA}/models/md-1.5/MD-1p5.pth/weights.pt",
+      "checkpoint_sha256": "7a217274bcb83d2d262412ccf21358d45dac4d4bac6fdb37c42da7f7339e2da2",
+      "ic_files": [
+        "${DATA}/inputs/md-1.5-aimip/md15_era5_ic_1978-10-01_1p5.nc"
+      ],
+      "forcing_sets": [
+        {
+          "name": "aimip-era5-monthly",
+          "dir": "${DATA}/raw/zenodo-17065758",
+          "window": [
+            "1978-10-01T00:00:00",
+            "2025-01-01T00:00:00"
+          ]
+        }
+      ],
+      "required_files": [
+        "raw/zenodo-17065758/ERA5-0.25deg-monthly-mean-forcing-1978-2024.nc",
+        "models/md-1.5/MD-1p5.pth/config.pkl",
+        "models/md-1.5/MD-1p5.pth/weights.pt",
+        "inputs/md-1.5-aimip/md15_era5_ic_1978-10-01_1p5.nc",
+        "inputs/md-1.5-aimip/md15_variable_statistics_198501-201412.json"
+      ],
+      "timestep_hours": 730,
+      "stochastic": true,
+      "default_n_ensemble_per_ic": 1,
+      "notes": "MD-1.5 as run for AIMIP Phase 1 (Hall & Molina 2026, arXiv:2604.13481; kjhall01/monthly-diffusion@b077d3bc MIT): MD-1p5.pth, the checkpoint the authors' run_aimip_runs.py loads, built with the settings its tensors imply (the published code cannot read its config); 1985-2014 normalization statistics and the ERA5 state of October 1978 rebuilt from ERA5 (not published; tools/md15); AIMIP forcing regridded conservatively as in the authors' notebooks. --start 1978-10-01 (the AIMIP start); --steps counts output months including the decoded initial state (555 = through December 2024); members are batched draws of the diffusion noise, as in the authors' forced_run."
+    },
+    {
       "name": "camulator",
       "family": "camulator",
       "fme_module": "aimip.emu_job",
