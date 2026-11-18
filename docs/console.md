@@ -1,32 +1,10 @@
-# Console, agent, MCP and web UI (development version 1.4.0.dev0)
+# Approvals, the assistant, MCP and the web interface
 
-This page describes the commands added after release 1.3.1. They are in the development version on `main`; the
-latest release (1.3.1) is described in the rest of the documentation. `aimip --help` and `aimip <command> --help`
-list every option.
+aimip can also be driven by an AI assistant (`aimip chat`), by another AI tool through MCP (`aimip mcp`) or from a
+web page (`aimip ui`). In all three, a person confirms each run before it is prepared or started. This page explains
+how, and how to use `aimip` from scripts. The commands themselves are in the [user guide](user-guide.md).
 
-## Commands
-
-| command | what it does |
-|---|---|
-| `aimip doctor` | checks site settings, runtime, GPU, scheduler, data directory, permissions and image version; every failed check prints a hint (on a login node without a GPU the GPU check is informational) |
-| `aimip models [--task …] [--family …] [--status …] [--installed]` | lists models, filtered |
-| `aimip show <model> [--examples]` | model card: status, grid, time step and calendar, forcing windows, outputs, files cached or missing with sizes, cost note, licence, limitations, example commands |
-| `aimip cite <model>` | references and licence attribution |
-| `aimip plan <model> …` | checks a run without side effects and prints the plan card with its digest |
-| `aimip run <model> …` | prepares a run directory (as before); `--submit` prepares and prints the submit command |
-| `aimip submit <name-or-dir>` | submits a prepared run; checks that the plan has not changed since it was approved |
-| `aimip watch`, `aimip logs [--follow]`, `aimip status`, `aimip summary` | follow a run; `logs` is bounded and strips terminal control characters |
-| `aimip ls`, `aimip cancel <name-or-dir>` | list runs, cancel a Slurm job or a local run |
-| `aimip completion bash` / `zsh` | shell completion script |
-
-New options for `plan` and `run`:
-
-- the model can be given as the first argument (`aimip run ace2-era5 …`) as well as with `-m`;
-- run length as `--steps N`, `--length 20y|6m|30d|12h` or `--end <ISO time>`; the length is converted with the
-  model's calendar and time step, and a length that is not a whole number of steps is refused;
-- `--name demo` puts the run in `<run root>/demo`; every command accepts the name instead of a path;
-- `--config experiment.yaml` reads the same keys as the flags; flags given on the command line override the file
-  and are listed on the plan card.
+## Scripting: `--json` and exit codes
 
 Every command accepts `--json`: the result is printed on standard output as
 `{"aimip": "1", "ok": true, "result": …}` or `{"aimip": "1", "ok": false, "error": {"code", "message", "field",

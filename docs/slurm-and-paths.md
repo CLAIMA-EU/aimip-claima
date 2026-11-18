@@ -52,7 +52,7 @@ Short runs are dominated by start-up: an 8-step `ace2-era5` run finishes in unde
 estimate exceeds the site limit, `aimip` warns and uses the limit; for the fme models with a 12-hour limit that is
 above about 60 member-years in one job. Split such runs into segments, or set `--time` yourself. DLESyM runs cannot
 be continued yet: one run must fit in one job. ArchesWeather runs continue from `restart.nc`
-([user-guide.md](user-guide.md#continue-a-run)); a 12-hour job holds about 26 member-years of `archesweathergen`,
+([user-guide.md](user-guide.md#continuing-a-run)); a 12-hour job holds about 26 member-years of `archesweathergen`,
 but the three-fold estimate reaches the 12-hour limit at about 8 member-years, so `aimip` caps and warns above that.
 Segments of up to about 20 member-years leave a margin.
 

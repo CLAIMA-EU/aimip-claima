@@ -35,6 +35,17 @@ file that does not match. Derived files are built deterministically; changing a 
 writes into a NetCDF file) changes their hashes, so regenerate the lock with `aimip setup --write-lock` from a
 verified tree and review the diff.
 
+## Package and checkpoint pinning
+
+Like `venv/` and `venv-emu/`, `venv-camulator/` and `venv-sdyff/` pin exact `==`
+package versions in `container/constraints-camulator.txt` and `container/constraints-sdyff.txt` (with `#sha256=` on
+direct GitHub source archives such as `NVlabs/cBottle` and `ai2cm/modulus`, and `torch_harmonics==0.7.2` built with
+`--no-deps`), without `--require-hashes` on wheel installs and with configurable PyTorch wheel indices
+(`AIMIP_CAMULATOR_TORCH_INDEX` / `AIMIP_SDYFF_TORCH_INDEX`). Because those two environments pin `torch==2.4.1`
+(predating PyTorch 2.6's hardened `WeightsUnpickler`), cryptographic SHA-256 verification on `O_NOFOLLOW` file
+descriptors is the primary checkpoint gate, while `weights_only=True` and closed pickle allowlists act as a second
+defense-in-depth layer.
+
 ## Adding a model
 
 1. Pin its files: Hugging Face repository, revision and paths (see `emu_sources.json` for an example), sizes and

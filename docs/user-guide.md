@@ -1,192 +1,424 @@
-# User guide
+# Using aimip
 
-From the first eight-step test to ensembles, continued runs and LoRA checkpoints, and the files a run leaves behind.
-The model facts are in [models.md](models.md); job scripts, wall time and path rules in
-[slurm-and-paths.md](slurm-and-paths.md).
+This guide assumes `aimip` is installed and on your `PATH` ([installation](installation.md)). It has four parts:
 
-In the examples, `A` is the command and `R` your run root. `$A site show` prints the run-root template, for example
-`/scratch/${U1}/${USER}/aimip-runs`, where `${U1}` is the first letter of your user name:
+1. [The idea in one minute](#the-idea-in-one-minute): the few words this guide uses.
+2. [Your first run, step by step](#your-first-run-step-by-step): about 20 minutes, most of it waiting for the
+   download and the queue.
+3. [Recipes](#recipes): longer runs, ensembles, AIMIP runs, scenarios, coupled models, runs without Slurm.
+4. [The results](#the-results): the files a run writes and how to read them.
 
-```bash
-A=/path/to/prefix/bin/aimip
-R=/path/to/your/run/root
-```
+Every command has a full description in `aimip <command> --help`. What each model can do (its dates, its initial
+states, its known limits) is in [models.md](models.md).
 
-## How it works
+## The idea in one minute
 
-- **Preparing and submitting are two steps.** `aimip run … --submit` writes a run directory with `config.yaml`,
-  `job.sbatch` and `aimip-manifest.json`. Nothing is queued until you run `aimip submit <dir>`; you can read the job
-  script first. `--local` runs at once on the current machine instead; `--dry-run` (the default) only prepares and
-  validates.
-- **Every run is recorded.** The manifest holds the command line, the sha256 of the checkpoint and of the initial
-  state, the forcing files, the seed, the software versions, the exit code and the wall time.
-- **Models are downloaded on first use** by the owner of the install ([installation.md](installation.md)).
+- **A model** is one of the emulators aimip knows, for example `ace2-era5`. `aimip models` lists them and
+  `aimip show <model>` describes one.
+- **A run** is one simulation with one model: a start date, a length, and optionally several ensemble members.
+- **A run has a name** (`--name first`) and a directory, `<run root>/first`. Everything about the run is in that
+  directory: its settings, the job script, the log files and the results. Every command takes the name.
+- **A run goes through four steps:**
 
-## First run
+  | step | command | what happens |
+  |---|---|---|
+  | check | `aimip plan` | checks the request and prints what would happen. Changes nothing, downloads nothing |
+  | prepare | `aimip run` | downloads the model the first time, then writes the run directory. Nothing runs yet |
+  | start | `aimip submit` | puts the job in the Slurm queue (or, without Slurm, starts it on this machine) |
+  | follow | `aimip watch`, `aimip status`, `aimip summary` | shows the state of the job, then the results |
 
-```bash
-$A models                               # the seventeen models, their date windows and initial conditions
-$A ic list -m ace2-era5                 # 24 shipped start dates: the 1st of each month of 1979 and of 2001
-$A run -m ace2-era5 --start 1979-01-01T00:00:00 --steps 8 --out $R/first --submit
-$A submit $R/first
-$A status $R/first                      # State: completed, Exit code: 0
-$A summary $R/first
-```
+  You can skip `plan`: `aimip run` makes the same checks. To prepare and run at once on the current machine, use
+  `aimip run … --local`.
 
-```
-Summary for <R>/first (1 member(s), 1 month(s), cos(lat) global mean):
-MONTH    COUNTS  TMP2m (K)  surface_temperature (K)
--------  ------  ---------  -----------------------
-1979-01  8       285.1578   285.8980
-```
+## Your first run, step by step
 
-`COUNTS` is the number of model steps in that month's mean; 8 of 124 makes this a partial month. From-zero installs in
-both modes reproduce these two numbers exactly.
+This run simulates two days with ACE2-ERA5, the Ai2 atmosphere model trained on ERA5. It is short, so you can check
+the whole chain in a few minutes of GPU time.
 
-## Choosing model, start and length
-
-- **Model:** [models.md](models.md) lists for each model whether it is deterministic or stochastic, its forcing
-  window and its shipped initial conditions.
-- **Start:** `--start YYYY-MM-DDTHH:MM:SS`. Without `--ic` it must be a shipped date (`aimip ic list -m <model>`);
-  to start on another date make an initial state first (below). DLESyM, ArchesClimate-SSP and ArchesWeather follow
-  their own rules ([models.md](models.md)).
-- **Length:** `--steps` counts model steps (6 hours for most models, 5 days for SamudrACE, 1 month for
-  ArchesClimate-SSP, 1 day for ArchesWeather). The run must end inside the forcing window; `aimip run` refuses a run that does not and gives
-  the largest number of steps that fits.
-- **Output:** monthly means by default; `--prediction` also writes every step (about 6 GB per member and year),
-  `--no-monthly` switches the monthly means off (fme models only).
-
-In the recipes below, every `run … --submit` only prepares the run; queue it with `$A submit <its --out directory>`
-(shown where the order matters). With `--local` instead of `--submit` the run starts at once.
-
-## Deterministic ensemble: different initial states at the same date
+### Step 1. Look at the model
 
 ```bash
-$A ic spin -m ace2-era5 --from 1979-01-01T00:00:00,1979-02-01T00:00:00,1979-03-01T00:00:00 \
-           --to 1979-03-02T00:00:00 --out $R/spin --submit
-$A submit $R/spin                                   # one job runs all three spin-ups
-$A status $R/spin                                   # wait for "Spin members: 3/3 completed"
-$A collect $R/spin --out $R/ic-19790302.nc          # three different states, all dated 1979-03-02
-$A run -m ace2-era5 --start 1979-03-02T00:00:00 --steps 1460 --members 3 --ic $R/ic-19790302.nc --out $R/ens3 --submit
-$A submit $R/ens3
+aimip show ace2-era5
 ```
 
-Each `--from` date must be before `--to`. Here the members have 60, 29 and 1 days of spin-up; start dates further
-apart give more different states (the usual AMIP way to sample internal variability).
+```
+ace2-era5 — ACE2-ERA5 (Ai2)
+  status:      certified, verified on 1x NVIDIA A100-SXM4-80GB (8 steps, container == native bit-identical, 1.3.0/1.3.1)   (task: amip, family: fme)
+  step/cal:    6h step, calendar=proleptic_gregorian, stochastic=False
+  grid:        180 x 360 Gaussian (1 deg)
+  forcing:     amip-hist (1979-01-01..2014-12-31)
+  ic:          Shipped ERA5 initial conditions: 12 monthly timestamps in 1979 (ic_1979.nc) and 12 monthly timestamps in 2001 (ic_2001.nc) from allenai/ACE2-ERA5.
+  outputs:     TMP2m, surface_temperature, PRATEsfc, PRESsfc
+  installed:   no (0/39 files, ~20.52 GiB)
+  ...
+```
 
-## Stochastic ensemble
+This tells you what you need for a run:
 
-The stochastic models (`ace2s-shield-plus`, `hiro-ace`, `ace2s`, `hiro-acev2`, `samudrace-e3smv3`, `dlesym-v1.1`) make
-members from model noise; one initial state is enough:
+- **step/cal:** the model advances in 6-hour steps;
+- **forcing:** it is driven by observed sea surface temperatures, which are available from 1979 to 2014, so the run
+  must lie inside that window;
+- **ic:** it can start from the 1st of any month in 1979 or 2001, where its authors provide an initial state;
+- **installed:** it is not downloaded yet; the first run downloads 20.5 GiB.
+
+### Step 2. Check the plan
 
 ```bash
-$A run -m ace2s --start 2014-01-01T00:00:00 --steps 1460 --members 4 --seed 1 --out $R/ace2s-m4 --submit
+aimip plan ace2-era5 --start 1979-01-01 --steps 8 --name first
 ```
 
-The same seed gives the same run again (default 0). The members are along `sample` in the output files.
+```
+PLAN first  [digest d69e646baba1]
+  model:       ace2-era5 (fme, status=certified, task=amip)
+  period:      1979-01-01T00:00:00 -> 1979-01-03T00:00:00  (8 steps, dt=6h, calendar=proleptic_gregorian)
+  ic:          /big/disk/aimip/data/inputs/ace2-era5/ic/ic_1979.nc @ 1979-01-01T00:00:00 (...)
+  ensemble:    1 member(s), seed=0  (Single trajectory from shipped IC (pending fetch).)
+  forcing:     amip-hist
+  inputs:      0 cached, 39 to fetch (~20.52 GiB from Hugging Face / Zenodo)
+  outputs:     monthly means (monthly_mean_predictions.nc)
+  resources:   slurm partition=gpu account=myproject gres=gpu:1 wall=00:20:00 (...)
+  output:      /big/disk/aimip-runs/first
+  limits:      Authors' limits (allenai/ACE2-ERA5): "not expected to generalize accurately for large perturbations ..."
+  digest:      d69e646baba1  (approval prefix: d69e646b)
+```
 
-## Continue a run
+Read it from top to bottom: 8 steps of 6 hours take the model from 1 January to 3 January 1979; it starts from the
+shipped initial state; 20.5 GiB will be downloaded; the job asks Slurm for one GPU for 20 minutes; the results go to
+`/big/disk/aimip-runs/first`. The `limits` line quotes what the model's authors say it should not be used for. The
+digest identifies this exact plan; you need it only for [approvals](console.md).
 
-Every fme run writes `restart.nc`, the state after its last step. Start the next segment from it at the time the
-previous one ended (`end_time` in the manifest):
+If something is wrong, `plan` says what and how to fix it. For example, a start date without an initial state:
+
+```
+aimip error: No shipped initial condition for 'ace2-era5' at 1979-01-15T00:00:00 (shipped timestamps:
+1979-01-01T00:00:00, 1979-02-01T00:00:00, ...; pass `--ic <restart.nc>` or spin up with `aimip ic spin`).
+  next:    aimip show ace2-era5
+```
+
+### Step 3. Prepare the run
 
 ```bash
-$A run -m ace2-era5 --start 1979-01-03T00:00:00 --steps 8 --ic $R/first/restart.nc --out $R/first-cont --submit
+aimip run ace2-era5 --start 1979-01-01 --steps 8 --name first
 ```
 
-- This is also how to cross from one forcing set to the next (for example `ace2-shield` from 2014 into 2015–2024).
-- For a stochastic model give each segment a **different** `--seed`; the same seed replays the noise.
-- For a coupled model pass the previous run directory: `--ic $R/cm4-y1`.
-- Long runs are best split into segments: the job wall time is capped, and a failed segment costs one segment.
-- ArchesWeather and ArchesWeatherGen: pass the previous run directory and keep `--members` and `--seed` (leave them
-  out; they come from `restart.nc`). The segments then give the same result as one run, for ArchesWeatherGen
-  because step i of member k always draws its noise with seed + k + 1000 i. When a segment ends inside a month,
-  its last monthly mean is partial (`counts` = the days it has) and the next segment writes that month again,
-  complete: take it from the later segment. A segment reads `restart.nc` when it is prepared, so start it after
-  the previous one has finished, and it writes its files only when it ends, so it must fit in one job (`aimip`
-  warns when the expected time exceeds the wall time).
-- ArchesWeatherGen members can also run as separate runs at the same time: member k of a run with `--seed s` is the
-  same as the one member of a run with `--seed s+k --members 1`. 1978–2024 for one member in three segments of
-  about 7 hours each (15–16 years at about 28 minutes per year on an A100):
+The first time, this downloads the model (20.5 GiB) and checks every file, which takes from a few minutes to an
+hour depending on your connection. Then it prints the plan card again and:
 
-  ```bash
-  $A run -m archesweathergen --start 1978-09-30 --end 1993-12-31 --seed 0 --out $R/awgen-s0-1 --submit
-  # after it has finished:
-  $A run -m archesweathergen --start 1993-12-31 --end 2009-12-31 --ic $R/awgen-s0-1 --out $R/awgen-s0-2 --submit
-  # after that one:
-  $A run -m archesweathergen --start 2009-12-31 --end 2024-12-31 --ic $R/awgen-s0-2 --out $R/awgen-s0-3 --submit
+```
+Prepared ace2-era5 run in /big/disk/aimip-runs/first (mode=dry-run, forcing_set=amip-hist, start=1979-01-01T00:00:00, end=1979-01-03T00:00:00, steps=8, members=1, seed=0).
+Config:   /big/disk/aimip-runs/first/config.yaml
+Manifest: /big/disk/aimip-runs/first/aimip-manifest.json
+Plan:     /big/disk/aimip-runs/first/plan.json
+Sbatch:   /big/disk/aimip-runs/first/job.sbatch
+Next:     aimip submit /big/disk/aimip-runs/first   (or: aimip submit first)
+```
+
+Nothing is running yet. You can look at the job script (`job.sbatch`) before you start it. (`aimip run … --submit`
+does the same as `aimip run`; it does not submit by itself.)
+
+### Step 4. Start it
+
+```bash
+aimip submit first
+```
+
+```
+submitted job 1234567   (then: aimip status /big/disk/aimip-runs/first  or: aimip watch first)
+```
+
+Without Slurm (`--site local`), `submit` starts the job in the background on this machine and prints its process id.
+
+### Step 5. Follow it
+
+```bash
+aimip watch first        # prints a line whenever the state changes, and returns when the job has ended
+aimip status first       # the state once
+aimip logs first         # the end of the job's log files
+aimip ls                 # all your runs
+```
+
+`aimip status` shows, among other things:
+
+```
+Model:         ace2-era5 (forcing_set=amip-hist)
+State:         completed
+SLURM sacct:   state=COMPLETED elapsed=00:01:36 exit=0:0
+Exit code:     0 (...)
+```
+
+A run is `prepared` until you start it, then `pending` while it waits in the queue, `running`, and finally
+`completed`, `failed` or `cancelled`. If a run fails,
+`aimip logs first` shows the end of its log; see also [troubleshooting](troubleshooting.md). `aimip cancel first`
+stops a queued or running job.
+
+### Step 6. Look at the result
+
+```bash
+aimip summary first
+```
+
+```
+Summary for /big/disk/aimip-runs/first (1 member(s), 1 month(s), cos(lat) global mean):
+MONTH    COUNTS  TMP2m (K)  surface_temperature (K)  air_temperature_7 (K)
+-------  ------  ---------  -----------------------  ---------------------
+1979-01  8       285.1577   285.8979                 282.9760
+```
+
+`summary` prints the area-weighted global mean of each month. `COUNTS` is the number of model steps in the month: 8
+of the 124 six-hour steps of January, so this is a partial month. The output above is from a GH200; on an A100,
+`TMP2m` is `285.1578 K`. If you get these numbers, your installation gives the same answer as ours.
+
+The results themselves are NetCDF files in the run directory, mainly `monthly_mean_predictions.nc`; see
+[The results](#the-results).
+
+## Recipes
+
+In the recipes, `aimip run` prepares the run and `aimip submit <name>` starts it. Use `aimip run … --local` instead
+to run at once on the current machine.
+
+### Choosing the start and the length
+
+- **Start:** `--start 1979-01-01` or `--start 1979-01-01T06:00:00`. The start needs an initial state: for most
+  models a shipped one (`aimip show <model>` lists them; after the model is downloaded, `aimip ic list -m <model>`
+  lists the exact times), or your own file with `--ic`. Some models have their own rules, for example DLESyM
+  starts from ERA5 at any 6-hourly time, and ArchesWeather only on 1978-09-30 ([models.md](models.md)).
+- **Length,** one of:
+  - `--steps 1460`: a number of model steps (6 hours for most models; 1 day for ArchesWeather; 1 month for
+    ArchesClimate-SSP and MD-1.5; 5 days for the SamudrACE models and Samudra-OM4);
+  - `--length 10y`, `6m`, `30d` or `12h`: converted to steps with the model's calendar;
+  - `--end 1989-01-01`: the end time.
+- **The run must end inside the forcing window.** If it does not, aimip says how far you can go:
+
+  ```
+  aimip error: Refusing run: end time 2019-01-01T00:00:00 (...) exceeds forcing set 'amip-hist' end
+  2014-12-31T18:00:00 (maximum steps in 'amip-hist' from 1979-01-01T00:00:00 is 52595; use
+  `--end 2014-12-31T18:00:00` or `--steps 52595`; ...).
   ```
 
-  Repeat with `--seed 1`, `2`, … for more members. The segments end on the last day of a year, so no month is split.
-  The wall-time estimate (three times the expected time) exceeds 12 hours here, so `aimip` asks for the 12-hour
-  limit and warns.
+### How long it takes, and long runs
 
-## Scenarios (`ace2-som`, `archesclimate-ssp`)
+The `resources` line of the plan card gives the expected GPU time and the job time aimip asks for (three times the
+expected time, at least 20–45 minutes, at most the site limit, usually 12 hours). Some examples on one A100:
 
-```bash
-$A run -m ace2-som --start 2032-01-01T00:00:00 --steps 1460 --out $R/som-1x --submit                       # 1xCO2
-$A run -m ace2-som --forcing-set 3xCO2 --start 2032-01-01T00:00:00 --steps 1460 --out $R/som-3x --submit   # 3xCO2
-$A run -m archesclimate-ssp --start 2015-01-01T00:00:00 --steps 1029 --forcing-set ssp585 --out $R/arches --submit
-```
+| model | one model year |
+|---|---|
+| ACE and SamudrACE models | about 4 minutes per member |
+| DLESyM | about 40 seconds per member |
+| ArchesWeather / ArchesWeatherGen | about 7 / 28 minutes per member |
 
-## Coupled atmosphere–ocean runs
+A run that does not fit in one job must be split into segments, each continued from the previous one (next recipe).
+aimip warns when a run will not fit. Details: [slurm-and-paths.md](slurm-and-paths.md#wall-time).
 
-```bash
-$A run -m samudrace-cm4 --start 0311-01-01T00:00:00 --steps 73 --out $R/cm4-y1 --submit               # one model year
-$A run -m samudrace-cm4 --start 0312-01-01T00:00:00 --steps 73 --ic $R/cm4-y1 --out $R/cm4-y2 --submit
-$A run -m dlesym-v1.1 --start 1995-01-01T00:00:00 --steps 29220 --members 3 --seed 1 --out $R/dlesym --submit   # 20 years
-```
+### Continuing a run
 
-Outputs are in `atmosphere/` and `ocean/`; `summary` adds the ocean columns. DLESyM runs cannot be continued.
-
-## LoRA checkpoints
+Most models write `restart.nc`, the state after the last step. Start the next segment from it, at the time the
+previous one ended:
 
 ```bash
-$A lora info  $R/lora/my_ckpt.tar                                        # LoRA settings and tensor norms
-$A lora scale $R/lora/my_ckpt.tar --alpha 0.5 --out $R/lora/my_ckpt_a05.tar   # a copy with another strength
-$A run -m ace2-era5 --start 1979-01-01T00:00:00 --steps 1460 --lora $R/lora/my_ckpt_a05.tar --out $R/lora-a05 --submit
+aimip run ace2-era5 --start 1979-01-01 --length 10y --name era5-a
+aimip submit era5-a
+# after it has finished:
+aimip run ace2-era5 --start 1989-01-01 --length 10y --ic /big/disk/aimip-runs/era5-a/restart.nc --name era5-b
+aimip submit era5-b
 ```
 
-`--lora` replaces the model's checkpoint with yours (fme models only); `lora scale` changes only the strength
-(`--alpha 0` switches the LoRA off) and never overwrites a file. fme checkpoints are PyTorch pickles: load only
-checkpoints from a source you trust.
+- For a stochastic model, give each segment a **different** `--seed`; the same seed repeats the same noise.
+- For the coupled SamudrACE models and for ArchesWeather/ArchesWeatherGen, pass the previous run directory:
+  `--ic /big/disk/aimip-runs/era5-a`. ArchesWeather segments give the same result as one long run; leave out
+  `--members` and `--seed`, they come from the restart.
+- DLESyM runs cannot be continued yet: a DLESyM run must fit in one job.
+- The same way, a run can cross from one forcing set to the next, for example `ace2-shield` from 2014 into 2015–2024.
 
-## What is in a run directory
+### Ensembles
+
+**Stochastic models** (the `TYPE` column of `aimip models` says `stochastic`: for example `ace2s`, `hiro-acev2`,
+`dlesym-v1.1`, `archesweathergen`) make members from their own random noise. One initial state is enough:
+
+```bash
+aimip run ace2s --start 2014-01-01 --length 1y --members 4 --seed 1 --name ace2s-m4
+```
+
+The members are along the `sample` dimension of the output files. The same seed gives the same members again.
+
+**Deterministic models** need a different initial state for each member. aimip refuses otherwise:
+
+```
+aimip error: Model 'ace2-era5' is deterministic: --members 3 requires a multi-sample IC (prepare one with
+`aimip ic spin` -> `aimip collect`, or use --members 1).
+```
+
+Make the states by spinning up from different dates to a common date (the usual AMIP way to sample internal
+variability):
+
+```bash
+aimip ic spin -m ace2-era5 --from 1979-01-01,1979-02-01,1979-03-01 --to 1979-03-02 --out /big/disk/aimip-runs/spin --submit
+aimip submit /big/disk/aimip-runs/spin      # one job runs the three spin-ups
+aimip status /big/disk/aimip-runs/spin      # wait for "Spin members: 3/3 completed"
+aimip collect /big/disk/aimip-runs/spin --out /big/disk/aimip-runs/ic-19790302.nc
+aimip run ace2-era5 --start 1979-03-02 --length 1y --members 3 --ic /big/disk/aimip-runs/ic-19790302.nc --name era5-ens3
+```
+
+Here the members have 60, 29 and 1 days of spin-up; start dates further apart give more different states.
+
+### AIMIP Phase 1 runs
+
+These models are set up as their authors ran them for AIMIP Phase 1 (1978-10 to 2024-12, observed sea surface
+temperature and sea ice):
+
+| model | command | time on one GPU |
+|---|---|---|
+| ArchesWeather | `aimip run archesweather --start 1978-09-30 --end 2024-12-31 --name aw-aimip` | about 5 hours (A100) |
+| ArchesWeatherGen, one member | `aimip run archesweathergen --start 1978-09-30 --end 1993-12-31 --seed 0 --name awg-s0-1`, then two more segments ([continuing](#continuing-a-run)) | about 21 hours (A100) |
+| DLESyM, member r1 | `aimip run dlesym-aimip --start 1978-10-03 --steps 67552 --name dla-r1` | 36 minutes (GH200) |
+
+The authors' other DLESyM members start on 1978-10-04 to 1978-10-07; aimip tells you the largest `--steps` for each.
+For more ArchesWeatherGen members, use `--seed 1`, `2`, … How close each model comes to the authors' submission is in
+[models.md](models.md). The +2 K and +4 K experiments are not available yet.
+
+### Scenarios
+
+Some models have several forcing sets (the `FORCING_SETS` column of `aimip models`). Choose one with
+`--forcing-set`:
+
+```bash
+aimip run ace2-som --start 2032-01-01 --length 1y --name som-1x                         # 1xCO2 (the default)
+aimip run ace2-som --start 2032-01-01 --length 1y --forcing-set 3xCO2 --name som-3x
+aimip run archesclimate-ssp --start 2015-01-01 --steps 1029 --forcing-set ssp585 --name arches-585
+```
+
+### Coupled atmosphere–ocean models
+
+```bash
+aimip run samudrace-cm4 --start 0311-01-01 --steps 73 --name cm4-y1                     # one model year
+aimip run samudrace-cm4 --start 0312-01-01 --steps 73 --ic /big/disk/aimip-runs/cm4-y1 --name cm4-y2
+aimip run dlesym-v1.1 --start 1995-01-01 --length 20y --members 3 --seed 1 --name dlesym-20y
+```
+
+Their results are in `atmosphere/` and `ocean/` subdirectories; `aimip summary` shows both.
+
+### Running without Slurm
+
+On a workstation, or inside an interactive allocation with a GPU:
+
+```bash
+aimip run ace2-era5 --start 1979-01-01 --steps 8 --name first-local --local
+```
+
+The model runs at once in your terminal; `aimip summary first-local` works as before. With the `local` site preset,
+`aimip submit` starts a prepared run in the background instead (its log is `local-run.log` in the run directory).
+
+### Running on a cluster
+
+The job settings come from your site settings (`aimip site show`). Any of them can be changed for one run:
+
+```bash
+aimip run ace2-era5 --start 1979-01-01 --length 5y --name era5-5y \
+    --partition gpu-long --account otherproject --time 06:00:00 --gres gpu:a100:1
+```
+
+Also `--cpus-per-task`, `--mem` and `--job-name`. aimip writes the job script itself and `aimip submit` sends only
+scripts that aimip wrote: to change a setting, prepare the run again instead of editing `job.sbatch`. More on job
+scripts, wall time and paths: [slurm-and-paths.md](slurm-and-paths.md).
+
+### Writing the settings in a file
+
+For runs you repeat, put the settings in a YAML file:
+
+```yaml
+# era5-decade.yaml
+model: ace2-era5
+start: 1979-01-01
+length: 10y
+name: era5-decade
+time: "02:00:00"
+```
+
+```bash
+aimip run --config era5-decade.yaml
+aimip run --config era5-decade.yaml --name era5-decade-2 --start 2001-01-01    # flags override the file
+```
+
+The keys are the option names (`model`, `start`, `steps`, `length`, `end`, `members`, `seed`, `ic`, `forcing_set`,
+`name`, `out`, `partition`, `account`, `gres`, `cpus_per_task`, `mem`, `time`, …). Every run directory contains an
+`experiment.yaml` with the settings it was prepared with.
+
+### Your own checkpoint (LoRA)
+
+```bash
+aimip lora info  /big/disk/aimip-runs/lora/my_ckpt.tar                         # its LoRA settings
+aimip lora scale /big/disk/aimip-runs/lora/my_ckpt.tar --alpha 0.5 --out /big/disk/aimip-runs/lora/my_ckpt_a05.tar
+aimip run ace2-era5 --start 1979-01-01 --length 1y --lora /big/disk/aimip-runs/lora/my_ckpt_a05.tar --name lora-a05
+```
+
+`--lora` replaces the model's checkpoint with yours (the ACE and SamudrACE models only); `lora scale` writes a copy
+with another strength (`--alpha 0` switches the LoRA off). Checkpoints are Python pickles: load only checkpoints
+from a source you trust. Your own files (`--ic`, `--lora`) must be inside your run root or the installation
+([paths](slurm-and-paths.md#paths)).
+
+### The assistant, the web interface and approvals
+
+`aimip chat` plans runs in conversation, `aimip ui` opens a web page with the same forms, and `aimip mcp` serves
+aimip to other AI tools. None of them can start a run by itself: a person confirms the exact plan first. See
+[console.md](console.md) and [agent.md](agent.md).
+
+## The results
+
+### Files in a run directory
 
 | file | content |
 |---|---|
-| `aimip-manifest.json` | the record of the run (see above) |
-| `plan.json` | the plan card and its digest; `aimip submit` checks the run against it |
-| `config.yaml` | the fme inference configuration (for DLESyM, ArchesClimate-SSP and ArchesWeather a JSON job description) |
-| `job.sbatch` | the job script |
-| `monthly_mean_predictions.nc` | **the main result**: monthly means of every output variable |
-| `autoregressive_predictions.nc` | every step; only with `--prediction` |
-| `restart.nc` | the state after the last step (fme models; ArchesWeather: the last two days and the sums of an unfinished month) |
-| `slurm-<jobid>.out/.err`, `inference_out.log` | logs; look here first when a run fails |
-| `slurm.jobid`, `sacct.txt` | the job id and the last scheduler record, used by `status` |
-| `local.pid`, `local-run.log` | with the `local` preset: the process id and the log, instead of the Slurm files |
+| `monthly_mean_predictions.nc` | **the main result:** monthly means of every output variable |
+| `monthly_levels.nc`, `monthly_precip.nc` | some models: variables on pressure levels, or precipitation, in separate files |
+| `autoregressive_predictions.nc` | every model step; only with `--prediction` (about 6 GB per member and year for ACE) |
+| `restart.nc` | the state after the last step, to [continue the run](#continuing-a-run) |
+| `aimip-manifest.json` | the record of the run: the command line, the checksums of the checkpoint, the initial state and the forcing, the seed, the software versions, the exit code and the run time |
+| `experiment.yaml`, `plan.json` | the settings and the plan the run was prepared with |
+| `config.yaml`, `job.sbatch` | the model configuration and the job script aimip wrote |
+| `slurm-<jobid>.out`, `slurm-<jobid>.err`, `inference_out.log` | the logs; look here first when a run fails (`aimip logs <name>` shows their end) |
+| `local-run.log` | without Slurm: the log |
 
-Coupled models write `atmosphere/` and `ocean/` subdirectories with their own files.
+The coupled models write `atmosphere/` and `ocean/` subdirectories, each with its own files.
 
 ### Reading the monthly means
 
-`monthly_mean_predictions.nc` has the dimensions `(sample, time, lat, lon)`; `sample` is the ensemble member. In
-fme files `time` is a month counter, the date of each month is in `valid_time(sample, time)` and `counts(sample,
-time)` is the number of steps averaged:
+The files have the dimensions `(sample, time, lat, lon)`, where `sample` is the ensemble member:
 
 ```python
 import xarray as xr
 
-ds = xr.open_dataset("monthly_mean_predictions.nc")
-t2m = ds["TMP2m"]                                   # (sample, time, lat, lon), K
-t2m = t2m.where(ds["counts"] >= 112)                # 6-hourly fme models: drop partial months
+ds = xr.open_dataset("/big/disk/aimip-runs/first/monthly_mean_predictions.nc")
+t2m = ds["TMP2m"]                           # (sample, time, lat, lon), in K
+t2m = t2m.where(ds["counts"] >= 112)        # 6-hourly models: drop months with fewer than 28 days of steps
 ens_mean = t2m.mean("sample")
-dates = ds["valid_time"].isel(sample=0)
+dates = ds["valid_time"].isel(sample=0)     # the date of each month
 ```
 
-The `counts >= 112` mask is for the 6-hourly fme atmosphere models. In DLESyM, ArchesClimate-SSP and ArchesWeather
-files `time` is the date itself (the first of each month) and `counts` is the number of samples (6-hourly for the
-DLESyM atmosphere, 48-hourly for its ocean, 1 for ArchesClimate-SSP, daily for ArchesWeather); SamudrACE steps 5 days.
-Variable names follow each model (fme: `TMP2m`, `PRATEsfc`, …; E3SM-trained: `TREFHT`, `TS`; DLESyM: `t2m`, `sst`;
-ArchesClimate-SSP: `tas`, `pr`; ArchesWeather: `tas`, `psl`, `sst`, and `zg`, `ta`, … in `monthly_levels.nc`); 
-`ncdump -h` shows the list. A monthly file of `ace2-era5` takes about 16 MB per member and month.
+`counts` is the number of model states averaged in each month. Two things differ between models:
+
+- **The time axis.** In the files of the ACE and SamudrACE models, `time` is a month counter and the date is in
+  `valid_time`. In the other models' files, `time` is the date itself.
+- **The variable names** follow each model: `TMP2m`, `PRATEsfc` (ACE); `TREFHT`, `TS` (models trained on E3SM);
+  `t2m`, `sst` (DLESyM); `tas`, `pr` (ArchesClimate-SSP, ArchesWeather); `TMP2m`, `t_850`, `q_850` (MD-1.5). `ncdump -h
+  <file>` lists them.
+
+A monthly file of `ace2-era5` takes about 16 MB per member and month.
+
+## Command overview
+
+| command | what it does |
+|---|---|
+| `aimip models`, `aimip show <model>`, `aimip cite <model>` | list the models, describe one, print its references |
+| `aimip plan …` | check a run without changing anything |
+| `aimip run …` | prepare a run (`--local`: and run it now) |
+| `aimip submit <name>` | start a prepared run |
+| `aimip watch <name>`, `aimip status <name>`, `aimip logs <name>`, `aimip ls` | follow runs |
+| `aimip summary <name>` | global-mean monthly values of a run |
+| `aimip cancel <name>` | stop a queued or running job |
+| `aimip ic list -m <model>`, `aimip ic spin …`, `aimip collect …` | initial states: list them, spin new ones up, collect them into one file |
+| `aimip fetch -m <model>`, `aimip setup --models all` | download models in advance |
+| `aimip doctor`, `aimip site show` | check the installation, show the settings |
+| `aimip lora info/scale …` | inspect or rescale a LoRA checkpoint |
+| `aimip chat`, `aimip ui`, `aimip mcp`, `aimip approve` | the assistant, the web interface, the MCP server, approvals ([console.md](console.md)) |
+| `aimip completion bash` | tab completion for your shell |
+
+Every command accepts `--json` for scripts: the result is printed as one JSON object.
