@@ -38,11 +38,13 @@ from aimip.cbottle import (
     CBOTTLE_HF_REPO,
     CBOTTLE_HF_REVISION,
     CBOTTLE_OUTPUT_VARS,
+    CBOTTLE_SEED_SCHEME,
     CBOTTLE_SST_REL_PATH,
     CBOTTLE_TREE_FILES,
     CBOTTLE_TREE_SHA256,
     CBOTTLE_WINDOW,
     EXIT_UNSTABLE,
+    cbottle_batch_seed,
     cbottle_sample_timestamps,
     run_cbottle,
     verified_cbottle_pretrained_loader,
@@ -184,7 +186,7 @@ def test_cbottle_provenance_apache2_pin_and_card_contract(
     assert (
         card["verified_on"] is not None
         and "A100" in card["verified_on"]
-        and "285.6854" in card["verified_on"]
+        and "285.7072" in card["verified_on"]
         and "1.4.0" in card["verified_on"]
         and "job " not in card["verified_on"]
     )
@@ -194,6 +196,7 @@ def test_cbottle_provenance_apache2_pin_and_card_contract(
     assert '"no independent data withheld for evaluation"' in card["limitations"]
     assert "Conditional state generator, not a time-stepping simulation" in card["limitations"]
     assert "independent draws" in card["limitations"]
+    assert "SHA-256" in card["limitations"] and "batch_index" in card["limitations"]
     assert "2018" in card["limitations"]
 
     cit = cite("cbottle-3d")
@@ -294,8 +297,10 @@ def test_cbottle_rejects_ic_and_dates_outside_window_and_records_sampling_params
     assert resolved.runtime_identity["batch_size"] == CBOTTLE_BATCH_SIZE == 4
     assert resolved.runtime_identity["cadence"] == CBOTTLE_DEFAULT_CADENCE == "daily_synoptic"
     assert resolved.runtime_identity["date_order"] == CBOTTLE_DATE_ORDER == "chronological"
+    assert resolved.runtime_identity["seed_scheme"] == CBOTTLE_SEED_SCHEME
     assert resolved.canonical_payload["runtime_identity"]["batch_size"] == 4
     assert resolved.canonical_payload["runtime_identity"]["cadence"] == "daily_synoptic"
+    assert resolved.canonical_payload["runtime_identity"]["seed_scheme"] == CBOTTLE_SEED_SCHEME
 
 
 def test_cbottle_zip_checkpoint_pre_pickle_sha_gate_and_symlink_refusal(
@@ -488,6 +493,8 @@ def test_cbottle_end_to_end_run_reproducibility_summary_and_exit_5(
             moe_calls.append((list(paths), tuple(sigmas)))
             return cls()
 
+    recorded_batch_seeds: list[int] = []
+
     class _FakeCBottle3D:
         VARIABLES = np.array(list(CBOTTLE_OUTPUT_VARS))
 
@@ -502,7 +509,7 @@ def test_cbottle_end_to_end_run_reproducibility_summary_and_exit_5(
         ) -> None:
             assert lat_lon is True
             assert "tosbcs" in sst_ds
-            self.rng = np.random.default_rng(seed * 1009 + batch_size * 37)
+            self.seed = seed
             self.batch_size = batch_size
 
         def to(self, _device: str) -> _FakeCBottle3D:
@@ -510,10 +517,15 @@ def test_cbottle_end_to_end_run_reproducibility_summary_and_exit_5(
 
         def __call__(self, times: list[ Any ], variables: list[str]) -> xr.DataArray:
             assert 1 <= len(times) <= self.batch_size
+            # Mirror `earth2studio/data/cbottle.py:218,234`: upstream resets local `i = 0`
+            # on every `__call__` and seeds the sampler from `self.seed + i`!
+            cur_seed = int(self.seed)
+            recorded_batch_seeds.append(cur_seed)
+            rng = np.random.default_rng(cur_seed * 1009 + self.batch_size * 37)
             lat = np.linspace(90.0, -90.0, 9, dtype=np.float64)
             lon = np.linspace(0.0, 330.0, 12, dtype=np.float64)
             arr = np.zeros((len(times), len(variables), lat.size, lon.size), dtype=np.float32)
-            batch_noise = float(self.rng.normal(0.0, 0.25))
+            batch_noise = float(rng.normal(0.0, 0.25))
             for ti, dt in enumerate(times):
                 seasonal = 2.0 if dt.month == 1 else 4.0
                 for vi, vname in enumerate(variables):
@@ -588,9 +600,61 @@ def test_cbottle_end_to_end_run_reproducibility_summary_and_exit_5(
 
     with xr.open_dataset(Path(dir_a) / "monthly_mean_predictions.nc", engine="netcdf4", decode_times=False) as ds_out:
         assert int(ds_out.attrs["seed"]) == 42
+        assert ds_out.attrs["seed_scheme"] == CBOTTLE_SEED_SCHEME
         assert int(ds_out.attrs["batch_size"]) == 4
         assert ds_out.attrs["cadence"] == "daily_synoptic"
         assert ds_out.attrs["date_order"] == "chronological"
+
+    # Multi-member, multi-batch (`members=2, steps=10 -> 3 batches/member = 6 calls`) derives 6 distinct seeds
+    # and repeats identically for the same `--seed`!
+    def _prepare_and_run_multi(run_name: str, seed_val: int) -> tuple[str, dict[str, Any], list[int]]:
+        recorded_batch_seeds.clear()
+        spec_m = RunSpec(
+            model="cbottle-3d",
+            start="1995-01-01",
+            steps=10,
+            members=2,
+            seed=seed_val,
+            name=run_name,
+        )
+        rp_m = plan(spec_m)
+        now_m = 1_750_000_000.0
+        broker_m = MemoryApprovalBroker(now_fn=lambda: now_m)
+        auth_m = Authorization(
+            action="submit",
+            digest=rp_m.digest,
+            user=current_user(),
+            issued_at=now_m,
+            expires_at=now_m + 600,
+            nonce=f"cb-{run_name}",
+            allow_download=False,
+        )
+        broker_m.store_minted(auth_m)
+        prep_m = prepare(spec_m, authorization=auth_m, require_authorization=False, broker=broker_m)
+        expected_grid = [
+            [cbottle_batch_seed(seed_val, m_i, b_i) for b_i in range(3)]
+            for m_i in range(2)
+        ]
+        assert prep_m.manifest["seed_scheme"] == CBOTTLE_SEED_SCHEME
+        assert prep_m.manifest["batch_seeds"] == expected_grid
+        job_m = json.loads((Path(prep_m.run_dir) / "config.yaml").read_text(encoding="utf-8"))
+        job_m["device"] = "cpu"
+        res_m = run_cbottle(prep_m.run_dir, job_m)
+        return prep_m.run_dir, res_m, list(recorded_batch_seeds)
+
+    m_dir_1, m_res_1, m_seeds_1 = _prepare_and_run_multi("cb-multi-42-a", 42)
+    m_dir_2, m_res_2, m_seeds_2 = _prepare_and_run_multi("cb-multi-42-b", 42)
+    assert len(m_seeds_1) == 6
+    assert len(set(m_seeds_1)) == 6
+    assert m_seeds_1 == m_seeds_2 == [
+        cbottle_batch_seed(42, m_i, b_i) for m_i in range(2) for b_i in range(3)
+    ]
+    assert m_res_1["seed_scheme"] == CBOTTLE_SEED_SCHEME
+    assert m_res_1["batch_seeds"] == m_res_2["batch_seeds"]
+    m_sum_1 = summarize_run(m_dir_1)["variables"]["t2m"]["series"]
+    m_sum_2 = summarize_run(m_dir_2)["variables"]["t2m"]["series"]
+    assert m_sum_1 == m_sum_2
+    assert m_sum_1[0]["members"][0] != m_sum_1[0]["members"][1]
 
     # Corrupting 1 byte in an expert checkpoint aborts BEFORE `MixtureOfExpertsDenoiser.from_pretrained` is called!
     moe_before = len(moe_calls)

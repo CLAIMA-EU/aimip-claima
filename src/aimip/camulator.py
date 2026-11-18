@@ -56,6 +56,7 @@ from .safe_pickle import (
     compute_sha256sum_tree_digest,
     normalize_sha256,
     open_verified_hash_stream,
+    stage_verified_code_snapshot,
     torch_load_verified,
 )
 from .validators import makedirs_no_group_other_write, strip_group_other_write, validate_safe_path
@@ -488,34 +489,27 @@ def install_camulator_source_tree(
             f"venv-camulator site-packages directory is missing or symlinked: {safe_site}"
         )
 
-    eff_url = (
-        archive_url
-        or os.environ.get("AIMIP_CAMULATOR_ARCHIVE_URL")
-        or CAMULATOR_GITHUB_ARCHIVE_URL
-    )
+    eff_url = archive_url or CAMULATOR_GITHUB_ARCHIVE_URL
     eff_ar_sha = (
-        expected_archive_sha256
-        or os.environ.get("AIMIP_CAMULATOR_ARCHIVE_SHA256")
-        or CAMULATOR_GITHUB_ARCHIVE_SHA256
+        CAMULATOR_GITHUB_ARCHIVE_SHA256
+        if expected_archive_sha256 is None
+        else expected_archive_sha256
     )
-    if expected_archive_size is not _UNSET_SIZE:
-        eff_ar_size = expected_archive_size
-    elif os.environ.get("AIMIP_CAMULATOR_ARCHIVE_SIZE"):
-        eff_ar_size = int(os.environ["AIMIP_CAMULATOR_ARCHIVE_SIZE"])
-    else:
-        eff_ar_size = CAMULATOR_GITHUB_ARCHIVE_SIZE
-
+    eff_ar_size = (
+        CAMULATOR_GITHUB_ARCHIVE_SIZE
+        if expected_archive_size is _UNSET_SIZE
+        else expected_archive_size
+    )
     eff_tree_sha = (
-        expected_tree_sha256
-        or os.environ.get("AIMIP_CAMULATOR_TREE_SHA256")
-        or CAMULATOR_TREE_SHA256
+        CAMULATOR_TREE_SHA256
+        if expected_tree_sha256 is None
+        else expected_tree_sha256
     )
-    if expected_tree_files is not None:
-        eff_tree_files = int(expected_tree_files)
-    elif os.environ.get("AIMIP_CAMULATOR_TREE_FILES"):
-        eff_tree_files = int(os.environ["AIMIP_CAMULATOR_TREE_FILES"])
-    else:
-        eff_tree_files = CAMULATOR_TREE_FILES
+    eff_tree_files = (
+        CAMULATOR_TREE_FILES
+        if expected_tree_files is None
+        else int(expected_tree_files)
+    )
 
     src_parent = os.path.join(safe_venv, "src")
     makedirs_no_group_other_write(src_parent)
@@ -1169,17 +1163,24 @@ def run_camulator(out_dir: str, job: Mapping[str, Any]) -> dict[str, Any]:
     else:
         raise SystemExit(f"Unsupported device {requested_device!r} for camulator.")
 
+    verify_tree = bool(job.get("verify_code_tree", True))
     code_dir_raw = job.get("code_dir")
     if code_dir_raw:
         code_dir = validate_safe_path(str(code_dir_raw), label="CAMulator code_dir")
-        verify_tree = bool(job.get("verify_code_tree", True))
+        is_ovr = bool(job.get("code_is_override", False))
     else:
         code_dir, is_ovr = resolve_camulator_code_dir(job.get("data_root"))
-        verify_tree = not is_ovr
 
+    exp_tree_sha = str(job.get("code_tree_sha256") or CAMULATOR_TREE_SHA256)
+    exp_tree_files = int(job.get("code_tree_files") or CAMULATOR_TREE_FILES)
     if verify_tree:
-        exp_tree_sha = str(job.get("code_tree_sha256") or CAMULATOR_TREE_SHA256)
-        exp_tree_files = int(job.get("code_tree_files") or CAMULATOR_TREE_FILES)
+        if is_ovr and (
+            job.get("code_tree_sha256") is None or job.get("code_tree_files") is None
+        ):
+            raise ValidationError(
+                f"Refusing unverified AIMIP_CAMULATOR_CODE override ({code_dir}): "
+                "code_tree_sha256 and code_tree_files must be pinned in the job manifest."
+            )
         tree_sha, n_files = compute_sha256sum_tree_digest(code_dir, label="CAMulator code directory")
         if n_files != exp_tree_files or tree_sha.lower() != exp_tree_sha.lower():
             raise ValidationError(
@@ -1262,9 +1263,24 @@ def run_camulator(out_dir: str, job: Mapping[str, Any]) -> dict[str, Any]:
     )
     assert_no_symlinks_under(out_dir)
 
-    climate_dir = os.path.join(code_dir, "climate")
+    snap_code_dir: str | None = None
+    exec_code_dir = code_dir
+    if verify_tree:
+        snap_code_dir = os.path.join(out_dir, ".aimip-camulator-code")
+        stage_verified_code_snapshot(
+            code_dir,
+            snap_code_dir,
+            expected_tree_sha256=exp_tree_sha,
+            expected_tree_files=exp_tree_files,
+            label="CAMulator code directory",
+        )
+        exec_code_dir = snap_code_dir
+
+    climate_dir = os.path.join(exec_code_dir, "climate")
     quick_climate_py = os.path.join(climate_dir, "Quick_Climate.py")
     if not os.path.isfile(quick_climate_py) or os.path.islink(quick_climate_py):
+        if snap_code_dir and os.path.lexists(snap_code_dir):
+            shutil.rmtree(snap_code_dir, ignore_errors=True)
         raise ValidationError(f"CAMulator Quick_Climate.py not found at {quick_climate_py}")
 
     cli_args = [
@@ -1331,6 +1347,8 @@ def run_camulator(out_dir: str, job: Mapping[str, Any]) -> dict[str, Any]:
                 os.unlink(audit_path)
             except OSError:
                 pass
+        if snap_code_dir and os.path.lexists(snap_code_dir):
+            shutil.rmtree(snap_code_dir, ignore_errors=True)
 
     consolidated = consolidate_camulator_monthly_outputs(
         raw_save_dir,

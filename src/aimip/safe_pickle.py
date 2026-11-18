@@ -230,20 +230,38 @@ _SAFE_TORCH_STORAGES = frozenset(
 )
 
 
+_SAFE_NUMPY_SCALAR_KINDS = frozenset({"b", "i", "u", "f", "c", "S", "U"})
+
+
 def _safe_numpy_dtype(*args: Any, **kwargs: Any) -> Any:
     import numpy as np
 
     dt = np.dtype(*args, **kwargs)
-    if dt.kind == "O" or bool(dt.hasobject):
-        raise pickle.UnpicklingError("Refusing object numpy.dtype in restricted pickle.")
+    if (
+        dt.kind not in _SAFE_NUMPY_SCALAR_KINDS
+        or dt.fields is not None
+        or dt.subdtype is not None
+        or bool(dt.hasobject)
+    ):
+        raise pickle.UnpicklingError(
+            "Refusing non-primitive or object numpy.dtype in restricted pickle."
+        )
     return dt
 
 
 def _safe_numpy_scalar(dtype: Any, raw_data: Any) -> Any:
     import numpy as np
 
-    if not isinstance(dtype, np.dtype) or dtype.kind == "O" or bool(dtype.hasobject):
-        raise pickle.UnpicklingError(f"Refusing non-primitive numpy scalar dtype: {dtype!r}")
+    if (
+        not isinstance(dtype, np.dtype)
+        or dtype.kind not in _SAFE_NUMPY_SCALAR_KINDS
+        or dtype.fields is not None
+        or dtype.subdtype is not None
+        or bool(dtype.hasobject)
+    ):
+        raise pickle.UnpicklingError(
+            f"Refusing non-primitive or object numpy.dtype scalar: {dtype!r}"
+        )
     try:
         from numpy._core.multiarray import scalar as np_scalar  # type: ignore[import-not-found]
     except ImportError:
@@ -607,3 +625,81 @@ def extract_verified_zip_store(
     raise ValidationError(
         f"Extracted {label} ({zip_path}) does not contain a Zarr root group (.zgroup / zarr.json)."
     )
+
+
+def stage_verified_code_snapshot(
+    src_dir: str,
+    dst_dir: str,
+    *,
+    expected_tree_sha256: str,
+    expected_tree_files: int,
+    label: str = "source tree",
+) -> str:
+    """Copy a verified source tree into private `0700` *dst_dir* and re-verify its tree digest."""
+    safe_src = validate_safe_path(src_dir, label=label)
+    safe_dst = validate_safe_path(dst_dir, label=f"{label} snapshot")
+    want_sha = normalize_sha256(expected_tree_sha256, label=f"{label} tree SHA-256")
+    want_files = int(expected_tree_files)
+
+    src_sha, src_files = compute_sha256sum_tree_digest(safe_src, label=label)
+    if src_files != want_files or src_sha.lower() != want_sha:
+        raise ValidationError(
+            f"Refusing tampered {label} ({safe_src}): expected {want_files} files "
+            f"/ sha256={want_sha}, got {src_files} files / sha256={src_sha}."
+        )
+
+    if os.path.lexists(safe_dst):
+        if os.path.islink(safe_dst) or os.path.isfile(safe_dst):
+            os.unlink(safe_dst)
+        else:
+            shutil.rmtree(safe_dst)
+
+    parent_dst = os.path.dirname(safe_dst) or "/"
+    makedirs_no_group_other_write(parent_dst)
+    os.makedirs(safe_dst, mode=0o700, exist_ok=False)
+
+    rd_flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    wr_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        for walk_root, dirs, files in os.walk(safe_src, topdown=True, followlinks=False):
+            if walk_root == safe_src and ".git" in dirs:
+                dirs.remove(".git")
+            dirs.sort()
+            files.sort()
+            rel_root = os.path.relpath(walk_root, safe_src)
+            dst_walk = safe_dst if rel_root == "." else os.path.join(safe_dst, rel_root)
+            if rel_root != ".":
+                os.makedirs(dst_walk, mode=0o700, exist_ok=True)
+            for fname in files:
+                src_f = os.path.join(walk_root, fname)
+                dst_f = os.path.join(dst_walk, fname)
+                src_fd = os.open(src_f, rd_flags)
+                try:
+                    st = os.fstat(src_fd)
+                    if not stat.S_ISREG(st.st_mode):
+                        raise ValidationError(f"Refusing non-regular entry in {label}: {src_f}")
+                    mode = 0o700 if (st.st_mode & 0o111) else 0o600
+                    dst_fd = os.open(dst_f, wr_flags, mode)
+                    try:
+                        with os.fdopen(src_fd, "rb", closefd=False) as r_fh, os.fdopen(
+                            dst_fd, "wb", closefd=False
+                        ) as w_fh:
+                            shutil.copyfileobj(r_fh, w_fh, length=1024 * 1024)
+                    finally:
+                        os.close(dst_fd)
+                finally:
+                    os.close(src_fd)
+
+        snap_sha, snap_files = compute_sha256sum_tree_digest(
+            safe_dst, label=f"{label} snapshot"
+        )
+        if snap_files != want_files or snap_sha.lower() != want_sha:
+            raise ValidationError(
+                f"{label} snapshot verification failed ({safe_dst}): expected {want_files} files "
+                f"/ sha256={want_sha}, got {snap_files} files / sha256={snap_sha}."
+            )
+    except BaseException:
+        shutil.rmtree(safe_dst, ignore_errors=True)
+        raise
+
+    return safe_dst

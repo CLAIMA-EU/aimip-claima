@@ -26,7 +26,9 @@ import io
 import json
 from pathlib import Path
 import pickle
+import shutil
 import tarfile
+from typing import Any
 
 import numpy as np
 import pytest
@@ -58,6 +60,10 @@ from aimip.status import summarize_run
 from aimip.time_utils import resolve_horizon
 
 from conftest import sha256_path
+
+
+class _UnsupportedMd15WeightsObj:
+    """Harmless custom Python object that `load_md15_cvae` (`weights_only=True`) must refuse."""
 
 
 def _periodic_bilinear_1p5(src_field_asc: np.ndarray, src_lat_asc: np.ndarray, src_lon_asc: np.ndarray) -> np.ndarray:
@@ -215,6 +221,13 @@ def test_restricted_unpickler_whitelists_md15_config_and_refuses_rce_globals(tmp
     struct_obj_sha = hashlib.sha256(struct_obj_bytes).hexdigest()
     with pytest.raises(ValidationError, match="object numpy.dtype"):
         pickle_load_verified(str(struct_obj_file), struct_obj_sha, allow_torch_config=True)
+
+    nested_struct_obj_file = tmp_path / "nested_struct_obj_dtype.pkl"
+    nested_struct_obj_bytes = pickle.dumps(np.dtype([("outer", [("inner", "O"), ("x", "f4")])]))
+    nested_struct_obj_file.write_bytes(nested_struct_obj_bytes)
+    nested_struct_obj_sha = hashlib.sha256(nested_struct_obj_bytes).hexdigest()
+    with pytest.raises(ValidationError, match="object numpy.dtype"):
+        pickle_load_verified(str(nested_struct_obj_file), nested_struct_obj_sha, allow_torch_config=True)
 
 
 def test_md15_sha256sum_tree_digest_and_archive_extraction(tmp_path: Path) -> None:
@@ -505,6 +518,21 @@ class CVAE(nn.Module):
             md_module=md_pkg,
         )
 
+    # `weights.pt` carrying a harmless unsupported Python object is refused by `load_md15_cvae`
+    # (`weights_only=True`, no pickle fallback) even when its SHA-256 matches!
+    obj_ckpt_dir = tmp_path / "obj_weights_ckpt"
+    obj_ckpt_dir.mkdir()
+    (obj_ckpt_dir / "config.pkl").write_bytes(cfg_path.read_bytes())
+    torch.save({**ref_model.state_dict(), "extra_obj": _UnsupportedMd15WeightsObj()}, obj_ckpt_dir / "weights.pt")
+    with pytest.raises(pickle.UnpicklingError):
+        load_md15_cvae(
+            str(obj_ckpt_dir),
+            config_sha256=cfg_sha,
+            weights_sha256=sha256_path(obj_ckpt_dir / "weights.pt"),
+            device=torch.device("cpu"),
+            md_module=md_pkg,
+        )
+
     stats = _default_stats_dict()
     stats_path = tmp_path / "variable_statistics_197901-201412.json"
     stats_path.write_text(json.dumps(stats), encoding="utf-8")
@@ -650,6 +678,190 @@ class CVAE(nn.Module):
     assert norm_from_char.shape == (2, 37, 121, 240)
     assert np.allclose(norm_from_char, 0.0, atol=1e-5)
     assert char_meta == {"ic_samples_loaded": 1, "start": "1978-10-01"}
+
+    # 2b. Multi-year NetCDF archives (`time=6`) MUST slice selected samples & coincident grid directly
+    #     without ever reading the full time axis (`:` or `...`), on BOTH flat `da` and 3D/4D CF layouts!
+    multi_dates = [
+        "2014-10-01",
+        "2014-11-01",
+        "2014-12-01",
+        "2015-01-01",
+        "2015-02-01",
+        "2015-03-01",
+    ]
+    multi_days = np.asarray(
+        [(datetime.date(int(d[:4]), int(d[5:7]), 1) - epo).days for d in multi_dates],
+        dtype=np.int64,
+    )
+    multi_flat_ic = tmp_path / "multi_year_flat.nc"
+    with netCDF4.Dataset(str(multi_flat_ic), "w", format="NETCDF4") as ds:
+        ds.createDimension("varlev", len(all_39_vars))
+        ds.createDimension("string10", 10)
+        ds.createDimension("time", len(multi_dates))
+        ds.createDimension("lat", 121)
+        ds.createDimension("lon", 240)
+        vt_m = ds.createVariable("time", "i8", ("time",))
+        vt_m.units = "days since 1970-01-01 00:00:00"
+        vt_m.calendar = "proleptic_gregorian"
+        vt_m[:] = multi_days
+        ds.createVariable("lat", "f4", ("lat",))[:] = lat_1p5
+        ds.createVariable("lon", "f4", ("lon",))[:] = lon_1p5
+        ds.createVariable("varlev", "S1", ("varlev", "string10"))[:] = netCDF4.stringtochar(
+            np.asarray(all_39_vars, dtype="S10")
+        )
+        arr_m = np.full((len(all_39_vars), len(multi_dates), 121, 240), 999.0, dtype=np.float32)
+        arr_m[:37, 3, :, :] = arr_39[:37, 0, :, :]  # Only index 3 (`2015-01-01`) has valid state
+        ds.createVariable("da", "f4", ("varlev", "time", "lat", "lon"))[:] = arr_m
+
+    lat_075_desc = np.linspace(90.0, -90.0, 241, dtype=np.float32)
+    lon_075 = np.arange(0.0, 360.0, 0.75, dtype=np.float32)
+    multi_cf_ic = tmp_path / "multi_year_cf_075.nc"
+    with netCDF4.Dataset(str(multi_cf_ic), "w", format="NETCDF4") as ds:
+        ds.createDimension("time", len(multi_dates))
+        ds.createDimension("level", len(MD15_PLEVELS_HPA))
+        ds.createDimension("latitude", 241)
+        ds.createDimension("longitude", 480)
+        vt_c = ds.createVariable("time", "i8", ("time",))
+        vt_c.units = "days since 1970-01-01 00:00:00"
+        vt_c.calendar = "proleptic_gregorian"
+        vt_c[:] = multi_days
+        ds.createVariable("level", "i4", ("level",))[:] = np.asarray(MD15_PLEVELS_HPA, dtype=np.int32)
+        ds.createVariable("latitude", "f4", ("latitude",))[:] = lat_075_desc
+        ds.createVariable("longitude", "f4", ("longitude",))[:] = lon_075
+        for sfc_n, md_k in (
+            ("sp", "SPSFC"),
+            ("skt", "SKTSFC"),
+            ("t2m", "VAR_2TSFC"),
+            ("d2m", "VAR_2DSFC"),
+            ("u10", "VAR_10USFC"),
+            ("v10", "VAR_10VSFC"),
+            ("mtpr", "MTPRSFC"),
+            ("msl", "MSLSFC"),
+            ("z500", "z500.0"),
+        ):
+            val = float(stats[md_k]["mu"]) ** 2 if md_k == "MTPRSFC" else float(stats[md_k]["mu"])
+            sfc_arr = np.full((len(multi_dates), 241, 480), -999.0, dtype=np.float32)
+            sfc_arr[3] = val
+            ds.createVariable(sfc_n, "f4", ("time", "latitude", "longitude"))[:] = sfc_arr
+        for pl_n, pfx in (
+            ("temperature", "t"),
+            ("specific_humidity", "q"),
+            ("u_component_of_wind", "u"),
+            ("v_component_of_wind", "v"),
+        ):
+            pl_arr = np.full((len(multi_dates), len(MD15_PLEVELS_HPA), 241, 480), -999.0, dtype=np.float32)
+            for l_i, p_hpa in enumerate(MD15_PLEVELS_HPA):
+                mk = f"{pfx}{float(p_hpa)}"
+                pl_arr[3, l_i] = float(stats[mk]["mu"]) ** 2 if pfx == "q" else float(stats[mk]["mu"])
+            ds.createVariable(pl_n, "f4", ("time", "level", "latitude", "longitude"))[:] = pl_arr
+
+    real_nc_dataset = netCDF4.Dataset
+
+    class _NoFullTimeReadVar:
+        def __init__(self, name: str, var: Any) -> None:
+            self._name = name
+            self._var = var
+
+        def __getattr__(self, attr: str) -> Any:
+            return getattr(self._var, attr)
+
+        def __getitem__(self, key: Any) -> Any:
+            if key is Ellipsis:
+                raise AssertionError(f"Full-archive Ellipsis read attempted on {self._name}")
+            key_tup = key if isinstance(key, tuple) else (key,)
+            if any(k is Ellipsis for k in key_tup):
+                raise AssertionError(f"Ellipsis read attempted on {self._name}: {key!r}")
+            t_ax = self._var.dimensions.index("time")
+            t_total = int(self._var.shape[t_ax])
+            t_idx = key_tup[t_ax] if t_ax < len(key_tup) else slice(None)
+            if isinstance(t_idx, slice):
+                n_req = len(range(*t_idx.indices(t_total)))
+                if n_req >= t_total:
+                    raise AssertionError(
+                        f"Full time axis read ({n_req}/{t_total}) attempted on {self._name}: {key!r}"
+                    )
+            return self._var[key]
+
+    class _NoFullTimeReadDataset:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            self._ds = real_nc_dataset(*args, **kwargs)
+            self.variables = {
+                vname: (
+                    _NoFullTimeReadVar(vname, vobj)
+                    if vobj.ndim >= 3 and "time" in vobj.dimensions and int(vobj.shape[vobj.dimensions.index("time")]) > 2
+                    else vobj
+                )
+                for vname, vobj in self._ds.variables.items()
+            }
+
+        def __getattr__(self, attr: str) -> Any:
+            return getattr(self._ds, attr)
+
+        def __enter__(self) -> _NoFullTimeReadDataset:
+            self._ds.__enter__()
+            return self
+
+        def __exit__(self, *exc: Any) -> Any:
+            return self._ds.__exit__(*exc)
+
+    monkeypatch.setattr(netCDF4, "Dataset", _NoFullTimeReadDataset)
+    try:
+        sliced_flat, sf_meta = load_md15_initial_state(
+            str(multi_flat_ic), start_iso="2015-01-01T00:00:00", members=1, stats_dict=stats
+        )
+        sliced_cf, sc_meta = load_md15_initial_state(
+            str(multi_cf_ic), start_iso="2015-01-01T00:00:00", members=1, stats_dict=stats
+        )
+    finally:
+        monkeypatch.setattr(netCDF4, "Dataset", real_nc_dataset)
+    assert sf_meta == {"ic_samples_loaded": 1, "start": "2015-01-01"}
+    assert sc_meta == {"ic_samples_loaded": 1, "start": "2015-01-01"}
+    assert np.allclose(sliced_flat, 0.0, atol=1e-5)
+    assert np.allclose(sliced_cf, 0.0, atol=1e-5)
+
+    # 2c. Multi-state sample-indexed IC (`N == 3` distinct states at `2015-01-01`):
+    #     - Refuses `members=2` and `members=4` instead of silently duplicating state 0!
+    #     - Preserves all 3 distinct states when `members=3`!
+    restart_3m = tmp_path / "restart_3m.nc"
+    t2m_distinct_vals = (270.0, 280.0, 290.0)
+    with netCDF4.Dataset(str(restart_3m), "w", format="NETCDF4") as ds:
+        ds.createDimension("sample", 3)
+        ds.createDimension("lat", 121)
+        ds.createDimension("lon", 240)
+        vt_r = ds.createVariable("time", str, ("sample",))
+        for s_i in range(3):
+            vt_r[s_i] = "2015-01-01T00:00:00"
+        ds.createVariable("lat", "f4", ("lat",))[:] = lat_1p5
+        ds.createVariable("lon", "f4", ("lon",))[:] = lon_1p5
+        for md_k, _out_name, _u, _ln in MD15_OUTPUT_CHANNELS:
+            if md_k == "VAR_2TSFC":
+                arr_s = np.stack(
+                    [np.full((121, 240), v_k, dtype=np.float32) for v_k in t2m_distinct_vals],
+                    axis=0,
+                )
+            else:
+                base_mu = (
+                    float(stats[md_k]["mu"]) ** 2
+                    if md_k in ("MTPRSFC", *(f"q{float(p)}" for p in MD15_PLEVELS_HPA))
+                    else float(stats[md_k]["mu"])
+                )
+                arr_s = np.full((3, 121, 240), base_mu, dtype=np.float32)
+            ds.createVariable(md_k, "f4", ("sample", "lat", "lon"))[:] = arr_s
+
+    with pytest.raises(ValidationError, match=r"contains 3 states.*--members 2"):
+        load_md15_initial_state(str(restart_3m), start_iso="2015-01-01T00:00:00", members=2, stats_dict=stats)
+    with pytest.raises(ValidationError, match=r"contains 3 states.*--members 4"):
+        load_md15_initial_state(str(restart_3m), start_iso="2015-01-01T00:00:00", members=4, stats_dict=stats)
+
+    norm_3m, meta_3m = load_md15_initial_state(
+        str(restart_3m), start_iso="2015-01-01T00:00:00", members=3, stats_dict=stats
+    )
+    assert meta_3m == {"ic_samples_loaded": 3, "start": "2015-01-01"}
+    t2m_ch = MD15_PROGNOSTIC_VARS.index("VAR_2TSFC")
+    t2m_mu = float(stats["VAR_2TSFC"]["mu"])
+    t2m_sig = float(stats["VAR_2TSFC"]["sigma"])
+    for m_i, raw_v in enumerate(t2m_distinct_vals):
+        assert np.allclose(norm_3m[m_i, t2m_ch], (raw_v - t2m_mu) / t2m_sig, atol=1e-5)
 
     # 3. End-to-end 3-month, 2-member rollout + `summarize_run` + `restart.nc` continuation!
     # Give decoder `out.weight` a small non-zero weight so distinct diffusion latents decode to distinct members
@@ -949,9 +1161,44 @@ printf '{"months_written": {"atmosphere": 12}, "monthly_representation": "single
     f0.write_bytes(b"# tampered\n")
     with pytest.raises(ValidationError, match="Lock verification failed for code/monthly-diffusion"):
         exec_fme(prepared.run_dir)
+    f0.write_bytes(orig_f0)
+
+    # Setting an unapproved `AIMIP_MD15_CODE` override at `exec_fme` time is refused!
+    unapproved_md_code = tmp_path / "unapproved_md15_code"
+    unapproved_md_code.mkdir()
+    monkeypatch.setenv("AIMIP_MD15_CODE", str(unapproved_md_code))
+    try:
+        with pytest.raises(ValidationError, match="Refusing unapproved source override AIMIP_MD15_CODE"):
+            exec_fme(prepared.run_dir)
+    finally:
+        monkeypatch.delenv("AIMIP_MD15_CODE", raising=False)
+
+    # Approved `AIMIP_MD15_CODE` override bound at `prepare` fails closed if edited before `exec_fme`!
+    ovr_md_code = tmp_path / "approved_md15_ovr"
+    shutil.copytree(code_dir, ovr_md_code)
+    monkeypatch.setenv("AIMIP_MD15_CODE", str(ovr_md_code))
+    try:
+        spec_ovr = RunSpec(model="md-1.5", start="1978-10-01", length="1y", members=2, seed=42, name="md15-ovr-svc")
+        rp_ovr = services.plan(spec_ovr)
+        auth_ovr = Authorization(
+            action="submit",
+            digest=rp_ovr.digest,
+            user=current_user(),
+            issued_at=now,
+            expires_at=now + 600,
+            nonce="md15-prep-ovr",
+            allow_download=False,
+        )
+        broker.store_minted(auth_ovr)
+        prep_ovr = services.prepare(spec_ovr, authorization=auth_ovr, require_authorization=False, broker=broker)
+        assert prep_ovr.manifest["code_is_override"] is True
+        (ovr_md_code / "md" / "f_00.py").write_bytes(b"# edited after prepare\n")
+        with pytest.raises(ValidationError, match="Approved source override tree changed at job time"):
+            exec_fme(prep_ovr.run_dir)
+    finally:
+        monkeypatch.delenv("AIMIP_MD15_CODE", raising=False)
 
     # Restoring `code/monthly-diffusion` succeeds cleanly!
-    f0.write_bytes(orig_f0)
     done = exec_fme(prepared.run_dir)
     assert done["rc"] == 0
     assert done["result"]["months_written"] == {"atmosphere": 12}

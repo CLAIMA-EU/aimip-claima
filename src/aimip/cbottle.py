@@ -35,6 +35,7 @@ from __future__ import annotations
 from collections.abc import Iterator, Mapping
 import contextlib
 import datetime
+import hashlib
 import io
 import json
 import os
@@ -112,6 +113,22 @@ CBOTTLE_BATCH_SIZE = 4
 CBOTTLE_DEFAULT_CADENCE = "daily_synoptic"
 CBOTTLE_ALLOWED_CADENCES: tuple[str, ...] = ("daily_synoptic", "6h")
 CBOTTLE_DATE_ORDER = "chronological"
+CBOTTLE_SEED_SCHEME = "sha256_uint31(aimip:cbottle-3d:v1:{seed}:{member_index}:{batch_index})"
+
+
+def cbottle_batch_seed(run_seed: int, member_index: int, batch_index: int) -> int:
+    """Derive a disjoint 31-bit non-negative seed from `(run_seed, member_index, batch_index)`.
+
+    Earth2Studio's `CBottle3D.__call__` resets its local batch counter on each invocation and
+    passes `self.seed + i` to the diffusion sampler. Deriving a deterministic SHA-256 seed per
+    `(run_seed, member_index, batch_index)` guarantees independent diffusion noise across all
+    batches and ensemble members regardless of `PYTHONHASHSEED`.
+    """
+    token = f"aimip:cbottle-3d:v1:{int(run_seed)}:{int(member_index)}:{int(batch_index)}".encode(
+        "ascii"
+    )
+    raw64 = int.from_bytes(hashlib.sha256(token).digest()[:8], "big")
+    return int(raw64 % 2_147_483_647)
 
 CBOTTLE_OUTPUT_VARS: tuple[str, ...] = (
     "t2m",
@@ -678,18 +695,15 @@ def run_cbottle(out_dir: str, job: Mapping[str, Any]) -> dict[str, Any]:
         monthly_fields[(m_idx, ym)] = mean_arr
         monthly_counts[(m_idx, ym)] = int(count)
 
+    batch_seeds_by_member: list[list[int]] = []
     for m_idx in range(members):
-        member_seed = seed + m_idx
-        np.random.seed(member_seed % (2**32))
-        torch.manual_seed(member_seed)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(member_seed)
-
+        member_batch_seeds: list[int] = []
+        init_seed = cbottle_batch_seed(seed, m_idx, 0)
         generator = CBottle3D(
             core,
             sst_ds,
             lat_lon=True,
-            seed=member_seed,
+            seed=init_seed,
             batch_size=batch_size,
         ).to(device)
 
@@ -697,8 +711,15 @@ def run_cbottle(out_dir: str, job: Mapping[str, Any]) -> dict[str, Any]:
         cur_sum: Any = None
         cur_n = 0
 
-        for b_start in range(0, len(sample_dts), batch_size):
+        for batch_idx, b_start in enumerate(range(0, len(sample_dts), batch_size)):
             batch_tt = sample_dts[b_start : b_start + batch_size]
+            batch_seed = cbottle_batch_seed(seed, m_idx, batch_idx)
+            member_batch_seeds.append(batch_seed)
+            generator.seed = batch_seed
+            np.random.seed(batch_seed)
+            torch.manual_seed(batch_seed)
+            if torch.cuda.is_available():
+                torch.cuda.manual_seed_all(batch_seed)
             da = generator(batch_tt, var_names)
             vals = np.asarray(da.values, dtype=np.float64)
             if vals.ndim != 4 or vals.shape[0] != len(batch_tt) or vals.shape[1] != len(var_names):
@@ -733,6 +754,7 @@ def run_cbottle(out_dir: str, job: Mapping[str, Any]) -> dict[str, Any]:
 
         if cur_ym is not None and cur_sum is not None and cur_n > 0:
             _check_and_store_month(m_idx, cur_ym, cur_sum, cur_n, lat_vals)
+        batch_seeds_by_member.append(member_batch_seeds)
 
     if device.startswith("cuda") and torch.cuda.is_available():
         torch.cuda.synchronize()
@@ -759,6 +781,7 @@ def run_cbottle(out_dir: str, job: Mapping[str, Any]) -> dict[str, Any]:
                 "conditioned only on (day_of_year, hour_of_day) and monthly mid-point SST (tosbcs)"
             ),
             "seed": int(seed),
+            "seed_scheme": CBOTTLE_SEED_SCHEME,
             "batch_size": int(batch_size),
             "cadence": cadence,
             "date_order": CBOTTLE_DATE_ORDER,
@@ -773,6 +796,8 @@ def run_cbottle(out_dir: str, job: Mapping[str, Any]) -> dict[str, Any]:
         "samples_per_member": len(sample_dts),
         "members": members,
         "seed": seed,
+        "seed_scheme": CBOTTLE_SEED_SCHEME,
+        "batch_seeds": batch_seeds_by_member,
         "batch_size": batch_size,
         "cadence": cadence,
         "date_order": CBOTTLE_DATE_ORDER,

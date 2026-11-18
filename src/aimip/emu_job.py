@@ -365,17 +365,40 @@ def run_arches(out_dir: str, job: dict) -> dict:
     data_root = os.path.dirname(os.path.dirname(job["memmap_dir"]))
     # The package reads its statistics through importlib.resources (ArchesClimate/stats/); the data tree may be
     # read-only, so a private copy of the code gets the downloaded statistics file linked in.
-    src = _arches_code_dir(data_root)
-    if not os.environ.get("AIMIP_ARCHES_CODE"):
-        from .setup_data import verify_arches_code_dir
+    from .errors import ValidationError
+    from .setup_data import compute_arches_tree_digest, verify_arches_code_dir
+    from .validators import validate_safe_path
 
+    if job.get("code_dir"):
+        src = validate_safe_path(str(job["code_dir"]), label="ArchesClimate-SSP code_dir")
+    else:
+        src = _arches_code_dir(data_root)
+    is_ovr = bool(job.get("code_is_override", False) or os.environ.get("AIMIP_ARCHES_CODE"))
+    if is_ovr:
+        exp_sha = job.get("code_tree_sha256")
+        exp_files = job.get("code_tree_files")
+        if exp_sha is None or exp_files is None:
+            raise ValidationError(
+                f"Refusing unverified AIMIP_ARCHES_CODE override ({src}): "
+                "code_tree_sha256 and code_tree_files must be pinned in the job manifest."
+            )
+        got_sha, got_files = compute_arches_tree_digest(src)
+        if got_files != int(exp_files) or got_sha.lower() != str(exp_sha).lower():
+            raise ValidationError(
+                f"Refusing tampered ArchesClimate-SSP override ({src}): expected "
+                f"{exp_files} files / {exp_sha}, got {got_files} / {got_sha}."
+            )
+    else:
         verify_arches_code_dir(os.path.dirname(os.path.dirname(src)))
     code_root = os.path.join(tmp, "code")
+    if os.path.lexists(code_root):
+        shutil.rmtree(code_root)
+    os.makedirs(code_root, mode=0o700, exist_ok=True)
     dst = os.path.join(code_root, "ArchesClimate")
     shutil.copytree(src, dst, symlinks=True, ignore=shutil.ignore_patterns(".git", "*.ipynb", "logs"))
     for walk_root, _, _ in os.walk(dst, followlinks=False):
         if not os.path.islink(walk_root):
-            os.chmod(walk_root, 0o755)
+            os.chmod(walk_root, 0o700)
     stats_link = os.path.join(dst, "stats", "cmip_stats_new_ozone.pt")
     if os.path.lexists(stats_link):
         os.unlink(stats_link)

@@ -933,6 +933,21 @@ def _make_stub_native_python(work_dir: pathlib.Path, real_version: str) -> pathl
                 code = a[1]
                 if os.environ.get("FAKE_NATIVE_OMIT_APEX_SHIM") == "1" and "install_sdyff_apex_shim" in code:
                     sys.exit(0)
+                if "install_camulator_source_tree(sys.argv[1])" in code and os.environ.get("FAKE_CAMULATOR_ARCHIVE_URL"):
+                    code = (
+                        "import os; "
+                        + code.replace(
+                            "install_camulator_source_tree(sys.argv[1])",
+                            "install_camulator_source_tree("
+                            "sys.argv[1], "
+                            "archive_url=os.environ['FAKE_CAMULATOR_ARCHIVE_URL'], "
+                            "expected_archive_sha256=os.environ['FAKE_CAMULATOR_ARCHIVE_SHA256'], "
+                            "expected_archive_size=int(os.environ['FAKE_CAMULATOR_ARCHIVE_SIZE']), "
+                            "expected_tree_sha256=os.environ['FAKE_CAMULATOR_TREE_SHA256'], "
+                            "expected_tree_files=int(os.environ['FAKE_CAMULATOR_TREE_FILES']),"
+                            ")",
+                        )
+                    )
                 sys.argv = ["-c", *a[2:]]
                 exec(compile(code, "<string>", "exec"), {"__name__": "__main__"})
             elif a[:2] == ["-m", "pytest"]:
@@ -1131,6 +1146,7 @@ def _make_stub_native_python(work_dir: pathlib.Path, real_version: str) -> pathl
 
 def test_install_native_fails_on_step_or_version_errors_without_launcher_and_uses_safe_pytest_tmp(
     safe_gate_root: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """`install-native.sh` chains every build command, stages verified `miles-credit` via `.pth`, asserts exact imports/versions, leaves no launcher on failure, and picks a `selftest_dir_ok` pytest tmpdir."""
     from aimip.safe_pickle import compute_sha256sum_tree_digest
@@ -1156,11 +1172,11 @@ def test_install_native_fails_on_step_or_version_errors_without_launcher_and_use
 
     def _cam_env(spec: dict[str, str]) -> dict[str, str]:
         return {
-            "AIMIP_CAMULATOR_ARCHIVE_URL": spec["url"],
-            "AIMIP_CAMULATOR_ARCHIVE_SIZE": spec["archive_size"],
-            "AIMIP_CAMULATOR_ARCHIVE_SHA256": spec["archive_sha256"],
-            "AIMIP_CAMULATOR_TREE_SHA256": spec["tree_sha256"],
-            "AIMIP_CAMULATOR_TREE_FILES": spec["tree_files"],
+            "FAKE_CAMULATOR_ARCHIVE_URL": spec["url"],
+            "FAKE_CAMULATOR_ARCHIVE_SIZE": spec["archive_size"],
+            "FAKE_CAMULATOR_ARCHIVE_SHA256": spec["archive_sha256"],
+            "FAKE_CAMULATOR_TREE_SHA256": spec["tree_sha256"],
+            "FAKE_CAMULATOR_TREE_FILES": spec["tree_files"],
         }
 
     def _run_native(prefix: pathlib.Path, extra_args: list[str], env_overrides: dict[str, str]) -> subprocess.CompletedProcess[str]:
@@ -1176,11 +1192,11 @@ def test_install_native_fails_on_step_or_version_errors_without_launcher_and_use
             "FAKE_NATIVE_OMIT_APEX_SHIM",
             "FAKE_PYTEST_LOG",
             "FAKE_PYTEST_RC",
-            "AIMIP_CAMULATOR_ARCHIVE_URL",
-            "AIMIP_CAMULATOR_ARCHIVE_SIZE",
-            "AIMIP_CAMULATOR_ARCHIVE_SHA256",
-            "AIMIP_CAMULATOR_TREE_SHA256",
-            "AIMIP_CAMULATOR_TREE_FILES",
+            "FAKE_CAMULATOR_ARCHIVE_URL",
+            "FAKE_CAMULATOR_ARCHIVE_SIZE",
+            "FAKE_CAMULATOR_ARCHIVE_SHA256",
+            "FAKE_CAMULATOR_TREE_SHA256",
+            "FAKE_CAMULATOR_TREE_FILES",
         ):
             env.pop(k, None)
         env.update(_cam_env(good_cam))
@@ -1218,7 +1234,7 @@ def test_install_native_fails_on_step_or_version_errors_without_launcher_and_use
         ("emu_mid_pip_fail", ["--with-emu"], {"FAKE_NATIVE_FAIL_MATCH": "nvidia-cuda-nvcc"}, "rerun without --with-emu"),
         ("emu_missing_healpixpad", ["--with-emu"], {"FAKE_NATIVE_OMIT_HEALPIXPAD": "1"}, "venv-emu import/version check failed"),
         ("camulator_mid_pip_fail", ["--with-camulator"], {"FAKE_NATIVE_FAIL_MATCH": "constraints-camulator.txt"}, "rerun without --with-camulator"),
-        ("camulator_bad_archive_sha", ["--with-camulator"], {"AIMIP_CAMULATOR_ARCHIVE_SHA256": "0" * 64}, "rerun without --with-camulator"),
+        ("camulator_bad_archive_sha", ["--with-camulator"], {"FAKE_CAMULATOR_ARCHIVE_SHA256": "0" * 64}, "SHA-256 mismatch"),
         ("camulator_missing_deprecated_ns", ["--with-camulator"], _cam_env(missing_ns_cam), "venv-camulator import/version check failed"),
         ("camulator_degraded_postblock", ["--with-camulator"], _cam_env(degraded_ms_cam), "venv-camulator import/version check failed"),
         ("camulator_wrong_torch", ["--with-camulator"], {"FAKE_NATIVE_TORCH24_VER": "2.14.0+cu130"}, "venv-camulator import/version check failed"),
@@ -1262,6 +1278,48 @@ def test_install_native_fails_on_step_or_version_errors_without_launcher_and_use
         good_cam["tree_sha256"],
         int(good_cam["tree_files"]),
     )
+    # Direct production `install_camulator_source_tree` ignores ambient `AIMIP_CAMULATOR_{ARCHIVE,TREE}_*` env vars!
+    from aimip.camulator import install_camulator_source_tree
+
+    monkeypatch.setenv("AIMIP_CAMULATOR_ARCHIVE_URL", good_cam["url"])
+    monkeypatch.setenv("AIMIP_CAMULATOR_ARCHIVE_SIZE", good_cam["archive_size"])
+    monkeypatch.setenv("AIMIP_CAMULATOR_ARCHIVE_SHA256", "0" * 64)
+    monkeypatch.setenv("AIMIP_CAMULATOR_TREE_SHA256", "0" * 64)
+    monkeypatch.setenv("AIMIP_CAMULATOR_TREE_FILES", "1")
+    try:
+        direct_venv = safe_gate_root / "direct_cam_venv"
+        direct_sp = direct_venv / "lib" / "python3.12" / "site-packages"
+        direct_sp.mkdir(parents=True)
+        direct_installed = install_camulator_source_tree(
+            str(direct_venv),
+            site_packages_dir=str(direct_sp),
+            archive_url=good_cam["url"],
+            expected_archive_sha256=good_cam["archive_sha256"],
+            expected_archive_size=int(good_cam["archive_size"]),
+            expected_tree_sha256=good_cam["tree_sha256"],
+            expected_tree_files=int(good_cam["tree_files"]),
+        )
+        assert direct_installed["tree_sha256"] == good_cam["tree_sha256"]
+        with pytest.raises(ValidationError):
+            # Without explicit pin overrides, `install_camulator_source_tree` enforces pinned production constants
+            # and ignores ambient `AIMIP_CAMULATOR_ARCHIVE_*` / `AIMIP_CAMULATOR_TREE_*`!
+            monkeypatch.setenv("AIMIP_CAMULATOR_ARCHIVE_SHA256", good_cam["archive_sha256"])
+            monkeypatch.setenv("AIMIP_CAMULATOR_TREE_SHA256", good_cam["tree_sha256"])
+            monkeypatch.setenv("AIMIP_CAMULATOR_TREE_FILES", good_cam["tree_files"])
+            install_camulator_source_tree(
+                str(direct_venv),
+                site_packages_dir=str(direct_sp),
+                archive_url=good_cam["url"],
+            )
+    finally:
+        for env_k in (
+            "AIMIP_CAMULATOR_ARCHIVE_URL",
+            "AIMIP_CAMULATOR_ARCHIVE_SIZE",
+            "AIMIP_CAMULATOR_ARCHIVE_SHA256",
+            "AIMIP_CAMULATOR_TREE_SHA256",
+            "AIMIP_CAMULATOR_TREE_FILES",
+        ):
+            monkeypatch.delenv(env_k, raising=False)
     sdyff_sp = ok_pfx / "venv-sdyff" / "lib" / "python3.12" / "site-packages"
     main_sp = ok_pfx / "venv" / "lib" / "python3.12" / "site-packages"
     assert (sdyff_sp / "apex" / "normalization.py").is_file()

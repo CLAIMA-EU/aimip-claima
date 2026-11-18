@@ -33,7 +33,7 @@ import shutil
 import subprocess
 import sys
 import time
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from . import __version__
@@ -52,6 +52,7 @@ from .camulator import (
     CAMULATOR_STATICS_FE21_REL_PATH,
     CAMULATOR_STD_REL_PATH,
     camulator_python,
+    resolve_camulator_code_dir,
     verify_camulator_code_dir,
 )
 from .cbottle import (
@@ -60,7 +61,9 @@ from .cbottle import (
     CBOTTLE_DATE_ORDER,
     CBOTTLE_DEFAULT_CADENCE,
     CBOTTLE_SECONDS_PER_YEAR,
+    CBOTTLE_SEED_SCHEME,
     CBOTTLE_SST_REL_PATH,
+    cbottle_batch_seed,
     cbottle_sample_timestamps,
 )
 from .errors import EXIT_UNSTABLE, ConfigError, MissingAssetsError, ValidationError
@@ -76,10 +79,11 @@ from .md15 import (
     md15_months_between,
     md15_step_months,
     md15_wall_seconds_estimate,
+    resolve_md15_code_dir,
     verify_md15_code_dir,
 )
 from .registry import ModelSpec, resolve_data_dir, resolve_playground_dir
-from .safe_pickle import compute_tree_digest
+from .safe_pickle import compute_sha256sum_tree_digest, compute_tree_digest
 from .samudra import SAMUDRA_OSN_SOURCE, SAMUDRA_SECONDS_PER_YEAR
 from .sdyff import (
     SDYFF_COARSEN_FACTOR,
@@ -89,6 +93,7 @@ from .sdyff import (
     SDYFF_INTERPOLATOR_CKPT_REL_PATH,
     SDYFF_SECONDS_PER_YEAR,
     SDYFF_ZENODO_FILES,
+    resolve_sdyff_code_dir,
     sdyff_plan_schedule,
     sdyff_python,
     verify_sdyff_code_dir,
@@ -657,11 +662,32 @@ def _stage_samudra_window(out_dir: str) -> tuple[str, str, int, int]:
     return window_json, tree_sha, tree_files, tree_bytes
 
 
+_STRIPPED_JOB_ENV_KEYS: frozenset[str] = frozenset(
+    {
+        "AIMIP_MD15_CODE",
+        "AIMIP_CAMULATOR_CODE",
+        "AIMIP_SDYFF_CODE",
+        "AIMIP_ARCHES_CODE",
+        "AIMIP_MD15_ARCHIVE_URL",
+        "AIMIP_CAMULATOR_ARCHIVE_URL",
+        "AIMIP_SDYFF_ARCHIVE_URL",
+        "AIMIP_CAMULATOR_ARCHIVE_SHA256",
+        "AIMIP_CAMULATOR_ARCHIVE_SIZE",
+        "AIMIP_CAMULATOR_TREE_SHA256",
+        "AIMIP_CAMULATOR_TREE_FILES",
+    }
+)
+
+
 def _job_env(out_dir: str, py_exe: str | None = None) -> dict[str, str]:
     from .submit import sanitized_subprocess_env
 
     clean_parent = sanitized_subprocess_env()
-    env = {k: v for k, v in clean_parent.items() if k.startswith(("AIMIP_", "SLURM_", "CUDA_", "NVIDIA_"))}
+    env = {
+        k: v
+        for k, v in clean_parent.items()
+        if k.startswith(("AIMIP_", "SLURM_", "CUDA_", "NVIDIA_")) and k not in _STRIPPED_JOB_ENV_KEYS
+    }
     if os.environ.get("LD_LIBRARY_PATH"):
         # Apptainer --nv and HPC CUDA modules expose host driver libraries via LD_LIBRARY_PATH.
         env["LD_LIBRARY_PATH"] = os.environ["LD_LIBRARY_PATH"]
@@ -809,8 +835,17 @@ def prepare_emu_run(
             f"staged from {osn_source}/OM4"
         )
     elif model.family == "md":
-        if not os.environ.get("AIMIP_MD15_CODE"):
-            verify_md15_code_dir(data_root)
+        if (os.environ.get("AIMIP_MD15_CODE") or "").strip():
+            md_code_dir, md_code_ovr = resolve_md15_code_dir(data_root)
+            md_tree_sha, md_tree_files = compute_sha256sum_tree_digest(
+                md_code_dir, label="AIMIP_MD15_CODE"
+            )
+        else:
+            md_code_info = verify_md15_code_dir(data_root)
+            md_code_dir = str(md_code_info["code_dir"])
+            md_tree_sha = str(md_code_info["tree_sha256"])
+            md_tree_files = int(md_code_info["files"])
+            md_code_ovr = False
         ckpt_dir = os.path.dirname(model.checkpoint)
         config_pkl = os.path.join(ckpt_dir, "config.pkl")
         stats_file = os.path.join(data_root, MD15_STATS_REL_PATH)
@@ -872,6 +907,11 @@ def prepare_emu_run(
             "model": model.name,
             "scenario": req["scenario"],
             "data_root": data_root,
+            "code_dir": md_code_dir,
+            "code_tree_sha256": md_tree_sha,
+            "code_tree_files": md_tree_files,
+            "code_is_override": md_code_ovr,
+            "verify_code_tree": True,
             "ckpt_dir": ckpt_dir,
             "config_sha256": pkg_sha[config_pkl],
             "weights_sha256": pkg_sha[model.checkpoint],
@@ -881,11 +921,27 @@ def prepare_emu_run(
             "ic_file": precomputed_ic_file,
             "ic_sha256": md_ic_sha,
         }
+        window_meta = {
+            "code_dir": md_code_dir,
+            "code_tree_sha256": md_tree_sha,
+            "code_tree_files": md_tree_files,
+            "code_is_override": md_code_ovr,
+            "verify_code_tree": True,
+        }
     elif model.family == "camulator":
         from .setup_data import ensure_camulator_selected_assets
 
-        if not os.environ.get("AIMIP_CAMULATOR_CODE"):
-            verify_camulator_code_dir(data_root)
+        if (os.environ.get("AIMIP_CAMULATOR_CODE") or "").strip():
+            cam_code_dir, cam_code_ovr = resolve_camulator_code_dir(data_root)
+            cam_tree_sha, cam_tree_files = compute_sha256sum_tree_digest(
+                cam_code_dir, label="AIMIP_CAMULATOR_CODE"
+            )
+        else:
+            cam_code_info = verify_camulator_code_dir(data_root)
+            cam_code_dir = str(cam_code_info["code_dir"])
+            cam_tree_sha = str(cam_code_info["tree_sha256"])
+            cam_tree_files = int(cam_code_info["files"])
+            cam_code_ovr = False
         selected_assets = ensure_camulator_selected_assets(
             data_root,
             start_iso=req["start"],
@@ -916,6 +972,11 @@ def prepare_emu_run(
             "model": model.name,
             "scenario": req["scenario"],
             "data_root": data_root,
+            "code_dir": cam_code_dir,
+            "code_tree_sha256": cam_tree_sha,
+            "code_tree_files": cam_tree_files,
+            "code_is_override": cam_code_ovr,
+            "verify_code_tree": True,
             "checkpoint_sha256": pkg_sha[model.checkpoint],
             "base_config_file": base_cfg_p,
             "base_config_sha256": pkg_sha[base_cfg_p],
@@ -936,6 +997,13 @@ def prepare_emu_run(
             "ic_file": precomputed_ic_file,
             "ic_sha256": str(cam_ic_info["sha256"]),
         }
+        window_meta = {
+            "code_dir": cam_code_dir,
+            "code_tree_sha256": cam_tree_sha,
+            "code_tree_files": cam_tree_files,
+            "code_is_override": cam_code_ovr,
+            "verify_code_tree": True,
+        }
         ic_provenance = (
             f"Published CAMulator initial-condition tensor ({os.path.basename(precomputed_ic_file)}) "
             f"from hf://willychap/camulator@{model.checkpoint_sha256[:8]} (Apache-2.0)"
@@ -950,6 +1018,11 @@ def prepare_emu_run(
             expert_ckpts.append({"path": c_abs, "sha256": pkg_sha[c_abs]})
         if sst_p not in pkg_sha:
             raise ConfigError(f"{model.name}: conditioning SST file {sst_p} missing from required_files.")
+        n_cb_batches = (int(req["steps"]) + CBOTTLE_BATCH_SIZE - 1) // CBOTTLE_BATCH_SIZE
+        cb_batch_seeds = [
+            [cbottle_batch_seed(resolved_seed, m_i, b_i) for b_i in range(n_cb_batches)]
+            for m_i in range(int(req["members"]))
+        ]
         job = {
             "family": model.family,
             "model": model.name,
@@ -960,19 +1033,33 @@ def prepare_emu_run(
             "batch_size": CBOTTLE_BATCH_SIZE,
             "cadence": CBOTTLE_DEFAULT_CADENCE,
             "date_order": CBOTTLE_DATE_ORDER,
+            "seed_scheme": CBOTTLE_SEED_SCHEME,
         }
         window_meta = {
             "batch_size": CBOTTLE_BATCH_SIZE,
             "cadence": CBOTTLE_DEFAULT_CADENCE,
             "date_order": CBOTTLE_DATE_ORDER,
+            "seed_scheme": CBOTTLE_SEED_SCHEME,
+            "batch_seeds": cb_batch_seeds,
         }
         ic_provenance = (
             "None (conditional atmospheric state generator without state memory; conditioned on "
             "day_of_year, hour_of_day, and PCMDI-AMIP-1-1-9 monthly mid-point SST tosbcs)"
         )
     elif model.family == "sdyff":
-        if not os.environ.get("AIMIP_SDYFF_CODE"):
-            verify_sdyff_code_dir(data_root)
+        if (os.environ.get("AIMIP_SDYFF_CODE") or "").strip():
+            sd_code_dir, sd_code_ovr = resolve_sdyff_code_dir(data_root)
+            if not os.path.isdir(sd_code_dir) or os.path.islink(sd_code_dir):
+                raise ValidationError(f"AIMIP_SDYFF_CODE is missing or symlinked: {sd_code_dir}")
+            sd_tree_sha, sd_tree_files = compute_sha256sum_tree_digest(
+                sd_code_dir, label="AIMIP_SDYFF_CODE"
+            )
+        else:
+            sd_code_info = verify_sdyff_code_dir(data_root)
+            sd_code_dir = str(sd_code_info["code_dir"])
+            sd_tree_sha = str(sd_code_info["tree_sha256"])
+            sd_tree_files = int(sd_code_info["files"])
+            sd_code_ovr = False
         f_ckpt_p = os.path.join(data_root, SDYFF_FORECASTER_CKPT_REL_PATH)
         i_ckpt_p = os.path.join(data_root, SDYFF_INTERPOLATOR_CKPT_REL_PATH)
         i_cfg_p = os.path.join(data_root, SDYFF_INTERPOLATOR_CFG_REL_PATH)
@@ -991,6 +1078,11 @@ def prepare_emu_run(
             "model": model.name,
             "scenario": req["scenario"],
             "data_dir": data_root,
+            "code_dir": sd_code_dir,
+            "code_tree_sha256": sd_tree_sha,
+            "code_tree_files": sd_tree_files,
+            "code_is_override": sd_code_ovr,
+            "verify_code_tree": True,
             "forecaster_ckpt": f_ckpt_p,
             "forecaster_sha256": pkg_sha[f_ckpt_p],
             "interpolator_ckpt": i_ckpt_p,
@@ -1002,6 +1094,11 @@ def prepare_emu_run(
             "coarsen_factor": SDYFF_COARSEN_FACTOR,
         }
         window_meta = {
+            "code_dir": sd_code_dir,
+            "code_tree_sha256": sd_tree_sha,
+            "code_tree_files": sd_tree_files,
+            "code_is_override": sd_code_ovr,
+            "verify_code_tree": True,
             "coarsen_factor": SDYFF_COARSEN_FACTOR,
             "nominal_cycle_months": [m["label"] for m in sdyff_sched["complete_months"]],
             "calendar_note": (
@@ -1029,6 +1126,20 @@ def prepare_emu_run(
                "reference_dir": os.path.join(data_root, "models/archesclimate-ssp/reference_data"),
                "stats_file": os.path.join(data_root, "models/archesclimate-ssp/stats/cmip_stats_new_ozone.pt"),
                "first_output_month": "%04d-%02d" % ARCHES_FIRST_OUTPUT_MONTH}
+        arches_ovr_raw = (os.environ.get("AIMIP_ARCHES_CODE") or "").strip()
+        if arches_ovr_raw:
+            from .setup_data import compute_arches_tree_digest
+
+            ar_code_dir = validate_safe_path(arches_ovr_raw, label="AIMIP_ARCHES_CODE")
+            ar_tree_sha, ar_tree_files = compute_arches_tree_digest(ar_code_dir)
+            ar_override_meta = {
+                "code_dir": ar_code_dir,
+                "code_tree_sha256": ar_tree_sha,
+                "code_tree_files": int(ar_tree_files),
+                "code_is_override": True,
+            }
+            job.update(ar_override_meta)
+            window_meta = dict(ar_override_meta)
         ic_provenance = (f"IPSL-CM6A-LR r1i1p1f1 {scen} state of 2015-02 (previous state 2015-01) from "
                          "gclyne/ArchesClimate-data; first output month 2015-03")
     job.update({"out_dir": validated_out, "start": req["start"], "end": req["end"], "steps": req["steps"],
@@ -1098,7 +1209,7 @@ def prepare_emu_run(
         ),
         "ensemble_note": (
             (
-                f"independent conditional diffusion draws (batch_size={CBOTTLE_BATCH_SIZE}, cadence={CBOTTLE_DEFAULT_CADENCE}, seed + k)"
+                f"independent conditional diffusion draws (batch_size={CBOTTLE_BATCH_SIZE}, cadence={CBOTTLE_DEFAULT_CADENCE}, seed_scheme={CBOTTLE_SEED_SCHEME})"
                 if model.family == "cbottle"
                 else (
                     "batched latent-diffusion reverse DDPM noise seeded from --seed"
@@ -1132,7 +1243,11 @@ def prepare_emu_run(
         "members": req["members"],
         "seed": resolved_seed,
         "seed_explicit": seed is not None,
-        "member_seeds": [resolved_seed + k for k in range(req["members"])],
+        "member_seeds": (
+            [cbottle_batch_seed(resolved_seed, k, 0) for k in range(req["members"])]
+            if model.family == "cbottle"
+            else [resolved_seed + k for k in range(req["members"])]
+        ),
         "forcing_set": next(fs.to_dict() for fs in model.forcing_sets if fs.name == req["scenario"]),
         "forcing_files": scenario_rows,
         **window_meta,
@@ -1198,6 +1313,20 @@ def _check_job_matches_manifest(job: dict[str, Any], manifest: dict[str, Any]) -
             fail("memmap_dir")
         if os.path.dirname(job.get("reference_dir", "")) != os.path.dirname(os.path.dirname(job["checkpoint"])):
             fail("reference_dir")
+        if (
+            job.get("code_is_override")
+            or manifest.get("code_is_override")
+            or job.get("code_dir")
+            or manifest.get("code_dir")
+        ):
+            if (
+                bool(job.get("code_is_override", False)) != bool(manifest.get("code_is_override", False))
+                or str(job.get("code_dir") or "") != str(manifest.get("code_dir") or "")
+                or str(job.get("code_tree_sha256") or "").lower()
+                != str(manifest.get("code_tree_sha256") or "").lower()
+                or job.get("code_tree_files") != manifest.get("code_tree_files")
+            ):
+                fail("code_dir/code_tree_sha256")
     elif job["family"] == "samudra":
         exp_win = os.path.join(job["out_dir"], "window")
         if job.get("window_dir") != exp_win or manifest.get("window_dir") != exp_win:
@@ -1213,6 +1342,15 @@ def _check_job_matches_manifest(job: dict[str, Any], manifest: dict[str, Any]) -
                 fail(zip_key)
     elif job["family"] == "md":
         pkg_map = manifest.get("package_files_sha256") or {}
+        if (
+            str(job.get("code_dir") or "") != str(manifest.get("code_dir") or "")
+            or str(job.get("code_tree_sha256") or "").lower() != str(manifest.get("code_tree_sha256") or "").lower()
+            or job.get("code_tree_files") != manifest.get("code_tree_files")
+            or bool(job.get("code_is_override", False)) != bool(manifest.get("code_is_override", False))
+            or job.get("verify_code_tree") is not True
+            or manifest.get("verify_code_tree") is not True
+        ):
+            fail("code_dir/code_tree_sha256")
         if job.get("ckpt_dir") != os.path.dirname(job["checkpoint"]):
             fail("ckpt_dir")
         cfg_pkl = os.path.join(str(job.get("ckpt_dir") or ""), "config.pkl")
@@ -1233,6 +1371,15 @@ def _check_job_matches_manifest(job: dict[str, Any], manifest: dict[str, Any]) -
             fail("forcing_file")
     elif job["family"] == "camulator":
         pkg_map = manifest.get("package_files_sha256") or {}
+        if (
+            str(job.get("code_dir") or "") != str(manifest.get("code_dir") or "")
+            or str(job.get("code_tree_sha256") or "").lower() != str(manifest.get("code_tree_sha256") or "").lower()
+            or job.get("code_tree_files") != manifest.get("code_tree_files")
+            or bool(job.get("code_is_override", False)) != bool(manifest.get("code_is_override", False))
+            or job.get("verify_code_tree") is not True
+            or manifest.get("verify_code_tree") is not True
+        ):
+            fail("code_dir/code_tree_sha256")
         if str(job.get("checkpoint_sha256", "")).lower() != str(manifest.get("checkpoint_sha256", "")).lower():
             fail("checkpoint_sha256")
         for f_key, sha_key in (
@@ -1272,8 +1419,22 @@ def _check_job_matches_manifest(job: dict[str, Any], manifest: dict[str, Any]) -
             fail("sst_file")
         if job.get("batch_size") != manifest.get("batch_size") or job.get("cadence") != manifest.get("cadence"):
             fail("batch_size/cadence")
+        if (
+            job.get("seed_scheme") != manifest.get("seed_scheme")
+            or job.get("seed_scheme") != CBOTTLE_SEED_SCHEME
+        ):
+            fail("seed_scheme")
     elif job["family"] == "sdyff":
         pkg_map = manifest.get("package_files_sha256") or {}
+        if (
+            str(job.get("code_dir") or "") != str(manifest.get("code_dir") or "")
+            or str(job.get("code_tree_sha256") or "").lower() != str(manifest.get("code_tree_sha256") or "").lower()
+            or job.get("code_tree_files") != manifest.get("code_tree_files")
+            or bool(job.get("code_is_override", False)) != bool(manifest.get("code_is_override", False))
+            or job.get("verify_code_tree") is not True
+            or manifest.get("verify_code_tree") is not True
+        ):
+            fail("code_dir/code_tree_sha256")
         for f_key, sha_key in (
             ("forecaster_ckpt", "forecaster_sha256"),
             ("interpolator_ckpt", "interpolator_sha256"),
@@ -1292,6 +1453,79 @@ def _check_job_matches_manifest(job: dict[str, Any], manifest: dict[str, Any]) -
                 fail("fv3gfs_file_sha256s")
     else:
         fail("family")
+
+
+_FAMILY_SOURCE_OVERRIDE_ENV: dict[str, str] = {
+    "md": "AIMIP_MD15_CODE",
+    "camulator": "AIMIP_CAMULATOR_CODE",
+    "sdyff": "AIMIP_SDYFF_CODE",
+    "arches": "AIMIP_ARCHES_CODE",
+}
+
+
+def _verify_bound_source_tree_at_exec(job: Mapping[str, Any], manifest: Mapping[str, Any]) -> None:
+    """Re-verify the manifest-bound source tree at job time and refuse unapproved ambient overrides."""
+    fam = str(job["family"])
+    env_var = _FAMILY_SOURCE_OVERRIDE_ENV.get(fam)
+    if env_var is None:
+        return
+    ambient_ovr = (os.environ.get(env_var) or "").strip()
+    is_ovr = bool(manifest.get("code_is_override", False))
+    if is_ovr:
+        approved_dir = validate_safe_path(
+            str(manifest.get("code_dir") or ""),
+            label=f"approved {env_var}",
+        )
+        if ambient_ovr and validate_safe_path(ambient_ovr, label=env_var) != approved_dir:
+            raise ValidationError(
+                f"Source override {env_var}={ambient_ovr!r} differs from approved plan directory {approved_dir!r}."
+            )
+        want_sha = str(manifest.get("code_tree_sha256") or "").strip().lower()
+        want_files = manifest.get("code_tree_files")
+        if len(want_sha) != 64 or not isinstance(want_files, int):
+            raise ValidationError(
+                f"Manifest does not pin tree digest/count for source override {approved_dir}."
+            )
+        if not os.path.isdir(approved_dir) or os.path.islink(approved_dir):
+            raise ValidationError(
+                f"Approved source override directory is missing or symlinked at job time: {approved_dir}"
+            )
+        if fam == "arches":
+            from .setup_data import compute_arches_tree_digest
+
+            got_sha, got_files = compute_arches_tree_digest(approved_dir)
+        else:
+            got_sha, got_files = compute_sha256sum_tree_digest(
+                approved_dir,
+                label=f"approved {env_var}",
+            )
+        if got_files != want_files or got_sha.lower() != want_sha:
+            raise ValidationError(
+                f"Approved source override tree changed at job time ({approved_dir}): "
+                f"manifest expects {want_files} files / sha256={want_sha}, "
+                f"got {got_files} files / sha256={got_sha}."
+            )
+        return
+
+    if ambient_ovr:
+        raise ValidationError(
+            f"Refusing unapproved source override {env_var}={ambient_ovr!r} at execution time; "
+            f"re-plan and re-prepare with {env_var} set."
+        )
+    if fam == "md":
+        verify_md15_code_dir(str(job.get("data_root") or ""))
+    elif fam == "camulator":
+        verify_camulator_code_dir(str(job.get("data_root") or ""))
+    elif fam == "sdyff":
+        verify_sdyff_code_dir(
+            str(job.get("data_dir") or ""),
+            expected_tree_sha256=(
+                str(manifest["code_tree_sha256"]) if manifest.get("code_tree_sha256") else None
+            ),
+            expected_tree_files=(
+                int(manifest["code_tree_files"]) if manifest.get("code_tree_files") is not None else None
+            ),
+        )
 
 
 def exec_emu(validated_out: str, manifest: dict[str, Any], manifest_path: str) -> dict[str, Any]:
@@ -1353,12 +1587,8 @@ def exec_emu(validated_out: str, manifest: dict[str, Any], manifest_path: str) -
                 f"Staged Samudra OM4 window changed at job time ({win_dir}): "
                 f"manifest expects tree SHA-256 {want_win_sha}, got {got_win_sha}."
             )
-    elif job["family"] == "md" and not os.environ.get("AIMIP_MD15_CODE"):
-        verify_md15_code_dir(str(job.get("data_root") or ""))
-    elif job["family"] == "camulator" and not os.environ.get("AIMIP_CAMULATOR_CODE"):
-        verify_camulator_code_dir(str(job.get("data_root") or ""))
-    elif job["family"] == "sdyff" and not os.environ.get("AIMIP_SDYFF_CODE"):
-        verify_sdyff_code_dir(str(job.get("data_dir") or ""))
+    elif job["family"] in _FAMILY_SOURCE_OVERRIDE_ENV:
+        _verify_bound_source_tree_at_exec(job, manifest)
 
     raw_job_id = os.environ.get("SLURM_JOB_ID")
     if raw_job_id:

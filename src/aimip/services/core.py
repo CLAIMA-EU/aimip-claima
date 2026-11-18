@@ -25,6 +25,7 @@ from typing import Any, NoReturn
 import yaml
 
 from .. import __version__
+from ..cbottle import CBOTTLE_SEED_SCHEME
 from ..errors import (
     AimipError,
     ApprovalError,
@@ -820,7 +821,12 @@ def plan(
         else None
     )
     cbottle_sampling_meta = (
-        {"batch_size": 4, "cadence": "daily_synoptic", "date_order": "chronological"}
+        {
+            "batch_size": 4,
+            "cadence": "daily_synoptic",
+            "date_order": "chronological",
+            "seed_scheme": CBOTTLE_SEED_SCHEME,
+        }
         if model_spec.family == "cbottle"
         else {}
     )

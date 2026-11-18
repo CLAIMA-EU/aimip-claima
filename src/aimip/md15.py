@@ -35,6 +35,7 @@ from .safe_pickle import (
     compute_sha256sum_tree_digest,
     open_verified_hash_stream,
     pickle_load_verified,
+    stage_verified_code_snapshot,
     torch_load_verified,
 )
 from .validators import makedirs_no_group_other_write, strip_group_other_write, validate_safe_path
@@ -481,7 +482,7 @@ def load_verified_md_package(
     existing = sys.modules.get("md")
     if existing is not None:
         existing_file = os.path.realpath(getattr(existing, "__file__", "") or "")
-        if existing_file.startswith(real_code + os.sep):
+        if existing_file.startswith(real_code + os.sep) and os.path.isfile(existing_file):
             return existing
         for mod_key in [k for k in list(sys.modules) if k == "md" or k.startswith("md.")]:
             sys.modules.pop(mod_key, None)
@@ -674,6 +675,147 @@ def find_coincident_1p5_indices(
         "target_lat": target_lat,
         "target_lon": target_lon,
     }
+
+
+def _monotone_strided_slice(idx_arr: Any) -> tuple[slice | None, bool]:
+    """Return `(positive_stride_slice, flip_axis)` when *idx_arr* is uniformly strided, else `(None, False)`."""
+    import numpy as np
+
+    idx_i = np.asarray(idx_arr, dtype=np.int64)
+    diffs = np.diff(idx_i)
+    if diffs.size > 0 and bool(np.all(diffs == diffs[0])) and int(diffs[0]) != 0:
+        step = int(diffs[0])
+        if step > 0:
+            return slice(int(idx_i[0]), int(idx_i[-1]) + 1, step), False
+        return slice(int(idx_i[-1]), int(idx_i[0]) + 1, -step), True
+    return None, False
+
+
+def _contiguous_index_slices(indices: Sequence[int]) -> list[slice]:
+    """Group integer indices into minimal positive-stride `slice(start, stop)` spans."""
+    if not indices:
+        return []
+    spans: list[slice] = []
+    start = int(indices[0])
+    prev = start
+    for raw in indices[1:]:
+        cur = int(raw)
+        if cur == prev + 1:
+            prev = cur
+        else:
+            spans.append(slice(start, prev + 1))
+            start = prev = cur
+    spans.append(slice(start, prev + 1))
+    return spans
+
+
+def _slice_selected_3d_coincident(
+    var_obj: Any,
+    sel_indices: Sequence[int],
+    lat_idx: Any,
+    lon_idx: Any,
+) -> Any:
+    """Read `(len(sel_indices), 121, 240)` from a 3D `(time|sample, lat, lon)` variable without reading all times."""
+    import numpy as np
+
+    lat_i = np.asarray(lat_idx, dtype=np.int64)
+    lon_i = np.asarray(lon_idx, dtype=np.int64)
+    lat_sl, flip_lat = _monotone_strided_slice(lat_i)
+    lon_sl, flip_lon = _monotone_strided_slice(lon_i)
+
+    chunks: list[Any] = []
+    for t_sl in _contiguous_index_slices(sel_indices):
+        if lat_sl is not None and lon_sl is not None:
+            slab = np.ma.filled(var_obj[t_sl, lat_sl, lon_sl], np.nan).astype(np.float32, copy=False)
+            if flip_lat:
+                slab = slab[:, ::-1, :]
+            if flip_lon:
+                slab = slab[:, :, ::-1]
+        else:
+            raw = np.ma.filled(var_obj[t_sl, :, :], np.nan).astype(np.float32, copy=False)
+            slab = raw[:, lat_i, :][:, :, lon_i]
+        chunks.append(np.ascontiguousarray(slab))
+    return chunks[0] if len(chunks) == 1 else np.concatenate(chunks, axis=0)
+
+
+def _slice_selected_4d_level_coincident(
+    var_obj: Any,
+    sel_indices: Sequence[int],
+    level_index: int,
+    lat_idx: Any,
+    lon_idx: Any,
+) -> Any:
+    """Read `(len(sel_indices), 121, 240)` from a 4D `(time|sample, level, lat, lon)` variable at *level_index*."""
+    import numpy as np
+
+    lat_i = np.asarray(lat_idx, dtype=np.int64)
+    lon_i = np.asarray(lon_idx, dtype=np.int64)
+    lat_sl, flip_lat = _monotone_strided_slice(lat_i)
+    lon_sl, flip_lon = _monotone_strided_slice(lon_i)
+    lev_i = int(level_index)
+
+    chunks: list[Any] = []
+    for t_sl in _contiguous_index_slices(sel_indices):
+        if lat_sl is not None and lon_sl is not None:
+            slab = np.ma.filled(var_obj[t_sl, lev_i, lat_sl, lon_sl], np.nan).astype(
+                np.float32, copy=False
+            )
+            if flip_lat:
+                slab = slab[:, ::-1, :]
+            if flip_lon:
+                slab = slab[:, :, ::-1]
+        else:
+            raw = np.ma.filled(var_obj[t_sl, lev_i, :, :], np.nan).astype(np.float32, copy=False)
+            slab = raw[:, lat_i, :][:, :, lon_i]
+        chunks.append(np.ascontiguousarray(slab))
+    return chunks[0] if len(chunks) == 1 else np.concatenate(chunks, axis=0)
+
+
+def _slice_selected_flat_da_coincident(
+    da_var: Any,
+    sel_indices: Sequence[int],
+    *,
+    time_axis: int,
+    lat_idx: Any,
+    lon_idx: Any,
+) -> Any:
+    """Read `(len(sel_indices), n_varlev, 121, 240)` from flat `da(time, varlev, lat, lon)` or `da(varlev, time, lat, lon)`."""
+    import numpy as np
+
+    lat_i = np.asarray(lat_idx, dtype=np.int64)
+    lon_i = np.asarray(lon_idx, dtype=np.int64)
+    lat_sl, flip_lat = _monotone_strided_slice(lat_i)
+    lon_sl, flip_lon = _monotone_strided_slice(lon_i)
+
+    chunks: list[Any] = []
+    for t_sl in _contiguous_index_slices(sel_indices):
+        if lat_sl is not None and lon_sl is not None:
+            if time_axis == 0:
+                slab = np.ma.filled(da_var[t_sl, :, lat_sl, lon_sl], np.nan).astype(
+                    np.float32, copy=False
+                )
+            else:
+                slab = np.transpose(
+                    np.ma.filled(da_var[:, t_sl, lat_sl, lon_sl], np.nan).astype(
+                        np.float32, copy=False
+                    ),
+                    (1, 0, 2, 3),
+                )
+            if flip_lat:
+                slab = slab[:, :, ::-1, :]
+            if flip_lon:
+                slab = slab[:, :, :, ::-1]
+        else:
+            if time_axis == 0:
+                raw = np.ma.filled(da_var[t_sl, :, :, :], np.nan).astype(np.float32, copy=False)
+            else:
+                raw = np.transpose(
+                    np.ma.filled(da_var[:, t_sl, :, :], np.nan).astype(np.float32, copy=False),
+                    (1, 0, 2, 3),
+                )
+            slab = raw[:, :, lat_i, :][:, :, :, lon_i]
+        chunks.append(np.ascontiguousarray(slab))
+    return chunks[0] if len(chunks) == 1 else np.concatenate(chunks, axis=0)
 
 
 def _slice_2d_or_3d_coincident(var_obj: Any, lat_idx: Any, lon_idx: Any) -> Any:
@@ -1030,10 +1172,16 @@ def load_md15_initial_state(
                 f"Initial condition {safe_ic} does not contain timestamp {want_ymd} "
                 f"(available: {date_strs[:5]})."
             )
-        if sample_dim == "sample" and len(matching_indices) == int(members):
+        if len(matching_indices) == 1:
+            sel_indices = [matching_indices[0]]
+        elif len(matching_indices) == int(members):
             sel_indices = matching_indices
         else:
-            sel_indices = [matching_indices[0]]
+            raise ValidationError(
+                f"Initial condition {safe_ic} contains {len(matching_indices)} states for "
+                f"{want_ymd}, which does not match requested --members {int(members)}; pass "
+                f"--members {len(matching_indices)} or provide a single-state initial condition."
+            )
         n_in = len(sel_indices)
 
         raw_channels = np.empty((n_in, len(MD15_PROGNOSTIC_VARS), MD15_LAT_COUNT, MD15_LON_COUNT), dtype=np.float32)
@@ -1042,10 +1190,14 @@ def load_md15_initial_state(
             varlevs = _decode_nc_string_vector(ds.variables["varlev"])
             da_var = ds.variables["da"]
             dims = tuple(str(d) for d in da_var.dimensions)
-            arr_all = np.ma.filled(da_var[...], np.nan).astype(np.float32, copy=False)
-            if dims[:2] == ("varlev", sample_dim):
-                arr_all = np.transpose(arr_all, (1, 0, 2, 3))
-            arr_sel = arr_all[sel_indices, :, :, :][:, :, lat_idx, :][:, :, :, lon_idx]
+            time_axis = 1 if dims[:2] == ("varlev", sample_dim) else 0
+            arr_sel = _slice_selected_flat_da_coincident(
+                da_var,
+                sel_indices,
+                time_axis=time_axis,
+                lat_idx=lat_idx,
+                lon_idx=lon_idx,
+            )
             for c_idx, ch_name in enumerate(MD15_PROGNOSTIC_VARS):
                 if ch_name not in varlevs:
                     raise ValidationError(
@@ -1077,8 +1229,9 @@ def load_md15_initial_state(
 
                 for cand in candidates:
                     if cand in ds.variables and ds.variables[cand].ndim == 3:
-                        slab_all = _slice_2d_or_3d_coincident(ds.variables[cand], lat_idx, lon_idx)
-                        found_slab = slab_all[sel_indices, :, :]
+                        found_slab = _slice_selected_3d_coincident(
+                            ds.variables[cand], sel_indices, lat_idx, lon_idx
+                        )
                         break
 
                 # 2. Fallback to 4D pressure-level variable `(time|sample, level, lat, lon)`
@@ -1087,8 +1240,9 @@ def load_md15_initial_state(
                         for z_cand in ("z", "geopotential"):
                             if z_cand in ds.variables and ds.variables[z_cand].ndim == 4 and 500 in lev_vals:
                                 z_lev_i = lev_vals.index(500)
-                                z_var = np.ma.filled(ds.variables[z_cand][:, z_lev_i, :, :], np.nan).astype(np.float32)
-                                found_slab = z_var[sel_indices, :, :][:, lat_idx, :][:, :, lon_idx]
+                                found_slab = _slice_selected_4d_level_coincident(
+                                    ds.variables[z_cand], sel_indices, z_lev_i, lat_idx, lon_idx
+                                )
                                 break
                     elif ch_name[0] in _CF_PLEVEL_ALIASES and ch_name.endswith(".0"):
                         prefix = ch_name[0]
@@ -1097,8 +1251,9 @@ def load_md15_initial_state(
                             p_idx = lev_vals.index(p_int)
                             for pl_cand in _CF_PLEVEL_ALIASES[prefix]:
                                 if pl_cand in ds.variables and ds.variables[pl_cand].ndim == 4:
-                                    pl_var = np.ma.filled(ds.variables[pl_cand][:, p_idx, :, :], np.nan).astype(np.float32)
-                                    found_slab = pl_var[sel_indices, :, :][:, lat_idx, :][:, :, lon_idx]
+                                    found_slab = _slice_selected_4d_level_coincident(
+                                        ds.variables[pl_cand], sel_indices, p_idx, lat_idx, lon_idx
+                                    )
                                     break
 
                 if found_slab is None:
@@ -1242,142 +1397,176 @@ def run_md15(out_dir: str, job: Mapping[str, Any]) -> dict[str, Any]:
     requested_device = str(job.get("device", "cuda:0"))
     device = select_md15_device(requested_device, torch.cuda.is_available())
 
+    verify_tree = bool(job.get("verify_code_tree", True))
     code_dir_raw = job.get("code_dir")
     if code_dir_raw:
         code_dir = validate_safe_path(str(code_dir_raw), label="MD-1.5 code_dir")
-        verify_tree = bool(job.get("verify_code_tree", True))
+        is_ovr = bool(job.get("code_is_override", False))
     else:
         code_dir, is_ovr = resolve_md15_code_dir(job.get("data_root"))
-        verify_tree = not is_ovr
 
-    md_mod = load_verified_md_package(
-        code_dir,
-        verify_tree=verify_tree,
-        expected_tree_sha256=(
-            str(job["code_tree_sha256"]) if job.get("code_tree_sha256") else None
-        ),
-        expected_tree_files=(
-            int(job["code_tree_files"]) if job.get("code_tree_files") else None
-        ),
-    )
-
-    stats_path = validate_safe_path(str(job["stats_file"]), label="MD-1.5 statistics JSON")
-    stats_sha = str(job["stats_sha256"])
-    with open_verified_hash_stream(stats_path, stats_sha, label="MD-1.5 statistics JSON") as sfh:
-        stats_dict = json.loads(sfh.read().decode("utf-8"))
-
-    forcing_info = subsample_and_normalize_aimip_forcing(
-        str(job["forcing_file"]),
-        start_iso=start_iso,
-        steps=steps,
-        sst_offset_k=float(job.get("sst_offset_k", 0.0)),
-        allow_short_train_fallback=bool(job.get("allow_short_train_fallback", False)),
-    )
-
-    ic_path = str(job["ic_file"])
-    ic_sha = job.get("ic_sha256")
-    if ic_sha:
-        with open_verified_hash_stream(ic_path, str(ic_sha), label="MD-1.5 initial condition"):
-            pass
-    norm_ic, ic_meta = load_md15_initial_state(
-        ic_path,
-        start_iso=start_iso,
-        members=members,
-        stats_dict=stats_dict,
-    )
-
-    torch.manual_seed(seed)
-    np.random.seed(seed % (2**32 - 1))
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(seed)
-
-    model, _cfg = load_md15_cvae(
-        str(job["ckpt_dir"]),
-        config_sha256=str(job["config_sha256"]),
-        weights_sha256=str(job["weights_sha256"]),
-        device=device,
-        md_module=md_mod,
-        expected_variable_names=job.get("expected_variable_names", MD15_CONFIG_VARIABLE_NAMES),
-    )
-
-    lat = forcing_info["target_lat"]
-    lon = forcing_info["target_lon"]
-    cos_w = np.cos(np.deg2rad(lat)).astype(np.float64)[:, np.newaxis]
-    t2m_idx = MD15_PROGNOSTIC_VARS.index("VAR_2TSFC")
-
-    forcings_t = torch.as_tensor(forcing_info["forcings"], dtype=torch.float32, device=device)
-    months_t = torch.as_tensor(forcing_info["months"], dtype=torch.float32, device=device)
-    phys_t = torch.as_tensor(norm_ic, dtype=torch.float32, device=device)
-
-    all_months_phys = np.empty(
-        (steps, members, len(MD15_PROGNOSTIC_VARS), MD15_LAT_COUNT, MD15_LON_COUNT),
-        dtype=np.float32,
-    )
-
-    def _check_and_store(step_i: int, decoded_norm: Any) -> None:
-        phys_step = denormalize_md15_prognostic_state(decoded_norm, stats_dict)
-        t2m_slab = phys_step[:, t2m_idx, :, :].astype(np.float64)
-        if not np.isfinite(phys_step).all():
-            _log(f"UNSTABLE at step {step_i} ({forcing_info['dates'][step_i]}): non-finite prognostic output")
-            raise SystemExit(EXIT_UNSTABLE)
-        for m_i in range(members):
-            gm = float(np.sum(t2m_slab[m_i] * cos_w) / (np.sum(cos_w) * MD15_LON_COUNT))
-            if not (MD15_T2M_BAND_K[0] <= gm <= MD15_T2M_BAND_K[1]):
-                _log(
-                    f"UNSTABLE at step {step_i} ({forcing_info['dates'][step_i]}), member {m_i}: "
-                    f"global-mean TMP2m={gm:.2f} K outside {MD15_T2M_BAND_K}"
-                )
-                raise SystemExit(EXIT_UNSTABLE)
-        all_months_phys[step_i] = phys_step
-
-    t_run0 = time.time()
-    _log(
-        f"md-1.5 rollout start={start_iso[:10]} steps={steps} members={members} seed={seed} device={device}"
-    )
-    with torch.no_grad():
-        f0 = forcings_t[0].unsqueeze(0).expand(members, -1, -1, -1)
-        m0 = model.seasonality_embedding(months_t[0].unsqueeze(0)).expand(members, -1, -1, -1)
-        cond0 = torch.cat([f0, m0], dim=1)
-        mu_state, _logvar, cs = model.encoder(phys_t, cond0)
-        dec0 = model.decoder(mu_state, cs).detach().cpu().numpy()
-        _check_and_store(0, dec0)
-
-        for step_idx in range(1, steps):
-            mu_state = model.predictor(mu_state, cs[-1])
-            f_step = forcings_t[step_idx].unsqueeze(0).expand(members, -1, -1, -1)
-            m_step = model.seasonality_embedding(months_t[step_idx].unsqueeze(0)).expand(members, -1, -1, -1)
-            cond_step = torch.cat([f_step, m_step], dim=1)
-            cs = model.encoder.embed_conditions(cond_step)
-            dec_step = model.decoder(mu_state, cs).detach().cpu().numpy()
-            _check_and_store(step_idx, dec_step)
-
-    if device.type == "cuda":
-        torch.cuda.synchronize()
-    wall_infer = round(time.time() - t_run0, 3)
-
-    paths = _write_md15_outputs(
-        out_dir,
-        all_months_phys=all_months_phys,
-        month_dates=forcing_info["dates"],
-        lat=lat,
-        lon=lon,
-        seed=seed,
-    )
-    _log(f"md-1.5 rollout completed in {wall_infer:.2f}s -> {paths['monthly_nc']}")
-
-    return {
-        "months_written": {"atmosphere": steps},
-        "first_month": forcing_info["dates"][0][:7],
-        "last_month": forcing_info["dates"][-1][:7],
-        "members": members,
-        "seed": seed,
-        "monthly_representation": MD15_MONTHLY_REPRESENTATION,
-        "spinup_warning": (
-            steps < 120
-            and "Requires >= 10-year (120-month) spin-up (Hall & Molina, 2026); early years have strong QBO spin-up bias."
+    if is_ovr and verify_tree and (
+        not job.get("code_tree_sha256") or job.get("code_tree_files") is None
+    ):
+        raise ValidationError(
+            f"Refusing unverified MD-1.5 source override ({code_dir}): "
+            "approved job must pin code_tree_sha256 and code_tree_files."
         )
-        or None,
-        "in_training_or_val_period": forcing_info["dates"][0] < MD15_TEST_PERIOD_START,
-        "inference_seconds": wall_infer,
-        **ic_meta,
-    }
+
+    eff_tree_sha = (
+        str(job["code_tree_sha256"]) if job.get("code_tree_sha256") else MD15_TREE_SHA256
+    )
+    eff_tree_files = (
+        int(job["code_tree_files"]) if job.get("code_tree_files") is not None else MD15_TREE_FILES
+    )
+
+    safe_out = validate_safe_path(out_dir, label="MD-1.5 out_dir")
+    snap_dir: str | None = None
+    try:
+        if verify_tree:
+            snap_dir = stage_verified_code_snapshot(
+                code_dir,
+                os.path.join(safe_out, ".aimip-md15-code"),
+                expected_tree_sha256=eff_tree_sha,
+                expected_tree_files=eff_tree_files,
+                label="MD-1.5 code directory",
+            )
+            import_dir = snap_dir
+        else:
+            import_dir = code_dir
+
+        md_mod = load_verified_md_package(
+            import_dir,
+            verify_tree=verify_tree,
+            expected_tree_sha256=eff_tree_sha,
+            expected_tree_files=eff_tree_files,
+        )
+
+        stats_path = validate_safe_path(str(job["stats_file"]), label="MD-1.5 statistics JSON")
+        stats_sha = str(job["stats_sha256"])
+        with open_verified_hash_stream(stats_path, stats_sha, label="MD-1.5 statistics JSON") as sfh:
+            stats_dict = json.loads(sfh.read().decode("utf-8"))
+
+        forcing_info = subsample_and_normalize_aimip_forcing(
+            str(job["forcing_file"]),
+            start_iso=start_iso,
+            steps=steps,
+            sst_offset_k=float(job.get("sst_offset_k", 0.0)),
+            allow_short_train_fallback=bool(job.get("allow_short_train_fallback", False)),
+        )
+
+        ic_path = str(job["ic_file"])
+        ic_sha = job.get("ic_sha256")
+        if ic_sha:
+            with open_verified_hash_stream(ic_path, str(ic_sha), label="MD-1.5 initial condition"):
+                pass
+        norm_ic, ic_meta = load_md15_initial_state(
+            ic_path,
+            start_iso=start_iso,
+            members=members,
+            stats_dict=stats_dict,
+        )
+
+        torch.manual_seed(seed)
+        np.random.seed(seed % (2**32 - 1))
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(seed)
+
+        model, _cfg = load_md15_cvae(
+            str(job["ckpt_dir"]),
+            config_sha256=str(job["config_sha256"]),
+            weights_sha256=str(job["weights_sha256"]),
+            device=device,
+            md_module=md_mod,
+            expected_variable_names=job.get("expected_variable_names", MD15_CONFIG_VARIABLE_NAMES),
+        )
+
+        lat = forcing_info["target_lat"]
+        lon = forcing_info["target_lon"]
+        cos_w = np.cos(np.deg2rad(lat)).astype(np.float64)[:, np.newaxis]
+        t2m_idx = MD15_PROGNOSTIC_VARS.index("VAR_2TSFC")
+
+        forcings_t = torch.as_tensor(forcing_info["forcings"], dtype=torch.float32, device=device)
+        months_t = torch.as_tensor(forcing_info["months"], dtype=torch.float32, device=device)
+        phys_t = torch.as_tensor(norm_ic, dtype=torch.float32, device=device)
+
+        all_months_phys = np.empty(
+            (steps, members, len(MD15_PROGNOSTIC_VARS), MD15_LAT_COUNT, MD15_LON_COUNT),
+            dtype=np.float32,
+        )
+
+        def _check_and_store(step_i: int, decoded_norm: Any) -> None:
+            phys_step = denormalize_md15_prognostic_state(decoded_norm, stats_dict)
+            t2m_slab = phys_step[:, t2m_idx, :, :].astype(np.float64)
+            if not np.isfinite(phys_step).all():
+                _log(f"UNSTABLE at step {step_i} ({forcing_info['dates'][step_i]}): non-finite prognostic output")
+                raise SystemExit(EXIT_UNSTABLE)
+            for m_i in range(members):
+                gm = float(np.sum(t2m_slab[m_i] * cos_w) / (np.sum(cos_w) * MD15_LON_COUNT))
+                if not (MD15_T2M_BAND_K[0] <= gm <= MD15_T2M_BAND_K[1]):
+                    _log(
+                        f"UNSTABLE at step {step_i} ({forcing_info['dates'][step_i]}), member {m_i}: "
+                        f"global-mean TMP2m={gm:.2f} K outside {MD15_T2M_BAND_K}"
+                    )
+                    raise SystemExit(EXIT_UNSTABLE)
+            all_months_phys[step_i] = phys_step
+
+        t_run0 = time.time()
+        _log(
+            f"md-1.5 rollout start={start_iso[:10]} steps={steps} members={members} seed={seed} device={device}"
+        )
+        with torch.no_grad():
+            f0 = forcings_t[0].unsqueeze(0).expand(members, -1, -1, -1)
+            m0 = model.seasonality_embedding(months_t[0].unsqueeze(0)).expand(members, -1, -1, -1)
+            cond0 = torch.cat([f0, m0], dim=1)
+            mu_state, _logvar, cs = model.encoder(phys_t, cond0)
+            dec0 = model.decoder(mu_state, cs).detach().cpu().numpy()
+            _check_and_store(0, dec0)
+
+            for step_idx in range(1, steps):
+                mu_state = model.predictor(mu_state, cs[-1])
+                f_step = forcings_t[step_idx].unsqueeze(0).expand(members, -1, -1, -1)
+                m_step = model.seasonality_embedding(months_t[step_idx].unsqueeze(0)).expand(members, -1, -1, -1)
+                cond_step = torch.cat([f_step, m_step], dim=1)
+                cs = model.encoder.embed_conditions(cond_step)
+                dec_step = model.decoder(mu_state, cs).detach().cpu().numpy()
+                _check_and_store(step_idx, dec_step)
+
+        if device.type == "cuda":
+            torch.cuda.synchronize()
+        wall_infer = round(time.time() - t_run0, 3)
+
+        paths = _write_md15_outputs(
+            out_dir,
+            all_months_phys=all_months_phys,
+            month_dates=forcing_info["dates"],
+            lat=lat,
+            lon=lon,
+            seed=seed,
+        )
+        _log(f"md-1.5 rollout completed in {wall_infer:.2f}s -> {paths['monthly_nc']}")
+
+        return {
+            "months_written": {"atmosphere": steps},
+            "first_month": forcing_info["dates"][0][:7],
+            "last_month": forcing_info["dates"][-1][:7],
+            "members": members,
+            "seed": seed,
+            "monthly_representation": MD15_MONTHLY_REPRESENTATION,
+            "spinup_warning": (
+                steps < 120
+                and "Requires >= 10-year (120-month) spin-up (Hall & Molina, 2026); early years have strong QBO spin-up bias."
+            )
+            or None,
+            "in_training_or_val_period": forcing_info["dates"][0] < MD15_TEST_PERIOD_START,
+            "inference_seconds": wall_infer,
+            **ic_meta,
+        }
+    finally:
+        if snap_dir is not None:
+            real_snap = os.path.realpath(snap_dir)
+            for mod_key in [k for k in list(sys.modules) if k == "md" or k.startswith("md.")]:
+                sys.modules.pop(mod_key, None)
+            while real_snap in sys.path:
+                sys.path.remove(real_snap)
+            shutil.rmtree(snap_dir, ignore_errors=True)

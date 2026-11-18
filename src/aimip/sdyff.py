@@ -67,7 +67,12 @@ from typing import Any
 import zipfile
 
 from .errors import ConfigError, ValidationError
-from .safe_pickle import compute_sha256sum_tree_digest, normalize_sha256, open_verified_hash_stream
+from .safe_pickle import (
+    compute_sha256sum_tree_digest,
+    normalize_sha256,
+    open_verified_hash_stream,
+    stage_verified_code_snapshot,
+)
 from .validators import makedirs_no_group_other_write, strip_group_other_write, validate_safe_path
 
 SDYFF_CODE_REPO = "Rose-STL-Lab/spherical-dyffusion"
@@ -271,7 +276,10 @@ _SDYFF_BOOTSTRAP = (
     "    sys.path.insert(0, code_dir)\n"
     "os.chdir(code_dir)\n"
     "install_sdyff_offline_runtime_hooks(\n"
-    "    code_dir, interpolator_ckpt=ipol_ckpt, interpolator_cfg=ipol_cfg\n"
+    "    code_dir,\n"
+    "    interpolator_ckpt=ipol_ckpt,\n"
+    "    interpolator_cfg=ipol_cfg,\n"
+    "    audit_log_path=os.environ.get('AIMIP_SDYFF_VERIFIED_LOG'),\n"
     ")\n"
     "sys.argv = ['run_inference.py', cfg_path]\n"
     "runpy.run_path(run_inference_py, run_name='__main__')\n"
@@ -375,6 +383,8 @@ def install_sdyff_offline_runtime_hooks(
     *,
     interpolator_ckpt: str,
     interpolator_cfg: str,
+    require_all_hooks: bool = True,
+    audit_log_path: str | None = None,
 ) -> dict[str, bool]:
     """Install offline W&B guards, `MultiStepStepper.from_state` override injection, and ensemble writer fix."""
     ckpt_abs = _validate_local_sdyff_asset(
@@ -390,6 +400,9 @@ def install_sdyff_offline_runtime_hooks(
     os.environ["HF_HUB_OFFLINE"] = "1"
     os.environ["MPLBACKEND"] = "Agg"
 
+    existing_src = sys.modules.get("src")
+    if existing_src is not None and not hasattr(existing_src, "__path__"):
+        sys.modules.pop("src", None)
     if code_abs not in sys.path:
         sys.path.insert(0, code_abs)
 
@@ -410,14 +423,16 @@ def install_sdyff_offline_runtime_hooks(
         try:
             wandb_mod = importlib.import_module("wandb")
         except ImportError:
-            wandb_mod = None
+            wandb_mod = types.ModuleType("wandb")
+            wandb_mod.run = None  # type: ignore[attr-defined]
+            sys.modules["wandb"] = wandb_mod
     if wandb_mod is not None:
         wandb_mod.login = _refuse_wandb_network  # type: ignore[attr-defined]
         wandb_mod.Api = _refuse_wandb_network  # type: ignore[attr-defined]
         hooks["wandb_client"] = True
 
     wandb_api_py = os.path.join(code_abs, "src", "utilities", "wandb_api.py")
-    if os.path.isfile(wandb_api_py):
+    if os.path.isfile(wandb_api_py) and not os.path.islink(wandb_api_py):
         sdyff_wandb_api = importlib.import_module("src.utilities.wandb_api")
         sdyff_wandb_api._ENTITY = SDYFF_OFFLINE_WANDB_ENTITY  # type: ignore[attr-defined]
         sdyff_wandb_api.get_entity = (  # type: ignore[attr-defined]
@@ -427,108 +442,123 @@ def install_sdyff_offline_runtime_hooks(
         hooks["wandb_api"] = True
 
     stepper_ms_py = os.path.join(code_abs, "src", "ace_inference", "core", "stepper_multistep.py")
-    if os.path.isfile(stepper_ms_py):
+    if os.path.isfile(stepper_ms_py) and not os.path.islink(stepper_ms_py):
         stepper_ms = importlib.import_module("src.ace_inference.core.stepper_multistep")
-        ms_cls = stepper_ms.MultiStepStepper
-        orig_from_state_fn = getattr(
-            ms_cls,
-            "_aimip_orig_from_state_fn",
-            ms_cls.__dict__["from_state"].__func__,
-        )
-        setattr(ms_cls, "_aimip_orig_from_state_fn", orig_from_state_fn)
-
-        def _offline_from_state(
-            cls: Any,
-            state: MutableMapping[str, Any],
-            load_optimizer: bool = True,
-            overrides: Mapping[str, Any] | None = None,
-        ) -> Any:
-            merged_overrides = inject_sdyff_local_interpolator_overrides(
-                state,
-                overrides,
-                interpolator_ckpt=ckpt_abs,
-                interpolator_cfg=cfg_abs,
+        ms_cls = getattr(stepper_ms, "MultiStepStepper", None)
+        if ms_cls is not None and "from_state" in ms_cls.__dict__:
+            orig_from_state_fn = getattr(
+                ms_cls,
+                "_aimip_orig_from_state_fn",
+                ms_cls.__dict__["from_state"].__func__,
             )
-            return orig_from_state_fn(
-                cls, state, load_optimizer=load_optimizer, overrides=merged_overrides
-            )
+            setattr(ms_cls, "_aimip_orig_from_state_fn", orig_from_state_fn)
 
-        ms_cls.from_state = classmethod(_offline_from_state)  # type: ignore[assignment]
-        hooks["from_state"] = True
+            def _offline_from_state(
+                cls: Any,
+                state: MutableMapping[str, Any],
+                load_optimizer: bool = True,
+                overrides: Mapping[str, Any] | None = None,
+            ) -> Any:
+                merged_overrides = inject_sdyff_local_interpolator_overrides(
+                    state,
+                    overrides,
+                    interpolator_ckpt=ckpt_abs,
+                    interpolator_cfg=cfg_abs,
+                )
+                return orig_from_state_fn(
+                    cls, state, load_optimizer=load_optimizer, overrides=merged_overrides
+                )
+
+            ms_cls.from_state = classmethod(_offline_from_state)  # type: ignore[assignment]
+            hooks["from_state"] = True
 
     dw_main_py = os.path.join(
         code_abs, "src", "ace_inference", "inference", "data_writer", "main.py"
     )
-    if os.path.isfile(dw_main_py):
+    if os.path.isfile(dw_main_py) and not os.path.islink(dw_main_py):
         dw_main = importlib.import_module("src.ace_inference.inference.data_writer.main")
-        dw_cls = dw_main.DataWriter
-        orig_dw_init = getattr(dw_cls, "_aimip_orig_init", dw_cls.__init__)
-        orig_dw_append = getattr(dw_cls, "_aimip_orig_append_batch", dw_cls.append_batch)
-        setattr(dw_cls, "_aimip_orig_init", orig_dw_init)
-        setattr(dw_cls, "_aimip_orig_append_batch", orig_dw_append)
+        dw_cls = getattr(dw_main, "DataWriter", None)
+        if dw_cls is not None and hasattr(dw_cls, "append_batch"):
+            orig_dw_init = getattr(dw_cls, "_aimip_orig_init", dw_cls.__init__)
+            orig_dw_append = getattr(dw_cls, "_aimip_orig_append_batch", dw_cls.append_batch)
+            setattr(dw_cls, "_aimip_orig_init", orig_dw_init)
+            setattr(dw_cls, "_aimip_orig_append_batch", orig_dw_append)
 
-        def _ens_dw_init(
-            self: Any,
-            path: str,
-            n_samples: int,
-            n_timesteps: int,
-            metadata: Any,
-            coords: Any,
-            enable_prediction_netcdfs: bool,
-            enable_video_netcdfs: bool,
-            time_coarsen: Any = None,
-            n_ensemble_members: int = 1,
-        ) -> None:
-            eff_samples = int(n_samples) * max(1, int(n_ensemble_members))
-            self._aimip_n_ensemble_members = int(n_ensemble_members)
-            orig_dw_init(
-                self,
-                path=path,
-                n_samples=eff_samples,
-                n_timesteps=n_timesteps,
-                metadata=metadata,
-                coords=coords,
-                enable_prediction_netcdfs=enable_prediction_netcdfs,
-                enable_video_netcdfs=enable_video_netcdfs,
-                time_coarsen=time_coarsen,
-                n_ensemble_members=n_ensemble_members,
+            def _ens_dw_init(
+                self: Any,
+                path: str,
+                n_samples: int,
+                n_timesteps: int,
+                metadata: Any,
+                coords: Any,
+                enable_prediction_netcdfs: bool,
+                enable_video_netcdfs: bool,
+                time_coarsen: Any = None,
+                n_ensemble_members: int = 1,
+            ) -> None:
+                eff_samples = int(n_samples) * max(1, int(n_ensemble_members))
+                self._aimip_n_ensemble_members = int(n_ensemble_members)
+                orig_dw_init(
+                    self,
+                    path=path,
+                    n_samples=eff_samples,
+                    n_timesteps=n_timesteps,
+                    metadata=metadata,
+                    coords=coords,
+                    enable_prediction_netcdfs=enable_prediction_netcdfs,
+                    enable_video_netcdfs=enable_video_netcdfs,
+                    time_coarsen=time_coarsen,
+                    n_ensemble_members=n_ensemble_members,
+                )
+
+            def _ens_dw_append_batch(
+                self: Any,
+                target: Mapping[str, Any],
+                prediction: Mapping[str, Any],
+                start_timestep: int,
+                start_sample: int,
+                batch_times: Any = None,
+            ) -> None:
+                n_ens = int(getattr(self, "_aimip_n_ensemble_members", 1))
+                if n_ens > 1 and prediction:
+                    first_pred = next(iter(prediction.values()))
+                    if getattr(first_pred, "ndim", 0) == 5 and first_pred.shape[0] == n_ens:
+                        prediction = {
+                            k: v.reshape(v.shape[0] * v.shape[1], *v.shape[2:])
+                            for k, v in prediction.items()
+                        }
+                        target = {
+                            k: v.unsqueeze(0)
+                            .expand(n_ens, *v.shape)
+                            .reshape(n_ens * v.shape[0], *v.shape[1:])
+                            for k, v in target.items()
+                        }
+                        start_sample = int(start_sample) * n_ens
+                orig_dw_append(
+                    self,
+                    target=target,
+                    prediction=prediction,
+                    start_timestep=start_timestep,
+                    start_sample=start_sample,
+                    batch_times=batch_times,
+                )
+
+            dw_cls.__init__ = _ens_dw_init  # type: ignore[assignment]
+            dw_cls.append_batch = _ens_dw_append_batch  # type: ignore[assignment]
+            hooks["data_writer"] = True
+
+    missing_hooks = [name for name, ok in hooks.items() if not ok]
+    if require_all_hooks and missing_hooks:
+        err_msg = (
+            "Refusing to start Spherical DYffusion inference because required offline runtime "
+            f"hook(s) were not installed ({code_abs}): {', '.join(missing_hooks)}"
+        )
+        if audit_log_path:
+            _append_sdyff_audit_record(
+                audit_log_path,
+                {"kind": "hook_error", "error": err_msg, "missing_hooks": missing_hooks},
             )
-
-        def _ens_dw_append_batch(
-            self: Any,
-            target: Mapping[str, Any],
-            prediction: Mapping[str, Any],
-            start_timestep: int,
-            start_sample: int,
-            batch_times: Any = None,
-        ) -> None:
-            n_ens = int(getattr(self, "_aimip_n_ensemble_members", 1))
-            if n_ens > 1 and prediction:
-                first_pred = next(iter(prediction.values()))
-                if getattr(first_pred, "ndim", 0) == 5 and first_pred.shape[0] == n_ens:
-                    prediction = {
-                        k: v.reshape(v.shape[0] * v.shape[1], *v.shape[2:])
-                        for k, v in prediction.items()
-                    }
-                    target = {
-                        k: v.unsqueeze(0)
-                        .expand(n_ens, *v.shape)
-                        .reshape(n_ens * v.shape[0], *v.shape[1:])
-                        for k, v in target.items()
-                    }
-                    start_sample = int(start_sample) * n_ens
-            orig_dw_append(
-                self,
-                target=target,
-                prediction=prediction,
-                start_timestep=start_timestep,
-                start_sample=start_sample,
-                batch_times=batch_times,
-            )
-
-        dw_cls.__init__ = _ens_dw_init  # type: ignore[assignment]
-        dw_cls.append_batch = _ens_dw_append_batch  # type: ignore[assignment]
-        hooks["data_writer"] = True
+        raise ValidationError(err_msg)
 
     return hooks
 
@@ -656,7 +686,7 @@ def _append_sdyff_audit_record(audit_log_path: str, payload: Mapping[str, Any]) 
         os.close(fd)
 
 
-def _read_sdyff_audit_torch_realpaths(audit_log_path: str) -> set[str]:
+def _read_sdyff_audit_records(audit_log_path: str) -> list[dict[str, Any]]:
     safe_log = validate_safe_path(audit_log_path, label="Spherical DYffusion verified-load audit log")
     if os.path.islink(safe_log):
         raise ValidationError(
@@ -687,16 +717,20 @@ def _read_sdyff_audit_torch_realpaths(audit_log_path: str) -> set[str]:
                 pass
         raise
 
-    realpaths: set[str] = set()
+    records: list[dict[str, Any]] = []
     for line in raw_lines:
         if not line.strip():
             continue
         rec = json.loads(line)
-        if (
-            isinstance(rec, Mapping)
-            and rec.get("kind") == "torch"
-            and isinstance(rec.get("realpath"), str)
-        ):
+        if isinstance(rec, Mapping):
+            records.append(dict(rec))
+    return records
+
+
+def _read_sdyff_audit_torch_realpaths(audit_log_path: str) -> set[str]:
+    realpaths: set[str] = set()
+    for rec in _read_sdyff_audit_records(audit_log_path):
+        if rec.get("kind") == "torch" and isinstance(rec.get("realpath"), str):
             realpaths.add(rec["realpath"])
     return realpaths
 
@@ -877,11 +911,16 @@ def verify_sdyff_code_dir(
     expected_tree_files: int | None = None,
 ) -> dict[str, Any]:
     """Verify `<dest_dir>/code/spherical-dyffusion` (or `$AIMIP_SDYFF_CODE`) against the pinned tree digest."""
+    code_dir, is_override = resolve_sdyff_code_dir(dest_dir)
+    if is_override and (expected_tree_sha256 is None or expected_tree_files is None):
+        raise ValidationError(
+            f"Refusing unverified AIMIP_SDYFF_CODE override ({code_dir}): "
+            "expected_tree_sha256 and expected_tree_files must be pinned."
+        )
     eff_tree_sha = SDYFF_TREE_SHA256 if expected_tree_sha256 is None else expected_tree_sha256
     eff_tree_files = (
         SDYFF_TREE_FILES if expected_tree_files is None else int(expected_tree_files)
     )
-    code_dir, is_override = resolve_sdyff_code_dir(dest_dir)
     if not os.path.isdir(code_dir) or os.path.islink(code_dir):
         raise ValidationError(
             f"Lock verification failed for {SDYFF_CODE_REL_DIR}: directory is missing ({code_dir})."
@@ -889,9 +928,7 @@ def verify_sdyff_code_dir(
     tree_sha, n_files = compute_sha256sum_tree_digest(
         code_dir, label="Spherical DYffusion code directory"
     )
-    if not is_override and (
-        n_files != eff_tree_files or tree_sha.lower() != eff_tree_sha.lower()
-    ):
+    if n_files != eff_tree_files or tree_sha.lower() != eff_tree_sha.lower():
         raise ValidationError(
             f"Lock verification failed for {SDYFF_CODE_REL_DIR}: tree digest/count mismatch "
             f"(expected {eff_tree_files} files / sha256={eff_tree_sha.lower()}, "
@@ -1604,15 +1641,24 @@ def run_sdyff(out_dir: str, job: Mapping[str, Any]) -> dict[str, Any]:
         raise SystemExit(f"Unsupported device {requested_device!r} for spherical-dyffusion.")
 
     validated_out = validate_safe_path(out_dir, label="Spherical DYffusion out_dir")
+    verify_tree = bool(job.get("verify_code_tree", True))
     code_dir_raw = job.get("code_dir")
     if code_dir_raw:
         code_dir = validate_safe_path(str(code_dir_raw), label="Spherical DYffusion code_dir")
-        if bool(job.get("verify_code_tree", True)):
+        is_ovr = bool(job.get("code_is_override", False))
+        if verify_tree and is_ovr and (
+            job.get("code_tree_sha256") is None or job.get("code_tree_files") is None
+        ):
+            raise ValidationError(
+                f"Refusing unverified AIMIP_SDYFF_CODE override ({code_dir}): "
+                "code_tree_sha256 and code_tree_files must be pinned in the job manifest."
+            )
+        exp_tree = str(job.get("code_tree_sha256") or SDYFF_TREE_SHA256)
+        exp_files = int(job.get("code_tree_files") or SDYFF_TREE_FILES)
+        if verify_tree:
             tree_sha, n_files = compute_sha256sum_tree_digest(
                 code_dir, label="Spherical DYffusion code_dir"
             )
-            exp_tree = str(job.get("code_tree_sha256") or SDYFF_TREE_SHA256)
-            exp_files = int(job.get("code_tree_files") or SDYFF_TREE_FILES)
             if n_files != exp_files or tree_sha.lower() != exp_tree.lower():
                 raise ValidationError(
                     f"Spherical DYffusion code tree mismatch in {code_dir}: expected {exp_files} files / "
@@ -1623,13 +1669,15 @@ def run_sdyff(out_dir: str, job: Mapping[str, Any]) -> dict[str, Any]:
         info = verify_sdyff_code_dir(
             data_root,
             expected_tree_sha256=(
-                str(job["code_tree_sha256"]) if job.get("code_tree_sha256") else None
+                str(job["code_tree_sha256"]) if job.get("code_tree_sha256") is not None else None
             ),
             expected_tree_files=(
-                int(job["code_tree_files"]) if job.get("code_tree_files") else None
+                int(job["code_tree_files"]) if job.get("code_tree_files") is not None else None
             ),
         )
         code_dir = str(info["code_dir"])
+        exp_tree = str(info["tree_sha256"])
+        exp_files = int(info["files"])
 
     forecaster_ckpt = validate_safe_path(
         str(job["forecaster_ckpt"]), label="forecaster checkpoint"
@@ -1695,16 +1743,33 @@ def run_sdyff(out_dir: str, job: Mapping[str, Any]) -> dict[str, Any]:
         with open_verified_hash_stream(fpath, exp_sha, label=f"FV3GFS {fname}") as _ref_fh:
             pass
 
-    stats_dir = os.path.join(code_dir, "data_statistics")
+    snap_code_dir: str | None = None
+    exec_code_dir = code_dir
+    if verify_tree:
+        snap_code_dir = os.path.join(validated_out, ".aimip-sdyff-code")
+        stage_verified_code_snapshot(
+            code_dir,
+            snap_code_dir,
+            expected_tree_sha256=exp_tree,
+            expected_tree_files=exp_files,
+            label="Spherical DYffusion code_dir",
+        )
+        exec_code_dir = snap_code_dir
+
+    stats_dir = os.path.join(exec_code_dir, "data_statistics")
     for stat_name in ("centering.nc", "scaling.nc"):
         stat_p = os.path.join(stats_dir, stat_name)
         if not os.path.isfile(stat_p) or os.path.islink(stat_p):
+            if snap_code_dir and os.path.lexists(snap_code_dir):
+                shutil.rmtree(snap_code_dir, ignore_errors=True)
             raise ValidationError(
                 f"Spherical DYffusion statistics file missing: {stat_p}"
             )
 
-    run_inference_py = os.path.join(code_dir, "run_inference.py")
+    run_inference_py = os.path.join(exec_code_dir, "run_inference.py")
     if not os.path.isfile(run_inference_py) or os.path.islink(run_inference_py):
+        if snap_code_dir and os.path.lexists(snap_code_dir):
+            shutil.rmtree(snap_code_dir, ignore_errors=True)
         raise ValidationError(
             f"Spherical DYffusion run_inference.py not found at {run_inference_py}"
         )
@@ -1713,6 +1778,8 @@ def run_sdyff(out_dir: str, job: Mapping[str, Any]) -> dict[str, Any]:
     # appends `-{timestamp}` whenever `os.path.exists(config.experiment_dir)` is True.
     raw_exp_dir = os.path.join(validated_out, "sdyff_raw")
     if os.path.islink(raw_exp_dir):
+        if snap_code_dir and os.path.lexists(snap_code_dir):
+            shutil.rmtree(snap_code_dir, ignore_errors=True)
         raise ValidationError(
             f"Refusing symlinked Spherical DYffusion experiment_dir: {raw_exp_dir}"
         )
@@ -1782,22 +1849,30 @@ def run_sdyff(out_dir: str, job: Mapping[str, Any]) -> dict[str, Any]:
                 "-B",
                 "-c",
                 _SDYFF_BOOTSTRAP,
-                code_dir,
+                exec_code_dir,
                 run_inference_py,
                 runtime_cfg_path,
                 str(seed),
                 interpolator_ckpt,
                 verified_ipol_cfg,
             ],
-            cwd=code_dir,
+            cwd=exec_code_dir,
             env=child_env,
             check=False,
         )
+        audit_records = _read_sdyff_audit_records(audit_path)
+        for rec in audit_records:
+            if rec.get("kind") == "hook_error" and isinstance(rec.get("error"), str):
+                raise ValidationError(rec["error"])
         if child_res.returncode != 0:
             raise SystemExit(int(child_res.returncode))
         infer_s = round(time.time() - t0, 3)
 
-        recorded_torch_realpaths = _read_sdyff_audit_torch_realpaths(audit_path)
+        recorded_torch_realpaths = {
+            rec["realpath"]
+            for rec in audit_records
+            if rec.get("kind") == "torch" and isinstance(rec.get("realpath"), str)
+        }
         missing_ckpts = [
             req_p for req_p in (forecaster_ckpt, interpolator_ckpt)
             if os.path.realpath(req_p) not in recorded_torch_realpaths
@@ -1813,6 +1888,8 @@ def run_sdyff(out_dir: str, job: Mapping[str, Any]) -> dict[str, Any]:
                 os.unlink(audit_path)
             except OSError:
                 pass
+        if snap_code_dir and os.path.lexists(snap_code_dir):
+            shutil.rmtree(snap_code_dir, ignore_errors=True)
     if os.path.isdir(raw_exp_dir):
         strip_group_other_write(raw_exp_dir)
 

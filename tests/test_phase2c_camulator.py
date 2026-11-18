@@ -973,6 +973,26 @@ printf '{"months_written": {"atmosphere": 2}}\\n' > "$out/emu-result.json"
     finally:
         ic_disk.write_bytes(orig_ic_bytes)
 
+    # Editing 1 file inside approved `AIMIP_CAMULATOR_CODE` AFTER prepare fails closed in `exec_fme`!
+    qc_script = code_dir / "climate" / "Quick_Climate.py"
+    orig_qc_bytes = qc_script.read_bytes()
+    qc_script.write_bytes(orig_qc_bytes + b"\n# post-prepare edit\n")
+    try:
+        with pytest.raises(ValidationError, match="Approved source override tree changed at job time"):
+            exec_fme(prep.run_dir)
+    finally:
+        qc_script.write_bytes(orig_qc_bytes)
+
+    # Pointing `AIMIP_CAMULATOR_CODE` to a different directory at `exec_fme` time also fails closed!
+    other_cam_code = tmp_path / "other_cam_code"
+    other_cam_code.mkdir()
+    monkeypatch.setenv("AIMIP_CAMULATOR_CODE", str(other_cam_code))
+    try:
+        with pytest.raises(ValidationError, match="differs from approved plan directory"):
+            exec_fme(prep.run_dir)
+    finally:
+        monkeypatch.setenv("AIMIP_CAMULATOR_CODE", str(code_dir))
+
     fin_manifest = exec_fme(prep.run_dir)
     assert fin_manifest["rc"] == 0
     assert fin_manifest["result"]["months_written"] == {"atmosphere": 2}

@@ -68,6 +68,10 @@ from aimip.status import summarize_run
 from conftest import sha256_path
 
 
+class _UnsupportedSamudraCheckpointObj:
+    """Harmless custom Python object that `weights_only=True` must refuse to unpickle."""
+
+
 def _zip_directory_bytes(src_dir: Path, *, prefix: str = "") -> bytes:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
@@ -591,6 +595,25 @@ def test_samudra_unet_178_state_dict_keys_and_end_to_end_stage_run_and_summary(
     ckpt_path.write_bytes(raw_bytes[:-1] + bytes([raw_bytes[-1] ^ 0xFF]))
     with pytest.raises(ValidationError, match="SHA-256 mismatch before loading"):
         run_samudra(str(bad_run), {**job, "out_dir": str(bad_run), "window_dir": str(bad_run / "window")})
+
+    # 4. A checkpoint carrying a harmless unsupported Python object is refused by `run_samudra` (`weights_only=True`, no pickle fallback) even when its SHA-256 matches!
+    obj_ckpt = tmp_path / "samudra_obj.pt"
+    torch.save({"model": compact_model.state_dict(), "extra": _UnsupportedSamudraCheckpointObj()}, str(obj_ckpt))
+    obj_ckpt_sha = sha256_path(obj_ckpt)
+    obj_run = allow_tmp_run_root / "samudra_obj_ckpt"
+    obj_run.mkdir()
+    stage_samudra(str(obj_run), {**job, "out_dir": str(obj_run), "window_dir": str(obj_run / "window")})
+    with pytest.raises(pickle.UnpicklingError):
+        run_samudra(
+            str(obj_run),
+            {
+                **job,
+                "out_dir": str(obj_run),
+                "window_dir": str(obj_run / "window"),
+                "checkpoint": str(obj_ckpt),
+                "checkpoint_sha256": obj_ckpt_sha,
+            },
+        )
 
 
 def test_samudra_two_step_staging_approval_and_zarr_tamper_refusal(

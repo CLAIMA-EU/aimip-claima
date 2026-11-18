@@ -677,7 +677,7 @@ MODEL_CARDS: dict[str, dict[str, Any]] = {
         "status": "runs",
         "verified_on": (
             "1x NVIDIA A100-SXM4-80GB (31 daily_synoptic steps x 2 members, "
-            "2020-01 t2m = 285.6854 K, native mode, 1.4.0)"
+            "2020-01 t2m = 285.7072 K, native mode, 1.4.0)"
         ),
         "licence": (
             "Code & weights: Apache-2.0 (NVlabs/cBottle@f0f51998, NVIDIA/earth2studio@8fa7acb, "
@@ -709,8 +709,10 @@ MODEL_CARDS: dict[str, dict[str, Any]] = {
             "SST (tosbcs, no CO2 or sea-ice input; no run is a hindcast). Valid for climatological means "
             "and distributions, NOT for weather sequences, persistence, or year-to-year variance of "
             "monthly means compared with autoregressive models. Dates from 2018 onward lie outside the "
-            "1980-2017 ERA5 training years (valid SST window 1940-01-01 .. 2022-12-16); results depend on "
-            "(seed, batch_size=4, chronological date_order), all recorded in plan.json and manifest."
+            "1980-2017 ERA5 training years (valid SST window 1940-01-01 .. 2022-12-16); each 4-date "
+            "batch (batch_size=4, chronological date_order) derives a distinct diffusion seed via "
+            'SHA-256("aimip:cbottle-3d:v1:{seed}:{member_index}:{batch_index}") mod (2^31 - 1), '
+            "recorded in plan.json, aimip-manifest.json, and emu-result.json."
         ),
         "examples": [
             "aimip plan cbottle-3d --start 1995-01-01 --length 2m --name cbottle-2m",

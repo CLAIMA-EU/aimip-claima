@@ -33,6 +33,7 @@ import json
 import math
 import os
 from pathlib import Path
+import shutil
 import stat
 import subprocess
 import sys
@@ -787,11 +788,49 @@ def test_sdyff_end_to_end_run_34_vars_air_temperature_7_summary_nominal_labels_a
     (code_dir / "data_statistics").mkdir(parents=True)
     (code_dir / "data_statistics" / "centering.nc").write_bytes(b"CENTER_STATS")
     (code_dir / "data_statistics" / "scaling.nc").write_bytes(b"SCALE_STATS")
+    for rel_pkg in (
+        "src",
+        "src/utilities",
+        "src/ace_inference",
+        "src/ace_inference/core",
+        "src/ace_inference/inference",
+        "src/ace_inference/inference/data_writer",
+    ):
+        (code_dir / rel_pkg).mkdir(parents=True, exist_ok=True)
+        (code_dir / rel_pkg / "__init__.py").write_text("", encoding="utf-8")
+    (code_dir / "src/utilities/wandb_api.py").write_text(
+        "_ENTITY = None\n"
+        "def get_entity(entity=None):\n"
+        "    return entity\n"
+        "def get_api():\n"
+        "    raise AssertionError('unexpected network call')\n",
+        encoding="utf-8",
+    )
+    (code_dir / "src/ace_inference/core/stepper_multistep.py").write_text(
+        "class MultiStepStepper:\n"
+        "    @classmethod\n"
+        "    def from_state(cls, state, load_optimizer=True, overrides=None):\n"
+        "        return cls()\n",
+        encoding="utf-8",
+    )
+    (code_dir / "src/ace_inference/inference/data_writer/main.py").write_text(
+        "class DataWriter:\n"
+        "    def __init__(self, path, n_samples, n_timesteps, metadata, coords,\n"
+        "                 enable_prediction_netcdfs, enable_video_netcdfs, time_coarsen=None, n_ensemble_members=1):\n"
+        "        self.n_samples = n_samples\n"
+        "    def append_batch(self, target, prediction, start_timestep, start_sample, batch_times=None):\n"
+        "        pass\n",
+        encoding="utf-8",
+    )
 
     # Synthetic `run_inference.py` verifying offline env, seed, coarsen_factor=4, and writing
     # `autoregressive_predictions.nc` with `timestep=61` (`timestep=0` IC + 60 daily means) across all 34 vars.
     run_inf_src = """from __future__ import annotations
 import os, sys
+_entered_sentinel = os.environ.get("AIMIP_TEST_SDYFF_ENTERED_SENTINEL", "")
+if _entered_sentinel:
+    with open(_entered_sentinel, "w", encoding="utf-8") as _sfh:
+        _sfh.write("entered\\n")
 import netCDF4, numpy as np, torch, yaml
 
 assert os.environ.get("WANDB_MODE") == "disabled"
@@ -985,8 +1024,8 @@ out = sys.argv[1]
 with open(out + '/config.yaml', encoding='utf-8') as fh:
     job = json.load(fh)
 job['device'] = 'cpu'
-job['code_tree_sha256'] = {code_tree_sha!r}
-job['code_tree_files'] = {code_tree_files}
+job.setdefault('code_tree_sha256', {code_tree_sha!r})
+job.setdefault('code_tree_files', {code_tree_files})
 run_sdyff(out, job)
 " "$5"
 """,
@@ -1041,6 +1080,16 @@ run_sdyff(out, job)
     with pytest.raises(ValidationError, match="Lock verification failed for code/spherical-dyffusion"):
         exec_fme(prep.run_dir)
     stat_c.write_bytes(orig_c)
+
+    # Setting an unapproved `AIMIP_SDYFF_CODE` override at execution time is refused!
+    unapproved_sd = tmp_path / "unapproved_sdyff"
+    unapproved_sd.mkdir()
+    monkeypatch.setenv("AIMIP_SDYFF_CODE", str(unapproved_sd))
+    try:
+        with pytest.raises(ValidationError, match="Refusing unapproved source override AIMIP_SDYFF_CODE"):
+            exec_fme(prep.run_dir)
+    finally:
+        monkeypatch.delenv("AIMIP_SDYFF_CODE", raising=False)
 
     done = exec_fme(prep.run_dir)
     assert done["rc"] == 0
@@ -1131,3 +1180,64 @@ run_sdyff(out, job)
     with pytest.raises(SystemExit) as exc_u:
         run_sdyff(str(unstable_dir), job_u)
     assert exc_u.value.code == EXIT_UNSTABLE == 5
+    monkeypatch.delenv("AIMIP_TEST_SDYFF_TA7", raising=False)
+
+    # Missing required offline hook (`src/ace_inference/core/stepper_multistep.py` -> `from_state`)
+    # MUST fail closed BEFORE `run_inference.py` starts (`entered_sentinel` stays uncreated)!
+    broken_code_dir = tmp_path / "sdyff_missing_hook_code"
+    shutil.copytree(code_dir, broken_code_dir)
+    (broken_code_dir / "src/ace_inference/core/stepper_multistep.py").unlink()
+    broken_sha, broken_files = compute_sha256sum_tree_digest(str(broken_code_dir))
+    sentinel_file = tmp_path / "run_inference_entered.sentinel"
+    missing_hook_out = runs_dir / "sdyff-missing-hook"
+    missing_hook_out.mkdir()
+    monkeypatch.setenv("AIMIP_TEST_SDYFF_ENTERED_SENTINEL", str(sentinel_file))
+    try:
+        with pytest.raises(ValidationError, match=r"required offline runtime hook.*from_state"):
+            run_sdyff(
+                str(missing_hook_out),
+                {
+                    **job_base,
+                    "out_dir": str(missing_hook_out),
+                    "device": "cpu",
+                    "code_dir": str(broken_code_dir),
+                    "code_tree_sha256": broken_sha,
+                    "code_tree_files": broken_files,
+                    "verify_code_tree": True,
+                },
+            )
+        assert not sentinel_file.exists()
+    finally:
+        monkeypatch.delenv("AIMIP_TEST_SDYFF_ENTERED_SENTINEL", raising=False)
+
+    # Approved `AIMIP_SDYFF_CODE` override bound in `prepare` fails closed if edited before `exec_fme`!
+    ovr_sdyff_dir = tmp_path / "sdyff_approved_ovr"
+    shutil.copytree(code_dir, ovr_sdyff_dir)
+    monkeypatch.setenv("AIMIP_SDYFF_CODE", str(ovr_sdyff_dir))
+    try:
+        spec_ovr = RunSpec(
+            model="spherical-dyffusion",
+            start="2021-01-01",
+            steps=240,
+            members=1,
+            seed=7,
+            name="sdyff-ovr-tamper",
+        )
+        rp_ovr = plan(spec_ovr)
+        auth_ovr = Authorization(
+            action="submit",
+            digest=rp_ovr.digest,
+            user=current_user(),
+            issued_at=now,
+            expires_at=now + 600,
+            nonce="sdyff-ovr-1",
+            allow_download=False,
+        )
+        broker.store_minted(auth_ovr)
+        prep_ovr = prepare(spec_ovr, authorization=auth_ovr, require_authorization=False, broker=broker)
+        assert prep_ovr.manifest["code_is_override"] is True
+        (ovr_sdyff_dir / "src/utilities/wandb_api.py").write_text("# edited after prepare\n", encoding="utf-8")
+        with pytest.raises(ValidationError, match="Approved source override tree changed at job time"):
+            exec_fme(prep_ovr.run_dir)
+    finally:
+        monkeypatch.delenv("AIMIP_SDYFF_CODE", raising=False)

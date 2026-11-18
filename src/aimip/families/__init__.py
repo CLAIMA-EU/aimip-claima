@@ -25,6 +25,7 @@ from ..cbottle import (
     CBOTTLE_DATE_ORDER,
     CBOTTLE_DEFAULT_CADENCE,
     CBOTTLE_FORCING_NAME,
+    CBOTTLE_SEED_SCHEME,
 )
 from ..emu import (
     ARCHES_DOMAIN,
@@ -73,6 +74,7 @@ from ..validators import (
     MAX_SEED,
     validate_int_range,
     validate_iso_timestamp,
+    validate_safe_path,
     validate_visible_input_path,
 )
 
@@ -908,7 +910,7 @@ class EmuFamilyAdapter:
             ensemble_note = (
                 f"{total_members} member(s) of independent conditional diffusion draws "
                 f"(seed={seed}, batch_size={CBOTTLE_BATCH_SIZE}, cadence={CBOTTLE_DEFAULT_CADENCE}, "
-                f"date_order={CBOTTLE_DATE_ORDER})."
+                f"date_order={CBOTTLE_DATE_ORDER}, seed_scheme={CBOTTLE_SEED_SCHEME})."
             )
             ic_src = None
         elif model.family == "sdyff":
@@ -1061,11 +1063,12 @@ class EmuFamilyAdapter:
         if model.family == "arches":
             override_code = (os.environ.get("AIMIP_ARCHES_CODE") or "").strip()
             if override_code:
-                tree_sha, _ = compute_arches_tree_digest(override_code)
+                safe_ar_ovr = validate_safe_path(override_code, label="AIMIP_ARCHES_CODE")
+                tree_sha, _ = compute_arches_tree_digest(safe_ar_ovr)
                 assets.append(
                     AssetRef(
                         rel_path=ARCHES_CODE_REL_DIR,
-                        path=override_code,
+                        path=safe_ar_ovr,
                         role="source_tree",
                         sha256=tree_sha,
                         size_bytes=None,
@@ -1162,11 +1165,12 @@ class EmuFamilyAdapter:
                     )
             override_md_code = (os.environ.get("AIMIP_MD15_CODE") or "").strip()
             if override_md_code:
-                md_tree_sha, _ = compute_sha256sum_tree_digest(override_md_code, label="AIMIP_MD15_CODE")
+                safe_md_ovr = validate_safe_path(override_md_code, label="AIMIP_MD15_CODE")
+                md_tree_sha, _ = compute_sha256sum_tree_digest(safe_md_ovr, label="AIMIP_MD15_CODE")
                 assets.append(
                     AssetRef(
                         rel_path=MD15_CODE_REL_DIR,
-                        path=override_md_code,
+                        path=safe_md_ovr,
                         role="source_tree",
                         sha256=md_tree_sha,
                         size_bytes=None,
@@ -1210,13 +1214,14 @@ class EmuFamilyAdapter:
                 )
             override_cam_code = (os.environ.get("AIMIP_CAMULATOR_CODE") or "").strip()
             if override_cam_code:
+                safe_cam_ovr = validate_safe_path(override_cam_code, label="AIMIP_CAMULATOR_CODE")
                 cam_tree_sha, _ = compute_sha256sum_tree_digest(
-                    override_cam_code, label="AIMIP_CAMULATOR_CODE"
+                    safe_cam_ovr, label="AIMIP_CAMULATOR_CODE"
                 )
                 assets.append(
                     AssetRef(
                         rel_path=CAMULATOR_CODE_REL_DIR,
-                        path=override_cam_code,
+                        path=safe_cam_ovr,
                         role="source_tree",
                         sha256=cam_tree_sha,
                         size_bytes=None,
@@ -1246,13 +1251,14 @@ class EmuFamilyAdapter:
         elif model.family == "sdyff":
             override_sdyff_code = (os.environ.get("AIMIP_SDYFF_CODE") or "").strip()
             if override_sdyff_code:
+                safe_sd_ovr = validate_safe_path(override_sdyff_code, label="AIMIP_SDYFF_CODE")
                 sd_tree_sha, _ = compute_sha256sum_tree_digest(
-                    override_sdyff_code, label="AIMIP_SDYFF_CODE"
+                    safe_sd_ovr, label="AIMIP_SDYFF_CODE"
                 )
                 assets.append(
                     AssetRef(
                         rel_path=SDYFF_CODE_REL_DIR,
-                        path=override_sdyff_code,
+                        path=safe_sd_ovr,
                         role="source_tree",
                         sha256=sd_tree_sha,
                         size_bytes=None,
