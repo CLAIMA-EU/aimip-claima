@@ -33,6 +33,8 @@ jobs:
           python -m pip install -c container/constraints.txt \
             numpy cftime netCDF4 h5netcdf xarray pyyaml pytest huggingface_hub scipy pandas matplotlib \
             -r container/requirements-agent.txt
+          # optional model packages the phase-2c tests import (pins as in container/constraints-emu.txt)
+          python -m pip install "zarr==3.3.0" "omegaconf==2.3.1"
           python -m pip install --no-deps -e .
 
       - name: Run pytest suite (offline, CPU-only)
