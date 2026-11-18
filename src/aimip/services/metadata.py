@@ -566,10 +566,12 @@ MODEL_CARDS: dict[str, dict[str, Any]] = {
         "cost_note": ARCHESWEATHER_COST_NOTE,
         "limitations": (
             "AIMIP: the four ArchesWeather-M networks averaged at every daily step, as in the authors' AIMIP runs; "
-            "starts only from the ERA5 daily-mean state of 1978-09-30 (the authors' member r2; their other "
+            "trained on ERA5 1979-2013 (validation 2014, test 2015-2024; most of the AIMIP period is in-sample). "
+            "Starts only from the ERA5 daily-mean state of 1978-09-30 (the authors' member r2; their other "
             "members start on 1978-09-29 and 1978-10-01..03), forced by monthly ERA5 SST and sea-ice cover through "
             "2024-12-31. The rollout follows arXiv:2605.29976 section 2.3; the authors' rollout script is not "
-            "published, and aimip's run is not bit-identical to their submission (GPU vs TPU). No continuation "
+            "published, and aimip's run is not bit-identical to their submission (GPU vs TPU). The longest run "
+            "tested in aimip is 457 days (a full 46-year run has not yet been tested). No continuation "
             "yet: one run must fit in one job."
         ),
         "examples": [
@@ -582,8 +584,8 @@ MODEL_CARDS: dict[str, dict[str, Any]] = {
         "title": "ArchesWeatherGen, AIMIP version (INRIA)",
         "task": "amip",
         "status": "runs",
-        "verified_on": "1x NVIDIA A100-SXM4-80GB (container, 2 members x 31 days via aimip run, compared with the "
-                       "authors' AIMIP submission, 1.4.0.dev0)",
+        "verified_on": "1x NVIDIA A100-SXM4-80GB (container, 2 members x 31 days via aimip run, October 1978 spread "
+                       "compared with the authors' AIMIP submission, 1.4.0.dev0)",
         "licence": "Checkpoints and inputs CC-BY-4.0 (Zenodo 22795233); geoarches code BSD-3-Clause",
         "upstream_url": "https://github.com/INRIA/geoarches",
         "data_urls": ["https://zenodo.org/records/22795233"],
@@ -593,11 +595,13 @@ MODEL_CARDS: dict[str, dict[str, Any]] = {
         "cost_note": ARCHESWEATHER_COST_NOTE,
         "limitations": (
             "AIMIP: flow-matching samples (25 sampler steps per day) around the ArchesWeather-Mx4 prediction; "
-            "members differ by the noise seed (seed + k). Starts only from the ERA5 daily-mean state of "
-            "1978-09-30, forced by monthly ERA5 SST and sea-ice cover through 2024-12-31. The generative "
-            "checkpoint also stores one deterministic network; like geoarches' own loader with the published "
-            "config, aimip uses the four ArchesWeather-M networks instead. No continuation yet: at ~4.6 s per "
-            "simulated day a 12-hour job covers about 9 years per member."
+            "trained on ERA5 1979-2013 (validation 2014, test 2015-2024; most of the AIMIP period is in-sample). "
+            "Members differ by the noise seed (step i of member k uses seed + k + 1000 i; keep --seed values of "
+            "separate runs less than 1000 apart so they do not reuse daily noise). Starts only from the ERA5 "
+            "daily-mean state of 1978-09-30, forced by monthly ERA5 SST and sea-ice cover through 2024-12-31. The "
+            "generative checkpoint also stores one deterministic network; like geoarches' own loader with the "
+            "published config, aimip uses the four ArchesWeather-M networks instead. No continuation yet: at ~4.6 s "
+            "per simulated day a 12-hour job covers about 9 years per member."
         ),
         "examples": [
             "aimip plan archesweathergen --start 1978-09-30 --length 1y --members 2 --name awgen-1y",

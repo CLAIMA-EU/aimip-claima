@@ -18,8 +18,8 @@
 | `dlesym-v1.1` | coupled, stochastic; adds 6-hour precipitation | as above | as above | `--members K` (noise seed + k) |
 | `dlesym-v0-isccp` | coupled, deterministic | as above | as above | — |
 | `archesclimate-ssp` | monthly emulator of IPSL-CM6A-LR (144 × 144: 1.25° lat × 2.5° lon; atmosphere and upper-ocean temperature), deterministic | scenarios `ssp434` (default) and `ssp585`; outputs March 2015 … November 2100 | the scenario's 2015 state (`--start 2015-01-01T00:00:00`) | — |
-| `archesweather` | ArchesWeather-Mx4, AIMIP version: four networks averaged at every step, deterministic, trained on ERA5 (1°, 13 pressure levels, daily means) | monthly ERA5 SST and sea ice, 1978-10-01 … 2024-12-31 | the ERA5 daily mean of 1978-09-30 (`--start 1978-09-30T00:00:00`) | — |
-| `archesweathergen` | ArchesWeatherGen, AIMIP version: stochastic (flow matching around ArchesWeather-Mx4) | as above | as above | `--members K` (noise seed + k) |
+| `archesweather` | ArchesWeather-Mx4, AIMIP version: four networks averaged at every step, deterministic, trained on ERA5 1979–2013 (validation 2014, test 2015–2024; 1°, 13 pressure levels, daily means) | monthly ERA5 SST and sea ice, 1978-10-01 … 2024-12-31 | the ERA5 daily mean of 1978-09-30 (`--start 1978-09-30T00:00:00`) | — |
+| `archesweathergen` | ArchesWeatherGen, AIMIP version: stochastic (flow matching around ArchesWeather-Mx4; trained on ERA5 1979–2013, validation 2014, test 2015–2024) | as above | as above | `--members K` (noise seed + k) |
 | `samudra-om4` | 1° global **ocean** emulator of GFDL OM4 (180 × 360, 19 depths 2.5–6000 m), deterministic | OM4 JRA55-do OMIP-2 surface fluxes 1975-01-08 … 2022-12-29 (julian; independent test period starts 2014-09-30T12:00:00) | two 5-day OM4 states ending at `--start`, staged from OSN by `aimip run` | — |
 | `md-1.5` | 1.5° monthly latent-diffusion atmosphere emulator (121 × 240, 37 prognostic channels; `MD-1p5-latest.pth`), stochastic | AIMIP Phase 1 monthly SST/SIC (Zenodo 17065758, 556 month-start-centred points 1978-10-01 … 2025-01-01; training 1985–2014, test 2015–2022) | none published upstream — pass `--ic <era5_monthly.nc>` or stage `$AIMIP_DATA/inputs/md-1.5/ic/ic_<YYYY-MM-DD>.nc` | `--members K` (15 reverse DDPM steps/month) |
 | `camulator` | 6-hourly 1° 32-level atmosphere emulator of CAM6 / ERA5-scaled climate target (MILES/CREDIT), deterministic | `camulator-cyclic-1yr` (1980–2100) and `camulator-branch-1980-2014` (1980–2014); noleap | 69 published noleap tensors (1980-01-01, Jan 1 & Jul 1 of 1981–2014) | — |
@@ -77,11 +77,13 @@ over land) and ocean values over land are NaN, with a mask that does not change 
 
 **ArchesWeather and ArchesWeatherGen.** These are the versions the INRIA authors retrained for AIMIP (Singh et al.,
 "Evaluating Skill and Stability of ArchesWeather and ArchesWeatherGen under Multi-Decadal Climate Simulations",
-arXiv:2605.29976), with checkpoints, initial state and forcing from Zenodo record 22795233. One step is one day of
+arXiv:2605.29976; trained on ERA5 1979–2013, validation 2014, test 2015–2024, so most of the AIMIP period is in-sample),
+with checkpoints, initial state and forcing from Zenodo record 22795233. One step is one day of
 daily-mean states on the 1° grid; the model sees the two previous days and the monthly SST and sea-ice cover of the
 predicted day's month. `archesweather` averages the four ArchesWeather-M networks at every step, as the authors do in
 their AIMIP runs. `archesweathergen` draws each day with 25 flow-matching steps around that average; members differ by
-the noise seed (step i of member k uses seed + k + 1000 i, the authors' scheme). The authors' long-rollout script is
+the noise seed (step i of member k uses seed + k + 1000 i, the authors' scheme — keep `--seed` values of separate runs
+less than 1000 apart so they do not reuse daily noise). The authors' long-rollout script is
 not published, so aimip follows section 2.3 of the paper: predicted SST and sea ice over land (where the initial
 state has no ocean value) are set to zero before they are fed back, and written as NaN. The only initial state is
 the ERA5 daily mean of 1978-09-30 (the authors' member r2; their other members start on 1978-09-29 and
