@@ -1,6 +1,7 @@
 # What was tested
 
-How the installations were checked, and which results agree bit for bit between container and native mode. The
+How the installations of aimip-claima were checked, and which results agree bit for bit between container and native
+mode. The command is `aimip`. The
 expected value of the first test run (`TMP2m 285.1578 K` for January 1979 with `ace2-era5`, 8 steps, on an A100) comes
 from these tests. What each model was compared against (for example the authors' AIMIP submissions) is in
 [models.md](models.md).
@@ -18,7 +19,7 @@ and `archesclimate-ssp` (24 months).
 - `samudrace-cm4`: `fme` switches on cuDNN autotuning (`torch.backends.cudnn.benchmark`) on GPUs, which picks
   convolution algorithms by timing them. With autotuning on, repeated runs of the same 6-step configuration gave
   one of two bit-different results: both appeared in five native runs, and four container runs all gave the same
-  one of the two. The two results differ by order one in the winds after six coupled steps. `aimip` keeps
+  one of the two. The two results differ by order one in the winds after six coupled steps. aimip-claima keeps
   autotuning off while `fme` runs a coupled model (`samudrace-cm4`, `samudrace-e3smv3`), and the run manifest
   records the setting (`cudnn_benchmark`). With it off, six native runs on two GPU nodes and two container runs
   were all bit-identical, so container and native agree for this model in this test. These results differ from

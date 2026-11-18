@@ -1,6 +1,6 @@
 # Third-Party Software and Licences
 
-This file lists the third-party software installed by the `aimip` container image (`container/Dockerfile`) and native installer (`install/install-native.sh`), together with components fetched at runtime on first use.
+This file lists the third-party software installed by the aimip-claima container image (`container/Dockerfile`) and native installer (`install/install-native.sh`), together with components fetched at runtime on first use. The command is `aimip`.
 
 ## Installed in the Container Image and Native Environments
 

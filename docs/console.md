@@ -1,8 +1,9 @@
 # Approvals, the assistant, MCP and the web interface
 
-aimip can also be driven by an AI assistant (`aimip chat`), by another AI tool through MCP (`aimip mcp`) or from a
-web page (`aimip ui`). In all three, a person confirms each run before it is prepared or started. This page explains
-how, and how to use `aimip` from scripts. The commands themselves are in the [user guide](user-guide.md).
+aimip-claima can also be driven by an AI assistant (`aimip chat`), by another AI tool through MCP (`aimip mcp`) or from
+a web page (`aimip ui`). The command is `aimip`. In all three, a person confirms each run before it is prepared or
+started. This page explains how, and how to use `aimip` from scripts. The commands themselves are in the
+[user guide](user-guide.md).
 
 ## Scripting: `--json` and exit codes
 

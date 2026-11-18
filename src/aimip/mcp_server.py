@@ -424,7 +424,7 @@ def _wrap_mcp_call(fn: Any) -> Any:
 
 
 def build_fastmcp_server(toolset: McpToolset | None = None) -> Any:
-    """Build a `FastMCP` server instance with the 10 allow-listed AIMIP tools."""
+    """Build a `FastMCP` server instance with the 10 allow-listed aimip-claima tools."""
     from mcp.server.fastmcp import FastMCP
 
     ts = toolset or McpToolset()
@@ -449,7 +449,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     """CLI entrypoint for `aimip mcp` (stdio transport)."""
     parser = argparse.ArgumentParser(
         prog="aimip mcp",
-        description="Start the AIMIP Model Context Protocol (MCP) server over stdio.",
+        description="Start the aimip-claima Model Context Protocol (MCP) server over stdio.",
     )
     parser.add_argument(
         "--state-dir",

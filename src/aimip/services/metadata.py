@@ -226,7 +226,7 @@ MODEL_CARDS: dict[str, dict[str, Any]] = {
             'Authors\' limits (allenai/ACE2-ERA5): "not expected to generalize accurately for large '
             'perturbations of certain inputs (e.g. doubling of CO2)"; separate sensitivities to SST and CO2 '
             'are "not entirely realistic"; "ACE models are research tools and should not be used for '
-            'operational climate predictions." AIMIP: forcing window 1979-2014.'
+            'operational climate predictions." aimip-claima: forcing window 1979-2014.'
         ),
         "examples": [
             "aimip plan ace2-era5 --start 1979-01-01 --length 1y --name era5-1y",
@@ -248,7 +248,7 @@ MODEL_CARDS: dict[str, dict[str, Any]] = {
         "limitations": (
             'Authors\' limits (allenai/ACE2-SHiELD): "ACE models are research tools and should not be used '
             'for operational climate predictions"; "The behavior of ACE2-SHiELD is similar to that of '
-            'ACE2-ERA5." AIMIP: upstream ships no IC (uses the 1979-01-01 IC from ACE2S-SHiELD-plus); run '
+            'ACE2-ERA5." aimip-claima: upstream ships no IC (uses the 1979-01-01 IC from ACE2S-SHiELD-plus); run '
             'amip-hist (1979-2014) and amip-oos (2014-2024, derived AIMIP SST) as separate segments '
             '(--ic <hist-run>/restart.nc); not cluster-compared across modes in 1.3.x.'
         ),
@@ -275,7 +275,7 @@ MODEL_CARDS: dict[str, dict[str, Any]] = {
             'but "inherits the biases relative to observations" of SHiELD, "generalization ability to '
             'unseen sea ice coverage is limited", "abrupt regime shifts in stratospheric temperature and '
             'moisture can occur in inference runs", and "ACE models are research tools and should not be '
-            'used for operational climate predictions." AIMIP: single shipped IC (1979-01-01); amip-oos '
+            'used for operational climate predictions." aimip-claima: single shipped IC (1979-01-01); amip-oos '
             '(2014-2024) uses derived AIMIP SST/SIC forcing; not cluster-compared across modes in 1.3.x.'
         ),
         "examples": [
@@ -298,7 +298,7 @@ MODEL_CARDS: dict[str, dict[str, Any]] = {
         "limitations": (
             'Authors\' limits (allenai/ACE2-EAMv3): "trained on output from the E3SMv3\'s atmosphere model '
             '(i.e. EAMv3) forced with historical sea surface temperature (AMIP) from 1970-2020"; "ACE '
-            'models are research tools and should not be used for operational climate predictions." AIMIP: '
+            'models are research tools and should not be used for operational climate predictions." aimip-claima: '
             'our 1994-2014 window lies inside the 1970-2020 training years; checkpoint takes no CO2 input; '
             'shipped ic_1994.nc is an E3SM 1971-01-01 state relabelled to 1994-01-01 on a 365-day noleap '
             'calendar, with derived ERA5 SST/SIC forcing (1994-2014) — discard the first simulated year as '
@@ -325,9 +325,9 @@ MODEL_CARDS: dict[str, dict[str, Any]] = {
         "limitations": (
             'Authors\' limits (allenai/HiRO-ACE, arXiv:2512.18224): ACE2S was "trained only on 9 years of '
             'X-SHiELD (2014-2022)", is "not expected to generalize outside of the limited forcing '
-            'conditions used during training", and is "not suitable for weather forecasting." AIMIP: '
+            'conditions used during training", and is "not suitable for weather forecasting." aimip-claima: '
             '2014-2022 (within amip-oos 2014-2024) is the training period, whereas 1994-2014 (amip-hist) is '
-            'AIMIP\'s own out-of-training-period extension using derived SHiELD+ forcing and a 2014-01-01 '
+            'aimip-claima\'s own out-of-training-period extension using derived SHiELD+ forcing and a 2014-01-01 '
             'state relabelled to 1994-01-01 (discard the first simulated year as spin-up; prefer `ace2s` or '
             '`hiro-acev2` for native 2014-2023 runs).'
         ),
@@ -354,7 +354,7 @@ MODEL_CARDS: dict[str, dict[str, Any]] = {
             'temperature and moisture can occur in inference runs with changing CO2 concentration"; '
             '"Adjustment to an abrupt change in CO2 concentration occurs too quickly, violating energy '
             'conservation"; "ACE models are research tools and should not be used for operational climate '
-            'predictions." AIMIP: nominal years 2032-2035 are equilibrium labels, not calendar dates; '
+            'predictions." aimip-claima: nominal years 2032-2035 are equilibrium labels, not calendar dates; '
             'specify --forcing-set 1xCO2 or 3xCO2; not cluster-compared in 1.3.x.'
         ),
         "examples": [
@@ -376,7 +376,7 @@ MODEL_CARDS: dict[str, dict[str, Any]] = {
         "limitations": (
             'Authors\' limits (allenai/HiRO-ACE, arXiv:2512.18224): ACE2S was "trained only on 9 years of '
             'X-SHiELD (2014-2022)", is "not expected to generalize outside of the limited forcing '
-            'conditions used during training", and is "not suitable for weather forecasting." AIMIP: '
+            'conditions used during training", and is "not suitable for weather forecasting." aimip-claima: '
             'upstream native forcing window 2014-2023 covers the training period (plus 2023); not '
             'cluster-compared across modes in 1.3.x.'
         ),
@@ -400,7 +400,7 @@ MODEL_CARDS: dict[str, dict[str, Any]] = {
             'Authors\' limits (allenai/HiRO-ACEv2, arXiv:2610.17693): global ACE2S-X-SHiELD stage is '
             '"trained only on 9 years of X-SHiELD (2014-2022)", "not expected to generalize outside of the '
             'limited forcing conditions used during training", and "not suitable for weather forecasting." '
-            'AIMIP: upstream 2014-2023 window covers the training period (3 km HiROv2 downscaler stage not '
+            'aimip-claima: upstream 2014-2023 window covers the training period (3 km HiROv2 downscaler stage not '
             'run here; uses fme 2026.10.0).'
         ),
         "examples": [
@@ -424,7 +424,7 @@ MODEL_CARDS: dict[str, dict[str, Any]] = {
             'Authors\' limits (allenai/SamudrACE-CM4-piControl, doi:10.1029/2025GL119340): "trained on '
             'simulation data from GFDL\'s Climate Model v4 with preindustrial control forcing conditions"; '
             '"ACE models are research tools and should not be used for operational climate predictions." '
-            'AIMIP: unforced pre-industrial control (~1 K colder than 1995-2014; no historical GHG/aerosol '
+            'aimip-claima: unforced pre-industrial control (~1 K colder than 1995-2014; no historical GHG/aerosol '
             'trend); 5-day (120h) coupled step on noleap calendar; cuDNN autotuning is disabled for '
             'bit-reproducible coupled rollouts.'
         ),
@@ -447,7 +447,7 @@ MODEL_CARDS: dict[str, dict[str, Any]] = {
         "limitations": (
             'Authors\' limits (allenai/SamudrACE-E3SMv3): emulator of E3SMv3 "with preindustrial control '
             'forcing conditions"; "ACE models are research tools and should not be used for operational '
-            'climate predictions." AIMIP: runs in fme 2026.10.0 overlay; upstream ships only 1 year of '
+            'climate predictions." aimip-claima: runs in fme 2026.10.0 overlay; upstream ships only 1 year of '
             'forcing over 0425-01-03T12:00:00..0425-12-29T12:00:00 (at most 72 5-day steps; cannot be '
             'continued); not cluster-tested in 1.3.x (`docs/installation.md`).'
         ),
@@ -469,7 +469,7 @@ MODEL_CARDS: dict[str, dict[str, Any]] = {
         "cost_note": DLESYM_COST_NOTE,
         "limitations": (
             'Authors\' limits (nvidia/dlesym-v1-era5): "checkpoints used in the ECMWF AI Weather Quest S2S '
-            'competition", trained on "ERA5 data for the period 1980-2015." AIMIP: built for '
+            'competition", trained on "ERA5 data for the period 1980-2015." aimip-claima: built for '
             'subseasonal-to-seasonal forecasts (weeks to months); multi-year rollouts are outside author '
             'validation and stop with exit code 5 at the first non-finite or out-of-band month; `ocean/sst` '
             'has values over land (mask land before use); initial ERA5 state is fetched at prepare time; '
@@ -494,7 +494,7 @@ MODEL_CARDS: dict[str, dict[str, Any]] = {
         "limitations": (
             'Authors\' limits (nvidia/dlesym-v1-era5): "checkpoints used in the ECMWF AI Weather Quest S2S '
             'competition" and "trained with CRPS loss and use sampled random noise to produce ensemble '
-            'variability." AIMIP: built for subseasonal-to-seasonal forecasts (weeks to months); multi-year '
+            'variability." aimip-claima: built for subseasonal-to-seasonal forecasts (weeks to months); multi-year '
             'rollouts are outside author validation and stop with exit code 5 at the first unstable month; '
             '`ocean/sst` has values over land (mask land); `tp06` precipitation uses epsilon=1e-8 inferred '
             'from the authors\' pipeline; initial ERA5 state is fetched at prepare time.'
@@ -516,7 +516,7 @@ MODEL_CARDS: dict[str, dict[str, Any]] = {
         "outputs": ["atmosphere/t2m", "ocean/sst"],
         "cost_note": DLESYM_COST_NOTE,
         "limitations": (
-            "AIMIP: unforced present-day climate checkpoint (Cresswell-Clay et al., 2025, "
+            "aimip-claima: unforced present-day climate checkpoint (Cresswell-Clay et al., 2025, "
             "doi:10.1029/2025AV001706; insolation seasonal cycle only, no changing GHG/aerosol forcing), "
             "using day-of-year OLR moment matching on the initial ERA5 state; stops with exit code 5 if a "
             "month becomes non-finite or out of band; `ocean/sst` has values over land (mask land before "
@@ -568,7 +568,7 @@ MODEL_CARDS: dict[str, dict[str, Any]] = {
         "outputs": ["atmosphere/tas", "atmosphere/psl", "atmosphere/pr", "ocean/thetao_0", "ocean/thetao"],
         "cost_note": ARCHES_COST_NOTE,
         "limitations": (
-            "AIMIP: emulates one CMIP6 GCM (IPSL-CM6A-LR r1i1p1f1) under SSP scenario forcing "
+            "aimip-claima: emulates one CMIP6 GCM (IPSL-CM6A-LR r1i1p1f1) under SSP scenario forcing "
             "(--forcing-set ssp434 or ssp585), not observed weather or multi-model spread; always starts at "
             "2015-01-01T00:00:00 (first output 2015-03, max 1029 months). Upstream code has no licence file "
             "and is fetched on first use."
@@ -593,15 +593,15 @@ MODEL_CARDS: dict[str, dict[str, Any]] = {
                     "atmosphere/sic", "atmosphere/monthly_levels.nc (zg, ua, va, ta, hus, wap)"],
         "cost_note": ARCHESWEATHER_COST_NOTE,
         "limitations": (
-            "AIMIP: the four ArchesWeather-M networks averaged at every daily step, as in the authors' AIMIP runs; "
+            "aimip-claima: the four ArchesWeather-M networks averaged at every daily step, as in the authors' AIMIP runs; "
             "trained on ERA5 1979-2013 (validation 2014, test 2015-2024; most of the AIMIP period is in-sample). "
             "A run starts from the ERA5 daily-mean state of 1978-09-30 (the authors' member r2; their other "
             "members start on 1978-09-29 and 1978-10-01..03) or continues an earlier run from its restart.nc "
             "(--ic <run directory>, same result as one longer run), forced by monthly ERA5 SST and sea-ice cover "
             "through 2024-12-31. Outputs and restart.nc are written when the run ends, so a run must fit in its "
             "job. The rollout follows arXiv:2605.29976 section 2.3; the authors' rollout script is not published, "
-            "and aimip's run is not bit-identical to their submission (GPU vs TPU). The longest run "
-            "tested in aimip is 457 days (a full 46-year run has not yet been tested)."
+            "and aimip-claima's run is not bit-identical to their submission (GPU vs TPU). The longest run "
+            "tested in aimip-claima is 457 days (a full 46-year run has not yet been tested)."
         ),
         "examples": [
             "aimip plan archesweather --start 1978-09-30 --length 1y --name aw-1y",
@@ -624,13 +624,13 @@ MODEL_CARDS: dict[str, dict[str, Any]] = {
                     "atmosphere/sic", "atmosphere/monthly_levels.nc (zg, ua, va, ta, hus, wap)"],
         "cost_note": ARCHESWEATHER_COST_NOTE,
         "limitations": (
-            "AIMIP: flow-matching samples (25 sampler steps per day) around the ArchesWeather-Mx4 prediction; "
+            "aimip-claima: flow-matching samples (25 sampler steps per day) around the ArchesWeather-Mx4 prediction; "
             "trained on ERA5 1979-2013 (validation 2014, test 2015-2024; most of the AIMIP period is in-sample). "
             "Members differ by the noise seed (step i of member k uses seed + k + 1000 i; keep --seed values of "
             "separate runs less than 1000 apart so they do not reuse daily noise). Starts from the ERA5 daily-mean "
             "state of 1978-09-30 (or continues an earlier run), forced by monthly ERA5 SST and sea-ice cover "
             "through 2024-12-31. The generative checkpoint also stores one deterministic network; like geoarches' "
-            "own loader with the published config, aimip uses the four ArchesWeather-M networks instead. About "
+            "own loader with the published config, aimip-claima uses the four ArchesWeather-M networks instead. About "
             "28 minutes per member-year: long runs go in segments that each fit in one job (outputs and restart.nc "
             "are written when a run ends), each continuing the previous one's restart.nc (--ic <run directory>, "
             "same members and seed); the segments give the same result as one run, and member k of --seed s equals "
@@ -668,7 +668,7 @@ MODEL_CARDS: dict[str, dict[str, Any]] = {
             'Authors\' limits (Dheeshjith et al., 2025, doi:10.1029/2024GL114318): '
             '"struggles to capture trends" under changed heat-flux forcing (warming trends are '
             '20-50% too weak across most depths in the 8-year test; do not use for warming trends '
-            'or ocean heat uptake). AIMIP: Emulates GFDL OM4 (1975-2022 JRA55-do OMIP-2 simulation), '
+            'or ocean heat uptake). aimip-claima: Emulates GFDL OM4 (1975-2022 JRA55-do OMIP-2 simulation), '
             'compare with OM4, not with observations; every run replays a window of the OM4 store '
             'driven by OM4\'s own surface fluxes (tauuo, tauvo, hfds, hfds_anomalies; not a forecast '
             'and no custom forcing); starts before 2014-09-30T12:00:00 lie inside training/validation '
@@ -717,7 +717,7 @@ MODEL_CARDS: dict[str, dict[str, Any]] = {
             'after start are spin-up, not climate results); meridional temperature gradient is too strong, ENSO '
             'teleconnections and NAO variability are weaker than ERA5, the ITCZ is drier, and a small-scale wave '
             'pattern appears across fields; uniform +2 K SST gave ~0.8 K global response (warming response is not '
-            'validated). AIMIP: The first output month (step 0) is the initial state passed through the encoder '
+            'validated). aimip-claima: The first output month (step 0) is the initial state passed through the encoder '
             'and decoder (md/cvae.py:475-481), not a forecast step. Each subsequent step runs T=15 reverse DDPM '
             'steps (code default in md/diffusion.py:106; config.pkl omits T) and outputs a single monthly model '
             'state (counts=1, not an average of sub-monthly steps; no daily values or extremes); AIMIP Phase 1 '
@@ -767,7 +767,7 @@ MODEL_CARDS: dict[str, dict[str, Any]] = {
             'fixer, "running without it is a train/inference mismatch" and "it makes global-mean '
             'precipitation ~2% wetter"; on checkpoints, "Later is not better: the latest checkpoints '
             'are measurably colder". '
-            'AIMIP: Emulates CAM6 / ERA5-scaled climate target (1980-2014); compare with that target, '
+            'aimip-claima: Emulates CAM6 / ERA5-scaled climate target (1980-2014); compare with that target, '
             'not directly with observations. Published checkpoint.pt00069.pt (4 dynamic forcings, 1980-2014) '
             'is not the 2-forcing 1979-2010 model in arXiv:2504.06007 (which reports muted ENSO/PNA/NAO '
             'responses, ~2x dry days vs CAM6, and high-latitude winter cold bias under +2 K / +4 K); '
@@ -815,7 +815,7 @@ MODEL_CARDS: dict[str, dict[str, Any]] = {
         "limitations": (
             'Authors\' limits (model card nvidia/cbottle@e60ce82b): cannot "resolve meso-scale motions" '
             'at this resolution, and for ICON "no independent data withheld for evaluation". '
-            "AIMIP: Conditional state generator, not a time-stepping simulation: states on adjacent days "
+            "aimip-claima: Conditional state generator, not a time-stepping simulation: states on adjacent days "
             "are independent draws conditioned only on (day_of_year, hour_of_day) and monthly mid-point "
             "SST (tosbcs, no CO2 or sea-ice input; no run is a hindcast). Valid for climatological means "
             "and distributions, NOT for weather sequences, persistence, or year-to-year variance of "
@@ -851,7 +851,7 @@ MODEL_CARDS: dict[str, dict[str, Any]] = {
         ],
         "grid": "180 x 360 regular lat-lon (1 deg), 8 atmospheric layers",
         "outputs": [
-            "air_temperature_7 (K, predicted lowest-layer air temperature summarized by aimip)",
+            "air_temperature_7 (K, predicted lowest-layer air temperature summarized by aimip-claima)",
             "PRESsfc (Pa)",
             "total_water_path (kg m**-2)",
             "air_temperature_0..7, specific_total_water_0..7, eastward_wind_0..7, northward_wind_0..7",
@@ -859,7 +859,7 @@ MODEL_CARDS: dict[str, dict[str, Any]] = {
         ],
         "cost_note": SDYFF_COST_NOTE,
         "limitations": (
-            "AIMIP: Emulates a 1 deg FV3GFS atmosphere reference simulation (Ruhling Cachay et al., "
+            "aimip-claima: Emulates a 1 deg FV3GFS atmosphere reference simulation (Ruhling Cachay et al., "
             "NeurIPS 2024; ACE dataset arXiv:2310.02074) with a fixed, repeating 365-day annual SST "
             "cycle (labelled 2021 in Zenodo 10791087; compare with FV3GFS, not observations — no "
             "year-to-year forcing, no historical or scenario years; output months use nominal cycle "

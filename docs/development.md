@@ -1,5 +1,7 @@
 # Development
 
+Developer reference for aimip-claima (Python package `aimip`). The command is `aimip`.
+
 ## Layout
 
 | path | content |

@@ -117,7 +117,7 @@ def test_samudra_apache2_provenance_and_card_contract(
     )
     assert "Apache-2.0" in card["licence"] and "MIT" in card["licence"]
     assert '"struggles to capture trends"' in card["limitations"]
-    assert "AIMIP:" in card["limitations"]
+    assert "aimip-claima:" in card["limitations"]
     assert "compare with OM4" in card["limitations"]
     assert "2014-09-30" in card["limitations"]
     assert "degC" in card["limitations"]

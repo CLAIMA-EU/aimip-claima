@@ -1,6 +1,7 @@
 # Models
 
-`aimip models` prints the same list from your install, with the date windows and initial conditions.
+aimip-claima registers the models below. The command is `aimip`. `aimip models` prints the same list from your install,
+with the date windows and initial conditions.
 
 | model | type | forcing / date window | shipped initial conditions | ensembles |
 |---|---|---|---|---|
@@ -96,7 +97,7 @@ predicted day's month. `archesweather` averages the four ArchesWeather-M network
 their AIMIP runs. `archesweathergen` draws each day with 25 flow-matching steps around that average; members differ by
 the noise seed (step i of member k uses seed + k + 1000 i, the authors' scheme — keep `--seed` values of separate runs
 less than 1000 apart so they do not reuse daily noise). The authors' long-rollout script is
-not published, so aimip follows section 2.3 of the paper: predicted SST and sea ice over land (where the initial
+not published, so aimip-claima follows section 2.3 of the paper: predicted SST and sea ice over land (where the initial
 state has no ocean value) are set to zero before they are fed back, and written as NaN. The only initial state is
 the ERA5 daily mean of 1978-09-30 (the authors' member r2; their other members start on 1978-09-29 and
 1978-10-01 … 03). Outputs: `atmosphere/monthly_mean_predictions.nc` (`tas`, `psl`, `uas`, `vas`, and the model's own
@@ -106,7 +107,7 @@ on 13 pressure levels, `zg` = geopotential / 9.80665). On one A100 a whole run 1
 Every run writes `restart.nc` (the states of its last two days, and the running sums of a month it ended in), and
 `--ic <run directory>` continues it with the same result as one longer run, so long `archesweathergen` runs go in
 segments ([user-guide.md](user-guide.md#continuing-a-run)). The ArchesWeatherGen checkpoint also stores one
-deterministic network of its own; like geoarches' loader with the published configuration, aimip uses the four
+deterministic network of its own; like geoarches' loader with the published configuration, aimip-claima uses the four
 ArchesWeather-M networks instead.
 
 Compared with the authors' AIMIP submission (`allenai/aimip-phase1-submissions`, `ArchesWeather/ArchesWeather-V2`),
@@ -124,7 +125,7 @@ from its author's GitHub repository into `$AIMIP_DATA/code/ArchesClimate-SSP` an
 pinned in `src/aimip/setup_data.py`. The geoarches source (BSD-3-Clause, commit 4d0c77a1 of its `aimip` branch) is
 unpacked at install time from its GitHub archive into `/opt/aimip/geoarches` (native: `<prefix>/geoarches`); the
 archive's SHA-256 and the tree digest are pinned in `src/aimip/geoarches_src.py`, and every run checks the tree
-again. The ArchesWeatherGen sampler is used with tensordict 0.15 (geoarches pins an older version); aimip gives the
+again. The ArchesWeatherGen sampler is used with tensordict 0.15 (geoarches pins an older version); aimip-claima gives the
 TensorDicts it passes in matching batch sizes so the arithmetic stays element by element. See
 [THIRD_PARTY.md](../THIRD_PARTY.md) for the licences of everything the image installs.
 

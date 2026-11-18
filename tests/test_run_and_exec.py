@@ -577,7 +577,7 @@ def test_python_dash_m_aimip_submitted_txt_sacct_and_failed_exec(
         check=False,
     )
     assert proc.returncode == 0
-    assert f"aimip {aimip.__version__}" in proc.stdout
+    assert f"aimip-claima {aimip.__version__}" in proc.stdout
 
     # Verify `status` parses `submitted.txt` (`job=424242 submitted=... user=...`).
     runs_dir: pathlib.Path = playground_env["runs_dir"]

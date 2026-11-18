@@ -1,4 +1,4 @@
-"""AIMIP CLI package (`aimip-claima`).
+"""aimip-claima CLI package (command and Python package: `aimip`).
 
 Note: Keep top-level imports strictly stdlib-only so commands such as
 `aimip models` and `aimip run --dry-run` work without importing `torch`.

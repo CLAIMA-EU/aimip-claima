@@ -1,6 +1,7 @@
-# Using aimip
+# Using aimip-claima
 
-This guide assumes `aimip` is installed and on your `PATH` ([installation](installation.md)). It has four parts:
+This guide assumes aimip-claima is installed and on your `PATH` ([installation](installation.md)). The command is
+`aimip`. It has four parts:
 
 1. [The idea in one minute](#the-idea-in-one-minute): the few words this guide uses.
 2. [Your first run, step by step](#your-first-run-step-by-step): about 20 minutes, most of it waiting for the
@@ -13,7 +14,7 @@ states, its known limits) is in [models.md](models.md).
 
 ## The idea in one minute
 
-- **A model** is one of the emulators aimip knows, for example `ace2-era5`. `aimip models` lists them and
+- **A model** is one of the emulators aimip-claima knows, for example `ace2-era5`. `aimip models` lists them and
   `aimip show <model>` describes one.
 - **A run** is one simulation with one model: a start date, a length, and optionally several ensemble members.
 - **A run has a name** (`--name first`) and a directory, `<run root>/first`. Everything about the run is in that
@@ -187,7 +188,7 @@ to run at once on the current machine.
     ArchesClimate-SSP and MD-1.5; 5 days for the SamudrACE models and Samudra-OM4);
   - `--length 10y`, `6m`, `30d` or `12h`: converted to steps with the model's calendar;
   - `--end 1989-01-01`: the end time.
-- **The run must end inside the forcing window.** If it does not, aimip says how far you can go:
+- **The run must end inside the forcing window.** If it does not, aimip-claima says how far you can go:
 
   ```
   aimip error: Refusing run: end time 2019-01-01T00:00:00 (...) exceeds forcing set 'amip-hist' end
@@ -197,7 +198,7 @@ to run at once on the current machine.
 
 ### How long it takes, and long runs
 
-The `resources` line of the plan card gives the expected GPU time and the job time aimip asks for (three times the
+The `resources` line of the plan card gives the expected GPU time and the job time aimip-claima asks for (three times the
 expected time, at least 20–45 minutes, at most the site limit, usually 12 hours). Some examples on one A100:
 
 | model | one model year |
@@ -207,7 +208,7 @@ expected time, at least 20–45 minutes, at most the site limit, usually 12 hour
 | ArchesWeather / ArchesWeatherGen | about 7 / 28 minutes per member |
 
 A run that does not fit in one job must be split into segments, each continued from the previous one (next recipe).
-aimip warns when a run will not fit. Details: [slurm-and-paths.md](slurm-and-paths.md#wall-time).
+aimip-claima warns when a run will not fit. Details: [slurm-and-paths.md](slurm-and-paths.md#wall-time).
 
 ### Continuing a run
 
@@ -240,7 +241,7 @@ aimip run ace2s --start 2014-01-01 --length 1y --members 4 --seed 1 --name ace2s
 
 The members are along the `sample` dimension of the output files. The same seed gives the same members again.
 
-**Deterministic models** need a different initial state for each member. aimip refuses otherwise:
+**Deterministic models** need a different initial state for each member. aimip-claima refuses otherwise:
 
 ```
 aimip error: Model 'ace2-era5' is deterministic: --members 3 requires a multi-sample IC (prepare one with
@@ -271,7 +272,7 @@ temperature and sea ice):
 | ArchesWeatherGen, one member | `aimip run archesweathergen --start 1978-09-30 --end 1993-12-31 --seed 0 --name awg-s0-1`, then two more segments ([continuing](#continuing-a-run)) | about 21 hours (A100) |
 | DLESyM, member r1 | `aimip run dlesym-aimip --start 1978-10-03 --steps 67552 --name dla-r1` | 36 minutes (GH200) |
 
-The authors' other DLESyM members start on 1978-10-04 to 1978-10-07; aimip tells you the largest `--steps` for each.
+The authors' other DLESyM members start on 1978-10-04 to 1978-10-07; aimip-claima tells you the largest `--steps` for each.
 For more ArchesWeatherGen members, use `--seed 1`, `2`, … How close each model comes to the authors' submission is in
 [models.md](models.md). The +2 K and +4 K experiments are not available yet.
 
@@ -316,8 +317,8 @@ aimip run ace2-era5 --start 1979-01-01 --length 5y --name era5-5y \
     --partition gpu-long --account otherproject --time 06:00:00 --gres gpu:a100:1
 ```
 
-Also `--cpus-per-task`, `--mem` and `--job-name`. aimip writes the job script itself and `aimip submit` sends only
-scripts that aimip wrote: to change a setting, prepare the run again instead of editing `job.sbatch`. More on job
+Also `--cpus-per-task`, `--mem` and `--job-name`. aimip-claima writes the job script itself and `aimip submit` sends only
+scripts that aimip-claima wrote: to change a setting, prepare the run again instead of editing `job.sbatch`. More on job
 scripts, wall time and paths: [slurm-and-paths.md](slurm-and-paths.md).
 
 ### Writing the settings in a file
@@ -358,7 +359,7 @@ from a source you trust. Your own files (`--ic`, `--lora`) must be inside your r
 ### The assistant, the web interface and approvals
 
 `aimip chat` plans runs in conversation, `aimip ui` opens a web page with the same forms, and `aimip mcp` serves
-aimip to other AI tools. None of them can start a run by itself: a person confirms the exact plan first. See
+aimip-claima to other AI tools. None of them can start a run by itself: a person confirms the exact plan first. See
 [console.md](console.md) and [agent.md](agent.md).
 
 ## The results
@@ -373,7 +374,7 @@ aimip to other AI tools. None of them can start a run by itself: a person confir
 | `restart.nc` | the state after the last step, to [continue the run](#continuing-a-run) |
 | `aimip-manifest.json` | the record of the run: the command line, the checksums of the checkpoint, the initial state and the forcing, the seed, the software versions, the exit code and the run time |
 | `experiment.yaml`, `plan.json` | the settings and the plan the run was prepared with |
-| `config.yaml`, `job.sbatch` | the model configuration and the job script aimip wrote |
+| `config.yaml`, `job.sbatch` | the model configuration and the job script aimip-claima wrote |
 | `slurm-<jobid>.out`, `slurm-<jobid>.err`, `inference_out.log` | the logs; look here first when a run fails (`aimip logs <name>` shows their end) |
 | `local-run.log` | without Slurm: the log |
 

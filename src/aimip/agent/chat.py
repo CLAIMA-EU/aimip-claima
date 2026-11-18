@@ -33,7 +33,7 @@ from langsmith import tracing_context
 
 MAX_CALLS = 12
 RESULT_BUDGET = 32000
-SYSTEM = """You assist with AIMIP, a portable climate-emulator console. Canonical models:
+SYSTEM = """You assist with aimip-claima (the command is `aimip`), a portable climate-emulator console. Canonical models:
 ace2-era5, ace2-shield, ace2s-shield-plus, ace2-eamv3, hiro-ace (AMIP, 6-hour steps);
 ace2-som (slab ocean, scenarios 1xCO2 and 3xCO2: name the forcing set), ace2s and hiro-acev2
 (2014-2023, stochastic); samudrace-cm4 and samudrace-e3smv3 (coupled atmosphere-ocean, one step
@@ -315,7 +315,7 @@ def repl(
 ) -> int:
     eff_tty = tty_path or os.environ.get("AIMIP_TTY_PATH") or "/dev/tty"
     write(
-        "AIMIP chat: proposals require typing the 8-hex plan digest prefix on /dev/tty. Type quit to exit."
+        "aimip-claima chat: proposals require typing the 8-hex plan digest prefix on /dev/tty. Type quit to exit."
     )
     while True:
         try:
@@ -362,7 +362,7 @@ def repl(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="aimip chat",
-        description="Interactive AIMIP assistant (human /dev/tty digest confirmation required for runs; no --yes flag).",
+        description="Interactive aimip-claima assistant (human /dev/tty digest confirmation required for runs; no --yes flag).",
     )
     parser.add_argument(
         "--model",

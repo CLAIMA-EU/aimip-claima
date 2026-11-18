@@ -1,6 +1,6 @@
 #!/bin/bash
-# AIMIP container installer. Fetches the published image (or builds it with --build), writes the site profile and the
-# `aimip` command.
+# aimip-claima container installer. Fetches the published image (or builds it with --build), writes the site profile and
+# the `aimip` command.
 #   ./install/install-container.sh --prefix DIR [--site levante|generic-slurm|local]
 #       [--runtime auto|apptainer|singularity|docker|podman] [--image REF | --build]
 #       [--partition P] [--account A|none] [--gres G|none] [--run-root R] [--unsquash auto|yes|no]
@@ -136,7 +136,7 @@ case "$RT" in
       nice "$RTB" build --mksquashfs-args "-processors ${AIMIP_BUILD_THREADS:-4}" "$SIF.incoming" "docker://$IMAGE_REF" > "$LOG" 2>&1 \
         || { rm -f "$SIF.incoming"; tail -20 "$LOG" >&2; die "could not fetch $IMAGE_REF (a private image needs '$RTB registry login docker://$REG_HOST'; or build it here with --build)"; }
       check_sif_version "$SIF.incoming" \
-        || { rm -f "$SIF.incoming"; die "the image $IMAGE_REF does not hold aimip $VERSION (check out the matching release of this repository)"; }
+        || { rm -f "$SIF.incoming"; die "the image $IMAGE_REF does not hold aimip-claima $VERSION (check out the matching release of this repository)"; }
       mv "$SIF.incoming" "$SIF" || die "cannot move $SIF.incoming to $SIF"
       printf '%s\n' "docker://$IMAGE_REF" > "$PREFIX/image.ref"
     elif [ ! -e "$SIF" ]; then
@@ -154,13 +154,13 @@ case "$RT" in
       nice "$RTB" build --mksquashfs-args "-processors ${AIMIP_BUILD_THREADS:-4}" "$SIF.incoming" "$PREFIX/build/apptainer.def" > "$LOG" 2>&1 \
         || { rm -f "$SIF.incoming"; tail -20 "$LOG" >&2; die "image build failed"; }
       check_sif_version "$SIF.incoming" \
-        || { rm -f "$SIF.incoming"; die "built image does not hold aimip $VERSION"; }
+        || { rm -f "$SIF.incoming"; die "built image does not hold aimip-claima $VERSION"; }
       mv "$SIF.incoming" "$SIF" || die "cannot move $SIF.incoming to $SIF"
       cd "$REPO" && rm -rf "$PREFIX/build/ctx"
       printf '%s\n' "local-build:$VERSION" > "$PREFIX/image.ref"
     else
       check_sif_version "$SIF" \
-        || die "existing image $SIF does not hold aimip $VERSION (delete $SIF to rebuild or check out the matching release)"
+        || die "existing image $SIF does not hold aimip-claima $VERSION (delete $SIF to rebuild or check out the matching release)"
       [ -f "$PREFIX/image.ref" ] || printf '%s\n' "existing-sif:$SIF" > "$PREFIX/image.ref"
     fi
     grep -E "AIMIP_IMAGE_OK|passed" "$LOG" 2>/dev/null | tail -2 || true
@@ -174,7 +174,7 @@ case "$RT" in
       "$RTB" pull "$IMAGE" > "$LOG" 2>&1 \
         || { tail -20 "$LOG" >&2; die "could not pull $IMAGE (a private image needs '$RTB login $REG_HOST'; or build it here with --build)"; }
       "$RTB" run --rm --entrypoint python "$IMAGE" -I -B -c 'import aimip, sys; sys.exit(0 if aimip.__version__ == sys.argv[1] else 1)' "$VERSION" \
-        || die "the image $IMAGE does not hold aimip $VERSION (check out the matching release of this repository)"
+        || die "the image $IMAGE does not hold aimip-claima $VERSION (check out the matching release of this repository)"
       REPO_DIGEST=$("$RTB" image inspect --format '{{index .RepoDigests 0}}' "$IMAGE" 2>/dev/null || true)
       if [ -n "$REPO_DIGEST" ] && [ "$REPO_DIGEST" != "$IMAGE_REF" ]; then
         printf '%s\n%s\n' "$IMAGE_REF" "$REPO_DIGEST" > "$PREFIX/image.ref"
@@ -187,7 +187,7 @@ case "$RT" in
       echo "install-container: building $IMAGE (log $LOG)"
       "$RTB" build ${BA[@]+"${BA[@]}"} -f "$REPO/container/Dockerfile" -t "$IMAGE" "$REPO" > "$LOG" 2>&1 || { tail -20 "$LOG" >&2; die "image build failed"; }
       "$RTB" run --rm --entrypoint python "$IMAGE" -I -B -c 'import aimip, sys; sys.exit(0 if aimip.__version__ == sys.argv[1] else 1)' "$VERSION" \
-        || die "built image $IMAGE does not hold aimip $VERSION"
+        || die "built image $IMAGE does not hold aimip-claima $VERSION"
       printf '%s\n' "local-build:$IMAGE" > "$PREFIX/image.ref"
     fi
     IMG_ID=$("$RTB" image inspect --format '{{.Id}}' "$IMAGE" | sed 's/^sha256://' | tr -d '[:space:]')
@@ -246,7 +246,7 @@ echo "$WT" | tail -1
 "$PREFIX/bin/aimip" --version || die "self-test failed"
 cat <<EOF
 
-Installed AIMIP (container mode) $VERSION in $PREFIX
+Installed aimip-claima (container mode) $VERSION in $PREFIX
 Next:
   $PREFIX/bin/aimip setup --models all        # download checkpoints + data, verify aimip.lock (~215 GB)
                                                # or skip it: the first 'aimip run -m X' downloads only model X

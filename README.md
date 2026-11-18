@@ -1,8 +1,8 @@
 # aimip-claima
 
-`aimip` runs AI climate emulators as climate experiments, on a GPU workstation or an HPC cluster. You choose a model,
-a start date and a length; `aimip` downloads the model from its authors, checks every file, prepares the run, starts
-it on Slurm or on your machine, and keeps a record of exactly what was run.
+aimip-claima runs AI climate emulators as climate experiments, on a GPU workstation or an HPC cluster. The command is
+`aimip`. You choose a model, a start date and a length; aimip-claima downloads the model from its authors, checks
+every file, prepares the run, starts it on Slurm or on your machine, and keeps a record of exactly what was run.
 
 ```bash
 aimip run ace2-era5 --start 1979-01-01 --length 1y --name my-first-year     # prepare one model year
@@ -31,7 +31,7 @@ aimip summary my-first-year                                                  # g
 | ArchesClimate (INRIA / Mila) | `archesclimate-ssp` | monthly emulator of IPSL-CM6A-LR for SSP scenarios |
 | others | `samudra-om4`, `md-1.5`, `camulator`, `cbottle-3d`, `spherical-dyffusion` | an ocean emulator of GFDL OM4, a monthly diffusion model, an emulator of CAM6, a generator of atmospheric states, an emulator of FV3GFS |
 
-## What `aimip` does for you
+## What aimip-claima does for you
 
 - **Downloads each model on first use** from where its authors publish it (Hugging Face, Zenodo, GitHub, ARCO-ERA5)
   and checks every file against a lock file of checksums, so everyone runs the same files.

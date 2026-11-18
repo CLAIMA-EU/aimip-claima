@@ -1,7 +1,8 @@
-# Installing aimip
+# Installing aimip-claima
 
-This page takes you from an empty directory to a working `aimip` command and a first test run. Plan for about an
-hour: 10–45 minutes for the installer, then a 20 GB download and a few minutes on a GPU for the test run.
+This page takes you from an empty directory to a working installation of aimip-claima and a first test run. The command
+is `aimip`. Plan for about an hour: 10–45 minutes for the installer, then a 20 GB download and a few minutes on a GPU
+for the test run.
 
 Everything goes into one directory of your choice, the **prefix**:
 
@@ -96,9 +97,9 @@ like this:
 
 ```
 WRAPPER_TESTS pass=... fail=0 bash=...
-aimip 1.4.0.dev0
+aimip-claima 1.4.0.dev0
 
-Installed AIMIP (container mode) 1.4.0.dev0 in /big/disk/aimip
+Installed aimip-claima (container mode) 1.4.0.dev0 in /big/disk/aimip
 Next:
   ...
 ```
@@ -174,7 +175,7 @@ INFO   gpu                    no GPU here — jobs run on GPU nodes via the sche
 PASS   scheduler              Slurm tools found on host (sbatch, squeue, sacct, scancel)
 PASS   data_root              /big/disk/aimip/data (... GiB free, 0 model(s) ready)
 PASS   permissions            run_root=/big/disk/aimip-runs (owner-only writable, safe ancestry)
-PASS   image_version          aimip 1.4.0.dev0 matches /big/disk/aimip/VERSION
+PASS   image_version          aimip-claima 1.4.0.dev0 matches /big/disk/aimip/VERSION
 Overall: ok (7/7 passed)
 ```
 
@@ -226,17 +227,17 @@ model is installed and how much it needs.
 | `archesweather`, `archesweathergen` | 2.0 GiB, plus 1.3 or 1.8 GiB of checkpoints unpacked from it |
 | `samudra-om4` 1.5 · `md-1.5` 0.03 (plus the AIMIP SST) · `camulator` 5.9 · `cbottle-3d` 3.2 · `spherical-dyffusion` 25.3 GiB | `samudra-om4` also copies about 1.5 GB of ocean data per simulated year into each run |
 
-Every file is checked against the lock file shipped with aimip (`src/aimip/aimip.lock`): its size and its SHA-256
+Every file is checked against the lock file shipped with aimip-claima (`src/aimip/aimip.lock`): its size and its SHA-256
 checksum must match, so you run exactly the files the model's authors published. Some forcing files are built on your
 machine from the authors' data; they must match the lock bit for bit too.
 
 ### One installation for a whole group
 
 Install once as one user (the owner); colleagues add `/big/disk/aimip/bin` to their `PATH` and use it with their
-own run roots. Only the owner can download models: when someone else needs a model that is not there, `aimip` says
+own run roots. Only the owner can download models: when someone else needs a model that is not there, aimip-claima says
 `model X is not installed here: ask the install owner to run 'aimip fetch -m X'`.
 
-`aimip` refuses checkpoints and input files that someone else could have changed: they must belong to `root`, to you
+aimip-claima refuses checkpoints and input files that someone else could have changed: they must belong to `root`, to you
 or to the owner of the installation, and must not be writable by group or others (`chmod go-w <file>`).
 
 ## Special situations
@@ -268,8 +269,8 @@ export APPTAINER_TMPDIR=/tmp
 
 **aarch64 machines (NVIDIA GH200).** There is no published aarch64 image, so the installer builds one (it switches
 to `--build` by itself; about 10 minutes on a GH200 node with a fast local `/tmp`). The image runs only on the
-architecture it was built for. Where the login nodes are x86_64 and the GPU nodes aarch64, install and use `aimip` on a
-GPU node, in a batch job or an interactive allocation, and run with `--local`.
+architecture it was built for. Where the login nodes are x86_64 and the GPU nodes aarch64, install and use aimip-claima
+on a GPU node, in a batch job or an interactive allocation, and run with `--local`.
 
 On aarch64, the `aimip` command unpacks the image for every call (about 9 seconds and 15 GB in `APPTAINER_TMPDIR`). On
 the GH200 nodes we tested, the fme models failed at their first step with `cuFFT error: CUFFT_INTERNAL_ERROR` when the
@@ -283,7 +284,7 @@ with `--build`) or in `install/install-native.sh`.
 ## Clusters without internet (for example MareNostrum 5)
 
 On some clusters no node can reach the internet. You can log in with SSH and copy files in with `scp` or `rsync`, but
-the cluster cannot download anything: the installer cannot fetch or build the image, and aimip cannot download
+the cluster cannot download anything: the installer cannot fetch or build the image, and aimip-claima cannot download
 models. Prepare everything on a second machine that has internet, then copy it over.
 
 The second machine needs Linux on the same processor type as the cluster (x86_64 for MareNostrum 5), Apptainer,
@@ -292,7 +293,7 @@ cluster or a Linux workstation will do.
 
 **On the machine with internet:**
 
-1. Install aimip as in [section 5](#5-run-the-installer), with `--site local` (these site settings are not copied;
+1. Install aimip-claima as in [section 5](#5-run-the-installer), with `--site local` (these site settings are not copied;
    leave out `--build` for a release version):
 
    ```bash
@@ -321,7 +322,7 @@ cluster or a Linux workstation will do.
 
 4. If the cluster provides Apptainer or Singularity as a module, load it (`module avail apptainer singularity`
    shows what there is). Then run the installer with the cluster's settings and **without** `--build`. It finds the
-   image in `images/`, checks that it holds the same aimip version as the code, and downloads nothing:
+   image in `images/`, checks that it holds the same aimip-claima version as the code, and downloads nothing:
 
    ```bash
    cd /gpfs/projects/myproject/aimip-claima
@@ -337,7 +338,7 @@ cluster or a Linux workstation will do.
    aimip run ace2-era5 --start 1979-01-01 --steps 8 --name first --no-fetch
    ```
 
-To add models later, repeat steps 2 and 3 (`rsync` copies only what is new). To update aimip, repeat steps 1–4 with
+To add models later, repeat steps 2 and 3 (`rsync` copies only what is new). To update aimip-claima, repeat steps 1–4 with
 the new version.
 
 What does not work on such a cluster:
@@ -349,7 +350,7 @@ What does not work on such a cluster:
   these two. For another start, prepare one run with that start on the machine with internet (`aimip run camulator
   --start …` downloads the extra files), then copy `data/` again.
 
-**Job options that aimip does not write,** such as the QoS that MareNostrum 5 uses to choose a queue: set them as
+**Job options that aimip-claima does not write,** such as the QoS that MareNostrum 5 uses to choose a queue: set them as
 Slurm environment variables before `aimip submit`, for example `export SBATCH_QOS=<your QoS>`. `sbatch` reads
 these variables, and they take precedence over the job script.
 
@@ -369,11 +370,11 @@ install/install-container.sh --prefix /big/disk/aimip ... --build    # the same 
 ```
 
 Run the installer again with the same options (native mode: `install/install-native.sh` as before). A new version
-builds a new image; the model data are kept. Each run directory records the aimip version it was prepared with.
+builds a new image; the model data are kept. Each run directory records the aimip-claima version it was prepared with.
 
 ## Uninstalling
 
-Delete the prefix and your run root. With Docker or Podman also remove the image (`docker rmi <image>`). aimip writes
+Delete the prefix and your run root. With Docker or Podman also remove the image (`docker rmi <image>`). aimip-claima writes
 nothing else, except `~/.aimip/` if you stored credentials for the assistant there.
 
 ## Installer options

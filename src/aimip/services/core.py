@@ -1,4 +1,4 @@
-"""Shared AIMIP application service layer (`src/aimip/services/`).
+"""Shared aimip-claima application service layer (`src/aimip/services/`).
 
 Used directly in-process by the CLI (`aimip`), the LangGraph assistant (`aimip chat`),
 and the MCP server (`aimip mcp`). Neither the agent nor MCP shells out to `aimip`.
@@ -2705,16 +2705,16 @@ def doctor(
             with open(version_file, encoding="utf-8") as vf:
                 recorded_ver = vf.read().strip()
             if recorded_ver == __version__:
-                _add("image_version", True, f"aimip {__version__} matches {version_file}")
+                _add("image_version", True, f"aimip-claima {__version__} matches {version_file}")
             else:
                 _add(
                     "image_version",
                     False,
-                    f"aimip package version ({__version__}) != prefix VERSION ({recorded_ver})",
+                    f"aimip-claima package version ({__version__}) != prefix VERSION ({recorded_ver})",
                     "Re-run `install/install-container.sh` or `install/install-native.sh` to synchronize the installation.",
                 )
         else:
-            _add("image_version", True, f"aimip {__version__}")
+            _add("image_version", True, f"aimip-claima {__version__}")
     except OSError as exc:
         _add(
             "image_version",

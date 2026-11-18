@@ -1,6 +1,7 @@
 # The planning assistant (`aimip chat`)
 
-`aimip chat` plans runs in plain language with the same commands as the [user guide](user-guide.md). When it proposes
+The interactive assistant of aimip-claima (`aimip chat`) plans runs in plain language with the same commands as the
+[user guide](user-guide.md). The command is `aimip`. When it proposes
 a run, it shows the full plan card (model, start, end, steps, members, initial state, estimates, output directory) and
 its digest. Nothing happens until you type the first 8 hex characters of that digest on your terminal; missing files
 are downloaded only after a separate yes with their sizes. Then the run is prepared and, in a native installation,

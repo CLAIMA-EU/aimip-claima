@@ -232,13 +232,13 @@ def test_camulator_provenance_pins_card_and_69_published_starts(
     ]
     assert "Apache-2.0" in card["licence"]
     limits = card["limitations"]
-    # Verbatim quoted authors' limits before "AIMIP:":
+    # Verbatim quoted authors' limits before "aimip-claima:":
     assert '"CAMulator is a research tool.' in limits
     assert "not a substitute for an operational forecast or a full Earth-system model" in limits
     assert '"running without it is a train/inference mismatch"' in limits
     assert '"it makes global-mean precipitation ~2% wetter"' in limits
     assert '"Later is not better: the latest checkpoints are measurably colder"' in limits
-    assert "AIMIP:" in limits
+    assert "aimip-claima:" in limits
     assert "CAM6 / ERA5-scaled" in limits
     assert "never amip-hist" in limits
 

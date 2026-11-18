@@ -1,5 +1,5 @@
 #!/bin/bash
-# AIMIP native installer (no container). Creates virtual environments, writes the site profile and the `aimip` command.
+# aimip-claima native installer (no container). Creates virtual environments, writes the site profile and the `aimip` command.
 #   ./install/install-native.sh --prefix DIR [--site levante|generic-slurm|local]
 #       [--partition P] [--account A|none] [--gres G|none] [--run-root R]
 #       [--with-emu] [--with-camulator] [--with-sdyff] [--python python3.12] [--dry-run]
@@ -482,7 +482,7 @@ write_launcher_and_version
 
 cat <<EOF
 
-Installed AIMIP (native mode) $VERSION in $PREFIX
+Installed aimip-claima (native mode) $VERSION in $PREFIX
 Next:
   $PREFIX/bin/aimip setup --models all        # download checkpoints + data, verify aimip.lock (~215 GB)
                                                # or skip it: the first 'aimip run -m X' downloads only model X

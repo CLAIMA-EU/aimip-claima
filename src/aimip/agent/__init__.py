@@ -1,4 +1,4 @@
-"""Optional AIMIP chat entrypoint; importing the CLI needs no agent dependencies."""
+"""Optional aimip-claima chat entrypoint (`aimip chat`); importing the CLI needs no agent dependencies."""
 
 import os
 

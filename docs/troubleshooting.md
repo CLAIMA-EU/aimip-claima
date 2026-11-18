@@ -1,13 +1,13 @@
 # Troubleshooting
 
-Start with these two commands; they find most problems:
+Troubleshooting guide for aimip-claima. The command is `aimip`. Start with these two commands; they find most problems:
 
 ```bash
 aimip doctor             # checks the installation; every failed check says what to do
 aimip logs <run name>    # the end of a run's log files
 ```
 
-Every error message of `aimip` says what was wrong, and most end with a `next:` line: the command to try instead.
+Every error message of aimip-claima says what was wrong, and most end with a `next:` line: the command to try instead.
 
 ## While installing
 
@@ -42,7 +42,7 @@ Every error message of `aimip` says what was wrong, and most end with a `next:` 
 
 | what you see | what to do |
 |---|---|
-| `not an aimip-generated script`, `unexpected line` | `job.sbatch` was edited. aimip submits only the scripts it wrote: prepare the run again with the options you need (`--time`, `--partition`, ...) |
+| `not an aimip-generated script`, `unexpected line` | `job.sbatch` was edited. aimip-claima submits only the scripts it wrote: prepare the run again with the options you need (`--time`, `--partition`, ...) |
 | `run directory is group- or world-writable` | `chmod go-w <run directory>` |
 | `run directory is not owned by you` | you tried to start somebody else's run: prepare your own |
 | `plan changed, approve again` | something in the run (a file, a resource) changed after it was approved: approve the new plan ([console.md](console.md)) |
@@ -53,7 +53,7 @@ Every error message of `aimip` says what was wrong, and most end with a `next:` 
 |---|---|
 | `State: failed` | `aimip logs <name>` shows the end of the logs; the full logs are `slurm-<jobid>.err`, `slurm-<jobid>.out` and `inference_out.log` (without Slurm: `local-run.log`) in the run directory |
 | the job ends as `TIMEOUT` | the run was longer than the job time: prepare it again with a larger `--time`, or split it into [segments](user-guide.md#continuing-a-run) |
-| exit code 5, and `unstable_from` in `aimip-manifest.json` | the model became unstable (values out of range); aimip stopped it and kept the months before. This is a property of the model ([models.md](models.md)), not an installation problem |
+| exit code 5, and `unstable_from` in `aimip-manifest.json` | the model became unstable (values out of range); aimip-claima stopped it and kept the months before. This is a property of the model ([models.md](models.md)), not an installation problem |
 | `cuFFT error: CUFFT_INTERNAL_ERROR` at the first step (GH200, aarch64) | the image is read from a mounted file: install again with the current version, which unpacks it, or `export APPTAINER_UNSQUASH=1` ([aarch64](installation.md#special-situations)) |
 | `CUDA out of memory` | too many members for one GPU: fewer `--members` per run, or a GPU with more memory |
 

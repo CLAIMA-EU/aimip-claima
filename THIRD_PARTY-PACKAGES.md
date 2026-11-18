@@ -1,4 +1,4 @@
-# Python packages in the aimip 1.3.0 image and their declared licences
+# Python packages in the aimip-claima 1.3.0 image and their declared licences
 
 Generated from the built image with `container/list_licences.py` (package metadata: `License-Expression`, else the
 licence classifiers, else the `License` field). The native installer installs the same pinned versions. Declared

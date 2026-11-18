@@ -240,12 +240,12 @@ def registry_entries(p: str) -> list[dict[str, Any]]:
            "outside what they validated. ")
     dlesym_notes = {
         "dlesym-v1.0": "DLESyM v1.0 (NVIDIA/UW, Earth2Studio): the prior ERA5 checkpoint of the S2S model, deprecated "
-                       "upstream; aimip loads checkpoint pair 0 of 4. Coupled atmosphere-ocean on HEALPix-64, "
+                       "upstream; aimip-claima loads checkpoint pair 0 of 4. Coupled atmosphere-ocean on HEALPix-64, "
                        "output on 0.25 deg lat-lon, deterministic. " + s2s + "Multi-year rollouts can become unstable; "
-                       "aimip stops a run at the first non-finite or out-of-band month. Starts "
+                       "aimip-claima stops a run at the first non-finite or out-of-band month. Starts "
                        "from ERA5 at --start (ARCO-ERA5, fetched at prepare time), not forced; --steps counts 6-h steps.",
         "dlesym-v1.1": "DLESyM v1.1 (Earth2Studio), AI Weather Quest checkpoint with conditional layer norm: samples noise "
-                       "every step, so --members gives distinct members (seed + k). " + s2s + "aimip stops a run at the "
+                       "every step, so --members gives distinct members (seed + k). " + s2s + "aimip-claima stops a run at the "
                        "first non-finite or out-of-band month. Diagnostic 6-h precipitation tp6 (monthly_precip.nc). "
                        "Starts from ERA5 at --start; --steps counts 6-h steps.",
         "dlesym-v0-isccp": "DLESyMv0-ISCCP (Earth2Studio): the climate checkpoint Earth2Studio documents for 100-1000-year "
@@ -296,7 +296,7 @@ def registry_entries(p: str) -> list[dict[str, Any]]:
     aw_common = ("1-degree grid, 6 surface variables and 6 variables on 13 pressure levels as daily means, forced by "
                  "monthly ERA5 SST and sea-ice cover (Zenodo 22795233). Starts from the ERA5 daily-mean state of "
                  f"1978-09-30 only (--start {AW_START}; first output day 1978-10-01, like the authors' AIMIP member "
-                 f"r2); --steps counts days (at most {AW_MAX_STEPS}, to 2024-12-31). aimip's rollout follows the paper "
+                 f"r2); --steps counts days (at most {AW_MAX_STEPS}, to 2024-12-31). aimip-claima's rollout follows the paper "
                  "(Singh et al. 2026, arXiv:2605.29976, section 2.3); the authors' rollout script is not published.")
     for name, ckpt_rel, stochastic, lead in (
         ("archesweather", f"{AW_DIR}/{AW_SEEDS[0]}/{AW_CKPT}", False,

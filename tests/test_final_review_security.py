@@ -1301,27 +1301,27 @@ def test_hiro_ace_periods_tier_citation_honest_tiers_and_ic_provenance(
     assert "10.1029/2025GL119340" in e3sm_cite["bibtex"]
     assert "2608.10277" in e3sm_cite["bibtex"]
 
-    # Verbatim quoted `"Authors' limits"` vs `"AIMIP:"` caveats:
+    # Verbatim quoted `"Authors' limits"` vs `"aimip-claima:"` caveats:
     shieldp_lim = MODEL_CARDS["ace2s-shield-plus"]["limitations"]
     assert '"inherits the biases relative to observations"' in shieldp_lim
     assert '"generalization ability to unseen sea ice coverage is limited"' in shieldp_lim
     assert '"abrupt regime shifts in stratospheric temperature and moisture can occur in inference runs"' in shieldp_lim
-    assert "AIMIP:" in shieldp_lim
+    assert "aimip-claima:" in shieldp_lim
 
     som_lim = MODEL_CARDS["ace2-som"]["limitations"]
     assert "idealized" not in som_lim.lower()
     assert '"Sea-ice coverage, ocean heat transport, and ocean mixed layer depth are prescribed' in som_lim
     assert '"Abrupt regime shifts in stratospheric temperature and moisture' in som_lim
     assert '"Adjustment to an abrupt change in CO2 concentration occurs too quickly' in som_lim
-    assert "AIMIP:" in som_lim
+    assert "aimip-claima:" in som_lim
 
     cm4_lim = MODEL_CARDS["samudrace-cm4"]["limitations"]
-    assert "AIMIP:" in cm4_lim and "~1 K colder" in cm4_lim
-    assert cm4_lim.index("AIMIP:") < cm4_lim.index("~1 K colder")
+    assert "aimip-claima:" in cm4_lim and "~1 K colder" in cm4_lim
+    assert cm4_lim.index("aimip-claima:") < cm4_lim.index("~1 K colder")
 
     eam_lim = MODEL_CARDS["ace2-eamv3"]["limitations"]
     assert "1970-2020" in eam_lim
-    assert eam_lim.index("AIMIP:") < eam_lim.index("no CO2 input")
+    assert eam_lim.index("aimip-claima:") < eam_lim.index("no CO2 input")
 
     # Dedicated exit code 5 (`EXIT_UNSTABLE`) for unstable DLESyM rollouts (distinct from `EXIT_APPROVAL == 4`).
     assert EXIT_APPROVAL == 4

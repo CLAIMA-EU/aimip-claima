@@ -1,4 +1,4 @@
-"""Command-line interface for AIMIP (`python -m aimip`)."""
+"""Command-line interface for aimip-claima (`aimip` / `python -m aimip`)."""
 
 from __future__ import annotations
 
@@ -1275,7 +1275,7 @@ def build_parser() -> argparse.ArgumentParser:
     """Build top-level `aimip` argument parser."""
     parser = _AimipArgumentParser(
         prog="aimip",
-        description="AIMIP CLI for ACE/SamudrACE (`fme`), DLESyM, and ArchesClimate-SSP climate emulators.",
+        description="aimip-claima CLI (command: aimip) for ACE/SamudrACE (`fme`), DLESyM, Arches, and companion climate emulators.",
         epilog=(
             "Submission and interactive commands:\n"
             "  submit <run-dir>    Validate and submit <run-dir>/job.sbatch (Slurm or local background).\n"
@@ -1288,7 +1288,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--version",
         action="version",
-        version=f"aimip {__version__}",
+        version=f"aimip-claima {__version__}",
     )
 
     subparsers = parser.add_subparsers(
@@ -1468,7 +1468,7 @@ def build_parser() -> argparse.ArgumentParser:
     # 4. `aimip run`
     p_run = subparsers.add_parser(
         "run",
-        help="Prepare (or locally execute) an AIMIP model run.",
+        help="Prepare (or locally execute) an aimip-claima model run.",
     )
     _add_plan_and_run_spec_args(p_run)
     p_run.add_argument(
@@ -1856,7 +1856,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     subparsers.add_parser(
         "ui",
-        help="Start the local AIMIP web UI on 127.0.0.1 with a per-session token.",
+        help="Start the local aimip-claima web UI on 127.0.0.1 with a per-session token.",
     )
 
     return parser

@@ -375,7 +375,7 @@
       "timestep_hours": 6,
       "stochastic": true,
       "default_n_ensemble_per_ic": 1,
-      "notes": "HiRO-ACE ACE2S stage (Ai2), stochastic; trained only on 9 years of X-SHiELD (2014-2022) and not expected by the authors to generalize outside training forcing. Here 2014-2022 (in amip-oos 2014-2024) is the training period, and amip-hist (1994-2014) is AIMIP's experimental extension outside training. Shipped ic_1994.nc is a HiRO 2014-01-01 state (ic_2014.nc[0]) relabelled to 1994-01-01; discard the first simulated year as spin-up."
+      "notes": "HiRO-ACE ACE2S stage (Ai2), stochastic; trained only on 9 years of X-SHiELD (2014-2022) and not expected by the authors to generalize outside training forcing. Here 2014-2022 (in amip-oos 2014-2024) is the training period, and amip-hist (1994-2014) is aimip-claima's experimental extension outside training. Shipped ic_1994.nc is a HiRO 2014-01-01 state (ic_2014.nc[0]) relabelled to 1994-01-01; discard the first simulated year as spin-up."
     },
     {
       "name": "ace2-som",
@@ -715,7 +715,7 @@
       "timestep_hours": 6,
       "stochastic": false,
       "default_n_ensemble_per_ic": 1,
-      "notes": "DLESyM v1.0 (NVIDIA/UW, Earth2Studio): the prior ERA5 checkpoint of the S2S model, deprecated upstream; aimip loads checkpoint pair 0 of 4. Coupled atmosphere-ocean on HEALPix-64, output on 0.25 deg lat-lon, deterministic. The authors built the V1 checkpoints for subseasonal-to-seasonal forecasts (weeks to months); multi-year runs are outside what they validated. Multi-year rollouts can become unstable; aimip stops a run at the first non-finite or out-of-band month. Starts from ERA5 at --start (ARCO-ERA5, fetched at prepare time), not forced; --steps counts 6-h steps."
+      "notes": "DLESyM v1.0 (NVIDIA/UW, Earth2Studio): the prior ERA5 checkpoint of the S2S model, deprecated upstream; aimip-claima loads checkpoint pair 0 of 4. Coupled atmosphere-ocean on HEALPix-64, output on 0.25 deg lat-lon, deterministic. The authors built the V1 checkpoints for subseasonal-to-seasonal forecasts (weeks to months); multi-year runs are outside what they validated. Multi-year rollouts can become unstable; aimip-claima stops a run at the first non-finite or out-of-band month. Starts from ERA5 at --start (ARCO-ERA5, fetched at prepare time), not forced; --steps counts 6-h steps."
     },
     {
       "name": "dlesym-v1.1",
@@ -748,7 +748,7 @@
       "timestep_hours": 6,
       "stochastic": true,
       "default_n_ensemble_per_ic": 1,
-      "notes": "DLESyM v1.1 (Earth2Studio), AI Weather Quest checkpoint with conditional layer norm: samples noise every step, so --members gives distinct members (seed + k). The authors built the V1 checkpoints for subseasonal-to-seasonal forecasts (weeks to months); multi-year runs are outside what they validated. aimip stops a run at the first non-finite or out-of-band month. Diagnostic 6-h precipitation tp6 (monthly_precip.nc). Starts from ERA5 at --start; --steps counts 6-h steps."
+      "notes": "DLESyM v1.1 (Earth2Studio), AI Weather Quest checkpoint with conditional layer norm: samples noise every step, so --members gives distinct members (seed + k). The authors built the V1 checkpoints for subseasonal-to-seasonal forecasts (weeks to months); multi-year runs are outside what they validated. aimip-claima stops a run at the first non-finite or out-of-band month. Diagnostic 6-h precipitation tp6 (monthly_precip.nc). Starts from ERA5 at --start; --steps counts 6-h steps."
     },
     {
       "name": "dlesym-v0-isccp",
@@ -911,7 +911,7 @@
       "timestep_hours": 24,
       "stochastic": false,
       "default_n_ensemble_per_ic": 1,
-      "notes": "ArchesWeather-Mx4, AIMIP version (INRIA): the four ArchesWeather-M networks (seeds 0-3) averaged at every daily step, as in the authors' AIMIP runs; deterministic. 1-degree grid, 6 surface variables and 6 variables on 13 pressure levels as daily means, forced by monthly ERA5 SST and sea-ice cover (Zenodo 22795233). Starts from the ERA5 daily-mean state of 1978-09-30 only (--start 1978-09-30T00:00:00; first output day 1978-10-01, like the authors' AIMIP member r2); --steps counts days (at most 16894, to 2024-12-31). aimip's rollout follows the paper (Singh et al. 2026, arXiv:2605.29976, section 2.3); the authors' rollout script is not published."
+      "notes": "ArchesWeather-Mx4, AIMIP version (INRIA): the four ArchesWeather-M networks (seeds 0-3) averaged at every daily step, as in the authors' AIMIP runs; deterministic. 1-degree grid, 6 surface variables and 6 variables on 13 pressure levels as daily means, forced by monthly ERA5 SST and sea-ice cover (Zenodo 22795233). Starts from the ERA5 daily-mean state of 1978-09-30 only (--start 1978-09-30T00:00:00; first output day 1978-10-01, like the authors' AIMIP member r2); --steps counts days (at most 16894, to 2024-12-31). aimip-claima's rollout follows the paper (Singh et al. 2026, arXiv:2605.29976, section 2.3); the authors' rollout script is not published."
     },
     {
       "name": "archesweathergen",
@@ -951,7 +951,7 @@
       "timestep_hours": 24,
       "stochastic": true,
       "default_n_ensemble_per_ic": 1,
-      "notes": "ArchesWeatherGen, AIMIP version (INRIA): a flow-matching model that samples the next state around the ArchesWeather-Mx4 prediction (25 sampler steps per day); stochastic, --members gives distinct noise seeds (seed + k). 1-degree grid, 6 surface variables and 6 variables on 13 pressure levels as daily means, forced by monthly ERA5 SST and sea-ice cover (Zenodo 22795233). Starts from the ERA5 daily-mean state of 1978-09-30 only (--start 1978-09-30T00:00:00; first output day 1978-10-01, like the authors' AIMIP member r2); --steps counts days (at most 16894, to 2024-12-31). aimip's rollout follows the paper (Singh et al. 2026, arXiv:2605.29976, section 2.3); the authors' rollout script is not published."
+      "notes": "ArchesWeatherGen, AIMIP version (INRIA): a flow-matching model that samples the next state around the ArchesWeather-Mx4 prediction (25 sampler steps per day); stochastic, --members gives distinct noise seeds (seed + k). 1-degree grid, 6 surface variables and 6 variables on 13 pressure levels as daily means, forced by monthly ERA5 SST and sea-ice cover (Zenodo 22795233). Starts from the ERA5 daily-mean state of 1978-09-30 only (--start 1978-09-30T00:00:00; first output day 1978-10-01, like the authors' AIMIP member r2); --steps counts days (at most 16894, to 2024-12-31). aimip-claima's rollout follows the paper (Singh et al. 2026, arXiv:2605.29976, section 2.3); the authors' rollout script is not published."
     },
     {
       "name": "samudra-om4",
