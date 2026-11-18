@@ -56,6 +56,20 @@ def coerce_bool(value: Any, field: str, *, default: bool) -> bool:
     )
 
 
+def coerce_outputs(value: Any) -> tuple[str, ...]:
+    """`outputs`: a list of `--output` strings (or one string); None or empty means none."""
+    if value is None:
+        return ()
+    if isinstance(value, str):
+        value = [value]
+    if not isinstance(value, (list, tuple)) or not all(isinstance(v, str) and v.strip() for v in value):
+        raise ValidationError(
+            f"Invalid 'outputs': expected a list of output specifications such as 'daily:TMP2m', got {value!r}.",
+            field="outputs",
+        )
+    return tuple(v.strip() for v in value)
+
+
 @dataclasses.dataclass(frozen=True)
 class AssetRef:
     """One model, forcing, IC, source-tree, or dynamic input asset bound by a plan."""
@@ -99,6 +113,7 @@ class RunSpec:
     out: str | None = None
     monthly: bool = True
     prediction: bool = False
+    outputs: tuple[str, ...] = ()
     resources: dict[str, Any] = dataclasses.field(default_factory=dict)
     mode: str = "slurm"
     config_file: str | None = None
@@ -121,6 +136,7 @@ class RunSpec:
             "out": self.out,
             "monthly": self.monthly,
             "prediction": self.prediction,
+            "outputs": list(self.outputs),
             "resources": dict(self.resources),
             "mode": self.mode,
             "config_file": self.config_file,
@@ -159,6 +175,7 @@ class RunSpec:
             out=str(raw["out"]) if raw.get("out") is not None else None,
             monthly=coerce_bool(raw.get("monthly"), "monthly", default=True),
             prediction=coerce_bool(raw.get("prediction"), "prediction", default=False),
+            outputs=coerce_outputs(raw.get("outputs")),
             resources=res_clean,
             mode=str(raw.get("mode", "slurm")),
             config_file=str(raw["config_file"]) if raw.get("config_file") is not None else None,

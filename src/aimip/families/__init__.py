@@ -42,6 +42,7 @@ from ..emu import (
 from ..errors import ConfigError, RegistryError, ValidationError
 from ..lora import inspect_lora, sha256_file
 from ..md15 import MD15_CODE_REL_DIR
+from ..outputs import resolve_outputs
 from ..plan_types import AssetRef, RunSpec
 from ..registry import SAMUDRACE_CM4_IC_SLUGS, ModelSpec, resolve_data_dir
 from ..safe_pickle import compute_sha256sum_tree_digest, compute_tree_digest
@@ -543,11 +544,23 @@ class FmeFamilyAdapter:
                 else "Single trajectory from shipped IC (pending fetch)."
             )
 
+        resolved_outputs = resolve_outputs(
+            spec.outputs,
+            model_name=model.name,
+            family=model.family,
+            is_coupled=bool(model.is_coupled),
+            timestep_hours=int(model.timestep_hours),
+            start_iso=norm_start,
+            end_iso=end_iso,
+            steps=int(steps),
+            calendar=effective_calendar,
+        )
         return {
             "norm_start": norm_start,
             "end_time": end_iso,
             "steps": steps,
             "calendar": effective_calendar,
+            "outputs": resolved_outputs,
             "members": total_members,
             "seed": seed,
             "forcing_set": selected_fs,
@@ -763,6 +776,7 @@ class FmeFamilyAdapter:
             out_dir=out_dir,
             save_monthly=spec.monthly,
             save_prediction=spec.prediction,
+            outputs=validated.get("outputs") or [],
             mode=manifest_mode,
             slurm_opts=slurm_opts,
             site_config=site_config,
@@ -807,6 +821,18 @@ class EmuFamilyAdapter:
         *,
         data_dir: str | None = None,
     ) -> dict[str, Any]:
+        if spec.outputs:
+            resolve_outputs(
+                spec.outputs,
+                model_name=model.name,
+                family=model.family,
+                is_coupled=bool(model.is_coupled),
+                timestep_hours=int(model.timestep_hours),
+                start_iso=spec.start,
+                end_iso=spec.start,
+                steps=1,
+                calendar=model.calendar,
+            )
         norm_start = validate_iso_timestamp(spec.start, label="--start")
         steps, end_iso = resolve_horizon(
             start_iso=norm_start,

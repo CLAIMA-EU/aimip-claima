@@ -30,6 +30,10 @@ with the date windows and initial conditions.
 
 ## Steps
 
+All models write monthly means. The ACE models can also write each step, means over any multiple of the step, and
+chosen variables and periods ([`--output`](user-guide.md#choosing-what-is-written)); no model can write anything
+finer than its step.
+
 | models | one step | one year |
 |---|---|---|
 | the eight `fme` atmosphere models, `dlesym-*`, `camulator`, `spherical-dyffusion` | 6 hours | 1460 steps (1464 in a leap year with a Gregorian or Julian calendar) |

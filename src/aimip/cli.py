@@ -197,6 +197,15 @@ def _add_plan_and_run_spec_args(parser: argparse.ArgumentParser) -> None:
         default=None,
         help="Enable/disable step-by-step autoregressive_predictions.nc output (default: --no-prediction).",
     )
+    parser.add_argument(
+        "--output",
+        action="append",
+        default=None,
+        metavar="FREQ[:VARS][@START..END]",
+        help="Add an output file (repeatable): FREQ is step, <N>h, daily, <N>d or monthly; VARS a comma-separated "
+        "list of variables (default: all); @START..END a period (e.g. daily:TMP2m,PRATEsfc, "
+        "step:TMP2m@1979-01-01..1979-02-01). ACE models only for now.",
+    )
 
 
 def _format_table(headers: Sequence[str], rows: Sequence[Sequence[str]]) -> str:
@@ -251,6 +260,7 @@ def _spec_from_cli_args(args: argparse.Namespace) -> Any:
         "out": args.out,
         "monthly": args.monthly,
         "prediction": args.prediction,
+        "outputs": tuple(args.output) if args.output else None,
         "mode": cli_mode,
         "resources": {
             "partition": args.partition,

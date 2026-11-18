@@ -71,6 +71,7 @@ import yaml
 
 from . import __version__
 from .errors import ConfigError, MissingAssetsError, ValidationError
+from .outputs import check_output_files
 from .ic import (
     ICFileInfo,
     _default_companion_ocean_ic_path,
@@ -1338,8 +1339,13 @@ def build_inference_config(
     num_data_workers: int = 4,
     seed: int | None = None,
     fme_version: str = "2026.5.1",
+    outputs: Sequence[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Construct a strict `fme.ace.InferenceConfig`-compatible dictionary (`dacite(strict=True)`)."""
+    """Construct a strict `fme.ace.InferenceConfig`-compatible dictionary (`dacite(strict=True)`).
+
+    *outputs* (resolved `--output` requests, `aimip.outputs.resolve_outputs`) become `data_writer.files`."""
+    from .outputs import fme_file_writers, steps_in_memory
+
     validated_exp = validate_run_path(experiment_dir, label="experiment_dir")
     validated_steps = validate_int_range(steps, "steps", min_value=1, max_value=10_000_000)
     validated_ckpt = validate_safe_path(checkpoint_path, label="checkpoint_path")
@@ -1365,7 +1371,7 @@ def build_inference_config(
     cfg: dict[str, Any] = {
         "experiment_dir": validated_exp,
         "n_forward_steps": validated_steps,
-        "forward_steps_in_memory": min(40, validated_steps),
+        "forward_steps_in_memory": steps_in_memory(validated_steps, outputs or []),
         "checkpoint_path": validated_ckpt,
         "n_ensemble_per_ic": validated_ens,
         "logging": {
@@ -1384,6 +1390,8 @@ def build_inference_config(
             "save_monthly_files": bool(save_monthly),
         },
     }
+    if outputs:
+        cfg["data_writer"]["files"] = fme_file_writers(outputs)
     # `fme 2026.10.0` adds explicit top-level `seed: int | None` on `InferenceConfig`,
     # whereas `fme 2026.5.1` rejects unknown keys under `dacite(strict=True)`.
     if fme_version == "2026.10.0" and seed is not None:
@@ -1547,6 +1555,7 @@ def prepare_run(
     forcing_set_name: str | None = None,
     save_monthly: bool = True,
     save_prediction: bool = False,
+    outputs: Sequence[dict[str, Any]] | None = None,
     mode: str = "dry-run",
     slurm_opts: SlurmOptions | None = None,
     site_config: SiteConfig | None = None,
@@ -1853,6 +1862,8 @@ def prepare_run(
                 calendar=source_ic_info.calendar,
             )
 
+        if outputs:
+            raise ConfigError(f"--output is not available for the coupled model {model.name} yet.", field="output")
         config_dict = build_coupled_inference_config(
             experiment_dir=validated_out,
             steps=validated_steps,
@@ -1910,6 +1921,7 @@ def prepare_run(
             save_prediction=save_prediction,
             seed=resolved_seed,
             fme_version=model.fme_version,
+            outputs=outputs,
         )
 
     n_trajectories = ic_res.n_ic_samples * ic_res.n_ensemble_per_ic
@@ -1981,6 +1993,7 @@ def prepare_run(
         "checkpoint_sha256": ckpt_sha,
         "lora_checkpoint": validated_lora,
         "lora_info": lora_summary,
+        "outputs": list(outputs or []),
         "ic_path": effective_ic_info.path,
         "ic_sha256": effective_ic_sha,
         "source_ic_path": source_ic_info.path,
@@ -2537,6 +2550,8 @@ def exec_fme(out_dir: str) -> dict[str, Any]:
             manifest["wall_seconds"] = wall_seconds
             if caught_error is not None:
                 manifest["error"] = f"{type(caught_error).__name__}: {caught_error}"
+            if int(rc) == 0 and manifest.get("outputs"):
+                manifest["outputs_check"] = check_output_files(validated_out, manifest["outputs"])
             _write_json_atomic(manifest_path, manifest)
     finally:
         if inserted_overlay and active_overlay_dir:

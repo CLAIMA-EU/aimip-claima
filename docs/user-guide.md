@@ -196,6 +196,63 @@ to run at once on the current machine.
   `--end 2014-12-31T18:00:00` or `--steps 52595`; ...).
   ```
 
+### Choosing what is written
+
+Every run writes the monthly means of all its variables (`monthly_mean_predictions.nc`). For the ACE models you can
+add files with another frequency, only the variables you need, and only part of the run, with `--output`. Repeat it
+for several files:
+
+```bash
+aimip run ace2-era5 --start 1979-01-01 --length 10y --name era5-10y \
+    --output daily:TMP2m,PRATEsfc \
+    --output step:TMP2m@1979-01-01..1979-02-01
+```
+
+The plan card lists every file with its size, so you can see what a run will write before it starts:
+
+```
+  outputs:     monthly means (monthly_mean_predictions.nc)
+               + output_daily.nc: daily means of TMP2m, PRATEsfc, whole run (3653 per member, ~1.76 GiB)
+               + output_6h.nc: states at every model step (6 h) of TMP2m, 1979-01-01T00:00:00 .. 1979-02-01T00:00:00 (124 per member, ~31 MiB)
+```
+
+Each `--output` has the form `FREQUENCY[:VARIABLES][@START..END]`:
+
+| part | examples | meaning |
+|---|---|---|
+| FREQUENCY | `step` | the state after every model step (every 6 hours for the ACE models) |
+| | `12h`, `daily`, `5d` | means over periods of that length; any multiple of the model step |
+| | `monthly` | monthly means |
+| VARIABLES | `TMP2m,PRATEsfc` | the variables to write, as the model names them; without it, all variables. `ncdump -h monthly_mean_predictions.nc` of an earlier run lists the names |
+| START..END | `1979-01-01..1979-02-01` | only this part of the run; not with `monthly` |
+
+How the times work:
+
+- **Each value covers one period that ends at a model step.** With 6-hour steps, the daily mean of 1 January is the
+  mean of the states at 06, 12, 18 and 24 h, and `step` output starts with the state at 06 h: the starting state
+  is not repeated in these files (it is in `initial_condition.nc`). The time of each value, in `valid_time`, is the
+  middle of its period, for example 15:00 for a daily mean.
+- **START..END selects whole periods:** `step:TMP2m@1979-01-01..1979-01-02` gives the four states of 1 January (06,
+  12, 18 and 24 h). START and END must fall on period boundaries, counted from the start of the run.
+- **The run must be a whole number of periods:** a daily file needs a whole number of days. aimip says which
+  `--steps` would fit.
+
+The files are called `output_<frequency>.nc` (`output_daily.nc`, `output_6h.nc`; a second daily file is
+`output_daily_2.nc`). A variable the model does not have is left out of the file without an error from the model;
+aimip then warns at the end of the job (`output file output_daily.nc without X`) and records it in
+`aimip-manifest.json` (`outputs_check`). In a settings file, list the outputs under `outputs:`:
+
+```yaml
+outputs:
+  - daily:TMP2m,PRATEsfc
+  - step:TMP2m@1979-01-01..1979-02-01
+```
+
+The other models (DLESyM, ArchesWeather, the coupled SamudrACE models and the rest) write monthly means only for now,
+and `--output` works on the command line and in settings files, not yet in the web interface, MCP or the assistant.
+`--prediction` still writes every step of all variables (about 6 GB per member and year for ACE), and
+`--no-monthly` switches the monthly file off.
+
 ### How long it takes, and long runs
 
 The `resources` line of the plan card gives the expected GPU time and the job time aimip-claima asks for (three times the
@@ -340,7 +397,7 @@ aimip run --config era5-decade.yaml --name era5-decade-2 --start 2001-01-01    #
 ```
 
 The keys are the option names (`model`, `start`, `steps`, `length`, `end`, `members`, `seed`, `ic`, `forcing_set`,
-`name`, `out`, `partition`, `account`, `gres`, `cpus_per_task`, `mem`, `time`, …). Every run directory contains an
+`name`, `out`, `outputs`, `partition`, `account`, `gres`, `cpus_per_task`, `mem`, `time`, …). Every run directory contains an
 `experiment.yaml` with the settings it was prepared with.
 
 ### Your own checkpoint (LoRA)
@@ -370,6 +427,7 @@ aimip-claima to other AI tools. None of them can start a run by itself: a person
 |---|---|
 | `monthly_mean_predictions.nc` | **the main result:** monthly means of every output variable |
 | `monthly_levels.nc`, `monthly_precip.nc` | some models: variables on pressure levels, or precipitation, in separate files |
+| `output_<frequency>.nc` | the files you asked for with [`--output`](#choosing-what-is-written), for example `output_daily.nc` |
 | `autoregressive_predictions.nc` | every model step; only with `--prediction` (about 6 GB per member and year for ACE) |
 | `restart.nc` | the state after the last step, to [continue the run](#continuing-a-run) |
 | `aimip-manifest.json` | the record of the run: the command line, the checksums of the checkpoint, the initial state and the forcing, the seed, the software versions, the exit code and the run time |
