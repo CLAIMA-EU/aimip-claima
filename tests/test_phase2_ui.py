@@ -1095,7 +1095,6 @@ def test_ui_summary_selective_chunked_loading_byte_budget_cache_and_batched_sacc
         return real_summarize_ds(*args, **kwargs)
 
     monkeypatch.setattr(status_mod, "_summarize_monthly_dataset", _counting_summarize_ds)
-    monkeypatch.setattr(status_mod, "SUMMARY_TIME_CHUNK_MONTHS", 2)
 
     with running_ui_server(max_diag_workers=1) as srv:
         port = int(srv.server_address[1])
@@ -1132,8 +1131,8 @@ def test_ui_summary_selective_chunked_loading_byte_budget_cache_and_batched_sacc
             assert st_p == 200 and png_b.startswith(b"\x89PNG\r\n\x1a\n")
         assert ds_reads[0] == 1
 
-        # Lowering `MAX_SUMMARY_VAR_BYTES` below `TMP2m` size (`1*3*4*8*4 = 384` B) rejects oversized variable up front
-        monkeypatch.setattr(status_mod, "MAX_SUMMARY_VAR_BYTES", 128)
+        # Lowering `MAX_SUMMARY_VAR_BYTES` below a single `TMP2m` slice (`1*4*8*4 = 128` B) rejects it up front
+        monkeypatch.setattr(status_mod, "MAX_SUMMARY_VAR_BYTES", 64)
         with pytest.raises(ValidationError, match="exceeding diagnostic budget"):
             status_mod.summarize_run(str(diag_dir))
 

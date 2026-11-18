@@ -40,8 +40,8 @@ SUMMARY_OCEAN_TEMP_VARS = ("sst", "surface_temperature", "thetao_0", "temperatur
 
 MAX_SUMMARY_MONTHS = 2400
 MAX_SUMMARY_MEMBERS = 128
+# Uncompressed byte budget for a single monthly slice (`sample * y * x * itemsize`).
 MAX_SUMMARY_VAR_BYTES = 512 * 1024 * 1024
-SUMMARY_TIME_CHUNK_MONTHS = 24
 MAX_SUMMARY_CACHE_ENTRIES = 32
 _SUMMARY_CACHE_LOCK = threading.Lock()
 _SUMMARY_CACHE: collections.OrderedDict[tuple[Any, ...], dict[str, Any]] = collections.OrderedDict()
@@ -726,7 +726,8 @@ def _summarize_monthly_dataset(
     """Compute area-weighted (`cos(lat)`) global-mean monthly series for *candidate_vars* in *monthly_path*.
 
     Opens *monthly_path* lazily without loading unrelated variables, enforces dimension and
-    uncompressed-byte limits up front, and streams selected variables in bounded time chunks.
+    single-slice uncompressed-byte limits up front, and streams selected variables one monthly
+    time slice at a time.
     """
     import numpy as np
     import xarray as xr
@@ -792,11 +793,11 @@ def _summarize_monthly_dataset(
                         f"got dims {v_da.dims} with shape {v_da.shape}."
                     )
                 itemsize = max(int(getattr(v_da.dtype, "itemsize", 4) or 4), 1)
-                est_bytes = int(v_da.size) * itemsize
-                if est_bytes > eff_max_bytes:
+                slice_bytes = n_samples * n_lat * n_lon * itemsize
+                if slice_bytes > eff_max_bytes:
                     raise ValidationError(
-                        f"Variable {vname!r} in {monthly_path} requires {est_bytes} uncompressed bytes, "
-                        f"exceeding diagnostic budget ({eff_max_bytes} bytes)."
+                        f"Single monthly slice of variable {vname!r} in {monthly_path} requires "
+                        f"{slice_bytes} uncompressed bytes, exceeding diagnostic budget ({eff_max_bytes} bytes)."
                     )
 
             lat_var_name: str | None = None
@@ -835,12 +836,14 @@ def _summarize_monthly_dataset(
                     f"Monthly dataset {monthly_path}: {lat_var_name!r} must be a non-empty 1D or 2D array."
                 )
 
+            total_weight = float(np.sum(weights_2d))
+
             counts_arr: Any = None
             if "counts" in ds:
                 counts_arr = ds["counts"].transpose(sample_dim, time_dim).values
 
             valid_labels: list[str] = []
-            if "valid_time" in ds:
+            if "valid_time" in ds and n_samples > 0:
                 vt = ds["valid_time"].transpose(sample_dim, time_dim).values
                 for m_idx in range(n_months):
                     dt0 = vt[0, m_idx]
@@ -851,7 +854,6 @@ def _summarize_monthly_dataset(
             else:
                 valid_labels = [f"month_{m_idx:04d}" for m_idx in range(n_months)]
 
-            chunk_step = max(1, int(SUMMARY_TIME_CHUNK_MONTHS))
             series_by_var: dict[str, Any] = {}
             for vname in present_vars:
                 da = ds[vname]
@@ -860,50 +862,62 @@ def _summarize_monthly_dataset(
                 long_name = str(da.attrs.get("long_name", vname))
 
                 rows: list[dict[str, Any]] = []
-                for t0 in range(0, n_months, chunk_step):
-                    t1 = min(n_months, t0 + chunk_step)
-                    chunk_da = da.isel({time_dim: slice(t0, t1)}).transpose(
-                        sample_dim, time_dim, y_dim, x_dim
+                for m_idx in range(n_months):
+                    step_count = (
+                        int(counts_arr[0, m_idx])
+                        if (counts_arr is not None and n_samples > 0)
+                        else None
                     )
-                    chunk_arr = np.asarray(chunk_da.values, dtype=np.float64)
-                    for rel_m, m_idx in enumerate(range(t0, t1)):
-                        member_means: list[float | None] = []
+                    if n_samples == 0 or (
+                        counts_arr is not None
+                        and all(
+                            int(counts_arr[s_idx, m_idx]) <= 0
+                            for s_idx in range(n_samples)
+                        )
+                    ):
+                        member_means: list[float | None] = [None] * n_samples
+                    else:
+                        slice_da = da.isel({time_dim: m_idx}).transpose(
+                            sample_dim, y_dim, x_dim
+                        )
+                        raw_slice = np.asarray(slice_da.values)
+                        member_means = []
                         for s_idx in range(n_samples):
                             if counts_arr is not None and int(counts_arr[s_idx, m_idx]) <= 0:
                                 member_means.append(None)
                                 continue
-                            field = chunk_arr[s_idx, rel_m]
+                            field = np.asarray(raw_slice[s_idx], dtype=np.float64)
                             valid_mask = np.isfinite(field)
-                            if not np.any(valid_mask):
+                            if not bool(np.any(valid_mask)):
                                 member_means.append(None)
                                 continue
-                            w_sum = float(np.sum(weights_2d[valid_mask]))
-                            if w_sum <= 0.0:
-                                member_means.append(None)
-                                continue
-                            val = float(
-                                np.sum(field[valid_mask] * weights_2d[valid_mask]) / w_sum
-                            )
+                            if bool(np.all(valid_mask)) and total_weight > 0.0:
+                                val = float(np.sum(field * weights_2d) / total_weight)
+                            else:
+                                w_sum = float(np.sum(weights_2d[valid_mask]))
+                                if w_sum <= 0.0:
+                                    member_means.append(None)
+                                    continue
+                                val = float(
+                                    np.sum(field[valid_mask] * weights_2d[valid_mask]) / w_sum
+                                )
                             member_means.append(val)
 
-                        finite_members = [v for v in member_means if v is not None]
-                        ens_mean = (
-                            float(sum(finite_members) / len(finite_members))
-                            if finite_members
-                            else None
-                        )
-                        step_count = (
-                            int(counts_arr[0, m_idx]) if counts_arr is not None else None
-                        )
-                        rows.append(
-                            {
-                                "month_index": m_idx,
-                                "month": valid_labels[m_idx],
-                                "counts": step_count,
-                                "ensemble_mean": ens_mean,
-                                "members": member_means,
-                            }
-                        )
+                    finite_members = [v for v in member_means if v is not None]
+                    ens_mean = (
+                        float(sum(finite_members) / len(finite_members))
+                        if finite_members
+                        else None
+                    )
+                    rows.append(
+                        {
+                            "month_index": m_idx,
+                            "month": valid_labels[m_idx],
+                            "counts": step_count,
+                            "ensemble_mean": ens_mean,
+                            "members": member_means,
+                        }
+                    )
 
                 out_key = f"{prefix}{vname}" if prefix else vname
                 series_by_var[out_key] = {
