@@ -286,6 +286,7 @@ def _cmd_models(args: argparse.Namespace) -> int:
         runtime = {
             "e2s-dlesym": "e2s 0.19",
             "arches": "arches",
+            "geoarches": "geoarches",
             "samudra": "samudra",
             "md": "md v0.9",
             "camulator": "credit",
@@ -312,6 +313,8 @@ def _cmd_models(args: argparse.Namespace) -> int:
             ic_summary = "OM4 window at --start (OSN)"
         elif fam == "arches":
             ic_summary = "2015 scenario state"
+        elif fam == "geoarches":
+            ic_summary = "ERA5 daily mean 1978-09-30"
         elif fam == "md" and not ic_ts:
             ic_summary = "--ic <era5_monthly.nc> (none published)"
         elif fam == "camulator":
@@ -1299,7 +1302,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="List registered climate emulator models with optional task, family, and status filters.",
     )
     p_models.add_argument("--task", default=None, help="Filter by task (amip, slab-ocean, coupled, scenario, ocean, generator).")
-    p_models.add_argument("--family", default=None, help="Filter by family (fme, e2s-dlesym, arches, samudra, md, camulator, cbottle, sdyff, emu).")
+    p_models.add_argument("--family", default=None, help="Filter by family (fme, e2s-dlesym, arches, geoarches, samudra, md, camulator, cbottle, sdyff, emu).")
     p_models.add_argument("--status", default=None, help="Filter by tier (certified, runs, experimental).")
     p_models.add_argument("--installed", action="store_true", help="Show only models whose files are staged locally.")
     p_models.add_argument(

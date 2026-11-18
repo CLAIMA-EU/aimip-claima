@@ -109,6 +109,22 @@ DLESYM_BIBTEX = """@article{cresswellclay2025dlesym,
   eprint  = {2409.16247}
 }"""
 
+ARCHESWEATHER_BIBTEX = """@article{singh2026archesweather,
+  title   = {Evaluating Skill and Stability of {ArchesWeather} and {ArchesWeatherGen} under Multi-Decadal Climate Simulations},
+  author  = {Singh, Renu and Brunstein, Robert and Jost, Antonia and Rackow, Thomas and Monteleoni, Claire and Hasson, Yana and Lessig, Christian and Couairon, Guillaume},
+  journal = {arXiv preprint},
+  year    = {2026},
+  eprint  = {2605.29976}
+}"""
+
+AIMIP_BIBTEX = """@article{henn2026aimip,
+  title   = {{AIMIP} Phase 1: Systematic Evaluations of {AI} Weather and Climate Models},
+  author  = {Henn, Brian and Bretherton, Christopher S. and Koldunov, Nikolay and Lessig, Christian and Molina, Maria J. and Arcomano, Troy and Watt-Meyer, Oliver and Couairon, Guillaume and Singh, Renu and Brunstein, Robert and Hasson, Yana and Jost, Antonia and Brenowitz, Noah and Manshausen, Peter and Cresswell-Clay, Nathaniel and Durran, Dale and Hall, Kyle Joseph Chen and Yuval, Janni and Kochkov, Dmitrii and Hoyer, Stephan and Lopez-Gomez, Ignacio},
+  journal = {arXiv preprint},
+  year    = {2026},
+  eprint  = {2605.06944}
+}"""
+
 SAMUDRA_BIBTEX = """@article{dheeshjith2025samudra,
   title         = {Samudra: An {AI} Global Ocean Emulator for Climate},
   author        = {Dheeshjith, Surya and Subel, Adam and Adcroft, Alistair and Busecke, Julius and Fernandez-Granda, Carlos and Gupta, Shubham and Zanna, Laure},
@@ -130,6 +146,10 @@ DLESYM_COST_NOTE = (
 )
 ARCHES_COST_NOTE = (
     "~2 s per simulated month (ArchesClimate-SSP 1x A100-80GB baseline)"
+)
+ARCHESWEATHER_COST_NOTE = (
+    "~1.1 s per simulated day for ArchesWeather (four networks), ~4.6 s per simulated day per member for "
+    "ArchesWeatherGen (1x A100-80GB); 1978-10 .. 2024-12 is ~5 h and ~21 h per member"
 )
 SAMUDRA_COST_NOTE = (
     "~18 s per simulated year on 1x A100-80GB (plus ~1.5 GB/yr OSN OM4 window staging before the job)"
@@ -530,6 +550,64 @@ MODEL_CARDS: dict[str, dict[str, Any]] = {
             "aimip run archesclimate-ssp --start 2015-01-01 --length 12m --forcing-set ssp434 --name arches-1y",
         ],
         "bibtex": [],
+    },
+    "archesweather": {
+        "title": "ArchesWeather-Mx4, AIMIP version (INRIA)",
+        "task": "amip",
+        "status": "runs",
+        "verified_on": "1x NVIDIA A100-SXM4-80GB (container, 62 days via aimip run; 457 days compared with the "
+                       "authors' AIMIP submission, 1.4.0.dev0)",
+        "licence": "Checkpoints and inputs CC-BY-4.0 (Zenodo 22795233); geoarches code BSD-3-Clause",
+        "upstream_url": "https://github.com/INRIA/geoarches",
+        "data_urls": ["https://zenodo.org/records/22795233"],
+        "grid": "1 deg lat-lon (181 x 360), 13 pressure levels, daily-mean states",
+        "outputs": ["atmosphere/tas", "atmosphere/psl", "atmosphere/uas", "atmosphere/vas", "atmosphere/sst",
+                    "atmosphere/sic", "atmosphere/monthly_levels.nc (zg, ua, va, ta, hus, wap)"],
+        "cost_note": ARCHESWEATHER_COST_NOTE,
+        "limitations": (
+            "AIMIP: the four ArchesWeather-M networks averaged at every daily step, as in the authors' AIMIP runs; "
+            "trained on ERA5 1979-2013 (validation 2014, test 2015-2024; most of the AIMIP period is in-sample). "
+            "Starts only from the ERA5 daily-mean state of 1978-09-30 (the authors' member r2; their other "
+            "members start on 1978-09-29 and 1978-10-01..03), forced by monthly ERA5 SST and sea-ice cover through "
+            "2024-12-31. The rollout follows arXiv:2605.29976 section 2.3; the authors' rollout script is not "
+            "published, and aimip's run is not bit-identical to their submission (GPU vs TPU). The longest run "
+            "tested in aimip is 457 days (a full 46-year run has not yet been tested). No continuation "
+            "yet: one run must fit in one job."
+        ),
+        "examples": [
+            "aimip plan archesweather --start 1978-09-30 --length 1y --name aw-1y",
+            "aimip run archesweather --start 1978-09-30 --steps 16894 --name aw-aimip",
+        ],
+        "bibtex": [ARCHESWEATHER_BIBTEX, AIMIP_BIBTEX, ERA5_BIBTEX],
+    },
+    "archesweathergen": {
+        "title": "ArchesWeatherGen, AIMIP version (INRIA)",
+        "task": "amip",
+        "status": "runs",
+        "verified_on": "1x NVIDIA A100-SXM4-80GB (container, 2 members x 31 days via aimip run, October 1978 spread "
+                       "compared with the authors' AIMIP submission, 1.4.0.dev0)",
+        "licence": "Checkpoints and inputs CC-BY-4.0 (Zenodo 22795233); geoarches code BSD-3-Clause",
+        "upstream_url": "https://github.com/INRIA/geoarches",
+        "data_urls": ["https://zenodo.org/records/22795233"],
+        "grid": "1 deg lat-lon (181 x 360), 13 pressure levels, daily-mean states",
+        "outputs": ["atmosphere/tas", "atmosphere/psl", "atmosphere/uas", "atmosphere/vas", "atmosphere/sst",
+                    "atmosphere/sic", "atmosphere/monthly_levels.nc (zg, ua, va, ta, hus, wap)"],
+        "cost_note": ARCHESWEATHER_COST_NOTE,
+        "limitations": (
+            "AIMIP: flow-matching samples (25 sampler steps per day) around the ArchesWeather-Mx4 prediction; "
+            "trained on ERA5 1979-2013 (validation 2014, test 2015-2024; most of the AIMIP period is in-sample). "
+            "Members differ by the noise seed (step i of member k uses seed + k + 1000 i; keep --seed values of "
+            "separate runs less than 1000 apart so they do not reuse daily noise). Starts only from the ERA5 "
+            "daily-mean state of 1978-09-30, forced by monthly ERA5 SST and sea-ice cover through 2024-12-31. The "
+            "generative checkpoint also stores one deterministic network; like geoarches' own loader with the "
+            "published config, aimip uses the four ArchesWeather-M networks instead. No continuation yet: at ~4.6 s "
+            "per simulated day a 12-hour job covers about 9 years per member."
+        ),
+        "examples": [
+            "aimip plan archesweathergen --start 1978-09-30 --length 1y --members 2 --name awgen-1y",
+            "aimip run archesweathergen --start 1978-09-30 --length 30d --members 2 --name awgen-30d",
+        ],
+        "bibtex": [ARCHESWEATHER_BIBTEX, AIMIP_BIBTEX, ERA5_BIBTEX],
     },
     "samudra-om4": {
         "title": "Samudra-OM4 Global Ocean Emulator (M2LInES, thermo-dynamic seed1)",

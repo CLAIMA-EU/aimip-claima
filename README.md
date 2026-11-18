@@ -13,10 +13,11 @@ aimip submit <run-dir>
 aimip summary <run-dir>                                                    # global-mean 2 m temperature per month
 ```
 
-Fourteen models are supported: the Ai2 ACE family (`ace2-era5`, `ace2-shield`, `ace2s-shield-plus`, `ace2-eamv3`,
+Twenty-one models are supported: the Ai2 ACE family (`ace2-era5`, `ace2-shield`, `ace2s-shield-plus`, `ace2-eamv3`,
 `hiro-ace`, `ace2-som`, `ace2s`, `hiro-acev2`), the coupled atmosphere–ocean SamudrACE models (`samudrace-cm4`,
-`samudrace-e3smv3`), three DLESyM checkpoints (`dlesym-v1.0`, `dlesym-v1.1`, `dlesym-v0-isccp`) and
-ArchesClimate-SSP (`archesclimate-ssp`). See [docs/models.md](docs/models.md).
+`samudrace-e3smv3`), three DLESyM checkpoints (`dlesym-v1.0`, `dlesym-v1.1`, `dlesym-v0-isccp`), ArchesClimate-SSP
+(`archesclimate-ssp`), the AIMIP versions of ArchesWeather and ArchesWeatherGen (`archesweather`,
+`archesweathergen`), and `samudra-om4`, `md-1.5`, `camulator`, `cbottle-3d` and `spherical-dyffusion`. See [docs/models.md](docs/models.md).
 
 What `aimip` does for you:
 
@@ -32,7 +33,7 @@ What `aimip` does for you:
 
 | | container | native |
 |---|---|---|
-| what you need | Apptainer/Singularity (HPC) or Docker/Podman (+ NVIDIA Container Toolkit) | Python 3.12; for DLESyM/ArchesClimate also a C/C++ compiler |
+| what you need | Apptainer/Singularity (HPC) or Docker/Podman (+ NVIDIA Container Toolkit) | Python 3.12; for DLESyM/ArchesClimate/ArchesWeather also a C/C++ compiler |
 | what you get | the published image with every library inside; on the host only a small wrapper | Python virtual environments in a directory of your choice |
 | command | `install/install-container.sh --prefix DIR --site <preset>` | `install/install-native.sh --prefix DIR --site <preset> [--with-emu]` |
 | best for | shared clusters, reproducibility, several users | a workstation or a cluster without containers |
@@ -59,7 +60,7 @@ login needed). Only release versions have an image: check out a release tag (`gi
 
 ```bash
 git clone https://github.com/CliDyn/aimip-claima.git && cd aimip-claima
-install/install-native.sh --prefix /big/disk/aimip --site local --run-root /big/disk/aimip-runs   # add --with-emu for DLESyM/ArchesClimate
+install/install-native.sh --prefix /big/disk/aimip --site local --run-root /big/disk/aimip-runs   # add --with-emu for DLESyM/ArchesClimate/ArchesWeather
 /big/disk/aimip/bin/aimip models
 ```
 
@@ -84,7 +85,7 @@ Without Slurm, use `--local` instead of `--submit`.
 |---|---|
 | [docs/installation.md](docs/installation.md) | both install modes, presets, model data, checks |
 | [docs/user-guide.md](docs/user-guide.md) | running experiments: first run, ensembles, continued runs, scenarios, coupled models, LoRA, outputs |
-| [docs/models.md](docs/models.md) | the fourteen models: type, forcing, initial conditions, calendars, known limits |
+| [docs/models.md](docs/models.md) | the twenty-one models: type, forcing, initial conditions, calendars, known limits |
 | [docs/slurm-and-paths.md](docs/slurm-and-paths.md) | job scripts, wall time, run directories, path rules |
 | [docs/agent.md](docs/agent.md) | the optional planning assistant `aimip chat` |
 | [docs/console.md](docs/console.md) | development version: new commands, approval, agent runs, MCP server, web UI |

@@ -126,6 +126,15 @@ def fingerprint(files: list[Path]) -> str:
 
 
 def _planned_outputs(model_spec: Any, *, monthly: bool, prediction: bool) -> dict[str, Any]:
+    if model_spec.family == "geoarches":
+        return {
+            "monthly": True,
+            "prediction": False,
+            "files": [
+                "atmosphere/monthly_mean_predictions.nc",
+                "atmosphere/monthly_levels.nc",
+            ],
+        }
     if model_spec.family == "samudra":
         return {
             "monthly": True,
@@ -223,6 +232,15 @@ def _build_run_detail(resolved: ResolvedPlan) -> dict[str, Any]:
 def _manifest_outputs(manifest: dict[str, Any]) -> dict[str, Any]:
     import yaml
 
+    if manifest.get("family") == "geoarches":
+        return {
+            "monthly": True,
+            "prediction": False,
+            "files": [
+                "atmosphere/monthly_mean_predictions.nc",
+                "atmosphere/monthly_levels.nc",
+            ],
+        }
     if manifest.get("family") == "samudra":
         return {
             "monthly": True,

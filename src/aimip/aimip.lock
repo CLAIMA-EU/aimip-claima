@@ -3944,6 +3944,182 @@
         "url": "https://github.com/kjhall01/monthly-diffusion/archive/b077d3bcbf602a6b363d5a9da28cf1dc3583c4fb.tar.gz",
         "archive_sha256": "a11ce4d8c5434653d19426a0a45346b2cf0aa43338167514ed55c8fec09fdded"
       }
+    },
+    "raw/zenodo-22795233/model_checkpoints.zip": {
+      "size": 1745144084,
+      "sha256": "db57d2bbbb1784a568f941dd7a3e437672cedd59cbaba10a313d21025a4d229d",
+      "source": {
+        "kind": "zenodo",
+        "record": "22795233",
+        "file": "model_checkpoints.zip",
+        "url": "https://zenodo.org/records/22795233/files/model_checkpoints.zip?download=1",
+        "md5": "563f37cb198c134874de30e2241c9340"
+      }
+    },
+    "inputs/archesweather/era5_1978_00h_sliced.nc": {
+      "size": 65782694,
+      "sha256": "ddad475ae0232ea36bc2859cb1c6075fe41e34d9ca4a703b5572d63d1a3d4e79",
+      "source": {
+        "kind": "zenodo",
+        "record": "22795233",
+        "file": "era5_1978_00h_sliced.nc",
+        "url": "https://zenodo.org/records/22795233/files/era5_1978_00h_sliced.nc?download=1",
+        "md5": "de4402df63c1c00ef49b5491ddc7da4e"
+      }
+    },
+    "inputs/archesweather/ERA5-0.25deg-monthly-mean-forcing-1978-2024_regridded_conservative_2025_11_03.nc": {
+      "size": 290114662,
+      "sha256": "9be1dd017ce86c2a4889d93983f8d14c40e16a5c6ab7fc5a08d549820707ff29",
+      "source": {
+        "kind": "zenodo",
+        "record": "22795233",
+        "file": "ERA5-0.25deg-monthly-mean-forcing-1978-2024_regridded_conservative_2025_11_03.nc",
+        "url": "https://zenodo.org/records/22795233/files/ERA5-0.25deg-monthly-mean-forcing-1978-2024_regridded_conservative_2025_11_03.nc?download=1",
+        "md5": "889a71d433d0eb84f65ed1f8eddc3e3c"
+      }
+    },
+    "models/archesweather/stats/ERA5-0.25deg-monthly-mean-forcing-1978-2013_regridded_conservative_norm_stats.nc": {
+      "size": 8276,
+      "sha256": "8f8da1ec9f41e120fa4ee3215086f28daa46f28940890673ec5e9c66a65636dc",
+      "source": {
+        "kind": "zenodo",
+        "record": "22795233",
+        "file": "ERA5-0.25deg-monthly-mean-forcing-1978-2013_regridded_conservative_norm_stats.nc",
+        "url": "https://zenodo.org/records/22795233/files/ERA5-0.25deg-monthly-mean-forcing-1978-2013_regridded_conservative_norm_stats.nc?download=1",
+        "md5": "453a0916f51872549a544d5a67d20522"
+      }
+    },
+    "models/archesweather/stats/daily_averaged_aimip_norm_stats.nc": {
+      "size": 19500,
+      "sha256": "cf46fd86d8b4db347de56c9ab42a90dca787d8e89ed89733a7744e6437a74acc",
+      "source": {
+        "kind": "zenodo",
+        "record": "22795233",
+        "file": "daily_averaged_aimip_norm_stats.nc",
+        "url": "https://zenodo.org/records/22795233/files/daily_averaged_aimip_norm_stats.nc?download=1",
+        "md5": "6d7eaaaddb340445bbff40cdd11ae9c0"
+      }
+    },
+    "models/archesweather/stats/residual_std_aimip_213852624.nc": {
+      "size": 18784,
+      "sha256": "8897cd7385c435f00e0d1b7a82abc5ea96722246a185d7b7707cc30bbd6fc280",
+      "source": {
+        "kind": "zenodo",
+        "record": "22795233",
+        "file": "residual_std_aimip_213852624.nc",
+        "url": "https://zenodo.org/records/22795233/files/residual_std_aimip_213852624.nc?download=1",
+        "md5": "280aadf94cd1c3f3be1aa1e0bb46594f"
+      }
+    },
+    "models/archesweather/aimip-archesweather-m-seed0/config.yaml": {
+      "size": 7126,
+      "sha256": "21ab309dd844f03b0d4089b24ad9fbfd5618390b39c2dd35ae442c8af9402862",
+      "source": {
+        "kind": "derived",
+        "builder": "extract_zip_member",
+        "inputs": {
+          "raw/zenodo-22795233/model_checkpoints.zip": "db57d2bbbb1784a568f941dd7a3e437672cedd59cbaba10a313d21025a4d229d"
+        }
+      }
+    },
+    "models/archesweather/aimip-archesweather-m-seed1/config.yaml": {
+      "size": 7126,
+      "sha256": "f6535f5caed4f18a3ab329ecd58aee9928c411fb8ce0716f77073595e25bc9fe",
+      "source": {
+        "kind": "derived",
+        "builder": "extract_zip_member",
+        "inputs": {
+          "raw/zenodo-22795233/model_checkpoints.zip": "db57d2bbbb1784a568f941dd7a3e437672cedd59cbaba10a313d21025a4d229d"
+        }
+      }
+    },
+    "models/archesweather/aimip-archesweather-m-seed2/config.yaml": {
+      "size": 7126,
+      "sha256": "2c71f5debf5c7f6db4df64312796cb1b3d835b0f2023ee7b7ea4a9d3e0962c5e",
+      "source": {
+        "kind": "derived",
+        "builder": "extract_zip_member",
+        "inputs": {
+          "raw/zenodo-22795233/model_checkpoints.zip": "db57d2bbbb1784a568f941dd7a3e437672cedd59cbaba10a313d21025a4d229d"
+        }
+      }
+    },
+    "models/archesweather/aimip-archesweather-m-seed3/config.yaml": {
+      "size": 7126,
+      "sha256": "ef4ab0f5fb5772cd65508d01de938385e41cc3091e769f695691d17d56b0242e",
+      "source": {
+        "kind": "derived",
+        "builder": "extract_zip_member",
+        "inputs": {
+          "raw/zenodo-22795233/model_checkpoints.zip": "db57d2bbbb1784a568f941dd7a3e437672cedd59cbaba10a313d21025a4d229d"
+        }
+      }
+    },
+    "models/archesweather/aimip-archesweathergen/config.yaml": {
+      "size": 6989,
+      "sha256": "b709dfafd82b08f64fcae92e6eae15e9598d463c940b6deff33e5abdbda51ca3",
+      "source": {
+        "kind": "derived",
+        "builder": "extract_zip_member",
+        "inputs": {
+          "raw/zenodo-22795233/model_checkpoints.zip": "db57d2bbbb1784a568f941dd7a3e437672cedd59cbaba10a313d21025a4d229d"
+        }
+      }
+    },
+    "models/archesweather/aimip-archesweather-m-seed0/checkpoint.ckpt": {
+      "size": 339700097,
+      "sha256": "e9e51af0a0b5ec95e3c5b5135b7e3eadda1fb9732c10ea4657c9c8d7d780e73f",
+      "source": {
+        "kind": "derived",
+        "builder": "extract_zip_member",
+        "inputs": {
+          "raw/zenodo-22795233/model_checkpoints.zip": "db57d2bbbb1784a568f941dd7a3e437672cedd59cbaba10a313d21025a4d229d"
+        }
+      }
+    },
+    "models/archesweather/aimip-archesweather-m-seed1/checkpoint.ckpt": {
+      "size": 339700097,
+      "sha256": "9a29c0422280ac63a54f63b52b2f3160925da372cf0c60c056fcac5a710d575d",
+      "source": {
+        "kind": "derived",
+        "builder": "extract_zip_member",
+        "inputs": {
+          "raw/zenodo-22795233/model_checkpoints.zip": "db57d2bbbb1784a568f941dd7a3e437672cedd59cbaba10a313d21025a4d229d"
+        }
+      }
+    },
+    "models/archesweather/aimip-archesweather-m-seed2/checkpoint.ckpt": {
+      "size": 339700097,
+      "sha256": "063f0e3bf995fb19ea4a2693fc838c56b9a1c06121f034b8ca1fcb782ad5ce03",
+      "source": {
+        "kind": "derived",
+        "builder": "extract_zip_member",
+        "inputs": {
+          "raw/zenodo-22795233/model_checkpoints.zip": "db57d2bbbb1784a568f941dd7a3e437672cedd59cbaba10a313d21025a4d229d"
+        }
+      }
+    },
+    "models/archesweather/aimip-archesweather-m-seed3/checkpoint.ckpt": {
+      "size": 339700097,
+      "sha256": "53379ca5a87c31b728b113dcd29e92fe79403ca150a61a58203fea4796ad1d43",
+      "source": {
+        "kind": "derived",
+        "builder": "extract_zip_member",
+        "inputs": {
+          "raw/zenodo-22795233/model_checkpoints.zip": "db57d2bbbb1784a568f941dd7a3e437672cedd59cbaba10a313d21025a4d229d"
+        }
+      }
+    },
+    "models/archesweather/aimip-archesweathergen/checkpoint.ckpt": {
+      "size": 521690517,
+      "sha256": "7d790f2072e6ac7cb9fa65004406ca570229acdccb68c2a2ada9c4f607edcbb3",
+      "source": {
+        "kind": "derived",
+        "builder": "extract_zip_member",
+        "inputs": {
+          "raw/zenodo-22795233/model_checkpoints.zip": "db57d2bbbb1784a568f941dd7a3e437672cedd59cbaba10a313d21025a4d229d"
+        }
+      }
     }
   }
 }

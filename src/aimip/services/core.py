@@ -393,7 +393,7 @@ def models(
     )
     allowed_families = sorted(
         {spec.family for spec in catalog.values()}
-        | {"fme", "e2s-dlesym", "arches", "samudra", "md", "camulator", "cbottle", "sdyff", "emu"}
+        | {"fme", "e2s-dlesym", "arches", "geoarches", "samudra", "md", "camulator", "cbottle", "sdyff", "emu"}
     )
     allowed_statuses = ["certified", "runs", "experimental"]
 
@@ -438,7 +438,7 @@ def models(
             or (
                 family == "emu"
                 and spec.family
-                in ("e2s-dlesym", "arches", "samudra", "md", "camulator", "cbottle", "sdyff")
+                in ("e2s-dlesym", "arches", "geoarches", "samudra", "md", "camulator", "cbottle", "sdyff")
             )
         )
         if not fam_match:

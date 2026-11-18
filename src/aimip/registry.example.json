@@ -841,6 +841,83 @@
       "notes": "ArchesClimate-SSP deterministic (INRIA/Mila, Clyne et al. 2026): monthly emulator of IPSL-CM6A-LR on a 144 x 144 grid (1.25 deg lat x 2.5 deg lon), atmosphere + upper-ocean temperature, driven by the scenario's forcing. Starts from the scenario's 2015 state (--start 2015-01-01T00:00:00; first output March 2015); --steps counts months (at most 1029); --forcing-set ssp434 (default, the authors' validation scenario) or ssp585 (test)."
     },
     {
+      "name": "archesweather",
+      "family": "geoarches",
+      "fme_module": "aimip.emu_job",
+      "calendar": "proleptic_gregorian",
+      "checkpoint": "${DATA}/models/archesweather/aimip-archesweather-m-seed0/checkpoint.ckpt",
+      "checkpoint_sha256": "e9e51af0a0b5ec95e3c5b5135b7e3eadda1fb9732c10ea4657c9c8d7d780e73f",
+      "ic_files": [],
+      "forcing_sets": [
+        {
+          "name": "aimip",
+          "dir": "${DATA}/inputs/archesweather",
+          "window": [
+            "1978-09-30T00:00:00",
+            "2024-12-31T00:00:00"
+          ]
+        }
+      ],
+      "required_files": [
+        "inputs/archesweather/ERA5-0.25deg-monthly-mean-forcing-1978-2024_regridded_conservative_2025_11_03.nc",
+        "inputs/archesweather/era5_1978_00h_sliced.nc",
+        "models/archesweather/aimip-archesweather-m-seed0/checkpoint.ckpt",
+        "models/archesweather/aimip-archesweather-m-seed0/config.yaml",
+        "models/archesweather/aimip-archesweather-m-seed1/checkpoint.ckpt",
+        "models/archesweather/aimip-archesweather-m-seed1/config.yaml",
+        "models/archesweather/aimip-archesweather-m-seed2/checkpoint.ckpt",
+        "models/archesweather/aimip-archesweather-m-seed2/config.yaml",
+        "models/archesweather/aimip-archesweather-m-seed3/checkpoint.ckpt",
+        "models/archesweather/aimip-archesweather-m-seed3/config.yaml",
+        "models/archesweather/stats/ERA5-0.25deg-monthly-mean-forcing-1978-2013_regridded_conservative_norm_stats.nc",
+        "models/archesweather/stats/daily_averaged_aimip_norm_stats.nc"
+      ],
+      "timestep_hours": 24,
+      "stochastic": false,
+      "default_n_ensemble_per_ic": 1,
+      "notes": "ArchesWeather-Mx4, AIMIP version (INRIA): the four ArchesWeather-M networks (seeds 0-3) averaged at every daily step, as in the authors' AIMIP runs; deterministic. 1-degree grid, 6 surface variables and 6 variables on 13 pressure levels as daily means, forced by monthly ERA5 SST and sea-ice cover (Zenodo 22795233). Starts from the ERA5 daily-mean state of 1978-09-30 only (--start 1978-09-30T00:00:00; first output day 1978-10-01, like the authors' AIMIP member r2); --steps counts days (at most 16894, to 2024-12-31). aimip's rollout follows the paper (Singh et al. 2026, arXiv:2605.29976, section 2.3); the authors' rollout script is not published."
+    },
+    {
+      "name": "archesweathergen",
+      "family": "geoarches",
+      "fme_module": "aimip.emu_job",
+      "calendar": "proleptic_gregorian",
+      "checkpoint": "${DATA}/models/archesweather/aimip-archesweathergen/checkpoint.ckpt",
+      "checkpoint_sha256": "7d790f2072e6ac7cb9fa65004406ca570229acdccb68c2a2ada9c4f607edcbb3",
+      "ic_files": [],
+      "forcing_sets": [
+        {
+          "name": "aimip",
+          "dir": "${DATA}/inputs/archesweather",
+          "window": [
+            "1978-09-30T00:00:00",
+            "2024-12-31T00:00:00"
+          ]
+        }
+      ],
+      "required_files": [
+        "inputs/archesweather/ERA5-0.25deg-monthly-mean-forcing-1978-2024_regridded_conservative_2025_11_03.nc",
+        "inputs/archesweather/era5_1978_00h_sliced.nc",
+        "models/archesweather/aimip-archesweather-m-seed0/checkpoint.ckpt",
+        "models/archesweather/aimip-archesweather-m-seed0/config.yaml",
+        "models/archesweather/aimip-archesweather-m-seed1/checkpoint.ckpt",
+        "models/archesweather/aimip-archesweather-m-seed1/config.yaml",
+        "models/archesweather/aimip-archesweather-m-seed2/checkpoint.ckpt",
+        "models/archesweather/aimip-archesweather-m-seed2/config.yaml",
+        "models/archesweather/aimip-archesweather-m-seed3/checkpoint.ckpt",
+        "models/archesweather/aimip-archesweather-m-seed3/config.yaml",
+        "models/archesweather/aimip-archesweathergen/checkpoint.ckpt",
+        "models/archesweather/aimip-archesweathergen/config.yaml",
+        "models/archesweather/stats/ERA5-0.25deg-monthly-mean-forcing-1978-2013_regridded_conservative_norm_stats.nc",
+        "models/archesweather/stats/daily_averaged_aimip_norm_stats.nc",
+        "models/archesweather/stats/residual_std_aimip_213852624.nc"
+      ],
+      "timestep_hours": 24,
+      "stochastic": true,
+      "default_n_ensemble_per_ic": 1,
+      "notes": "ArchesWeatherGen, AIMIP version (INRIA): a flow-matching model that samples the next state around the ArchesWeather-Mx4 prediction (25 sampler steps per day); stochastic, --members gives distinct noise seeds (seed + k). 1-degree grid, 6 surface variables and 6 variables on 13 pressure levels as daily means, forced by monthly ERA5 SST and sea-ice cover (Zenodo 22795233). Starts from the ERA5 daily-mean state of 1978-09-30 only (--start 1978-09-30T00:00:00; first output day 1978-10-01, like the authors' AIMIP member r2); --steps counts days (at most 16894, to 2024-12-31). aimip's rollout follows the paper (Singh et al. 2026, arXiv:2605.29976, section 2.3); the authors' rollout script is not published."
+    },
+    {
       "name": "samudra-om4",
       "family": "samudra",
       "fme_module": "aimip.emu_job",
