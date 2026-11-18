@@ -27,7 +27,7 @@ These pages describe the development version on `main`. For the latest release, 
 | an NVIDIA driver for CUDA 13.0 or newer | `nvidia-smi` shows `CUDA Version: 13.0` (or higher) in its first lines |
 | a container runtime (Apptainer, Singularity, Docker or Podman), **or** Python 3.12 | `apptainer --version`, `singularity --version`, `docker --version`, `podman --version`, `python3.12 --version` |
 | disk space: about 25 GB for the software, plus the models you use (20 GB for the first test model, about 260 GB for all of them) | `df -h /big/disk` |
-| internet access where you install and where you prepare runs | `python3 -c "import urllib.request; urllib.request.urlopen('https://huggingface.co')"` |
+| internet access where you install and where you prepare runs (none at all: see [clusters without internet](#clusters-without-internet-for-example-marenostrum-5)) | `python3 -c "import urllib.request; urllib.request.urlopen('https://huggingface.co')"` |
 | `bash`, `git`, `python3` (3.8 or newer, for the installer itself), `tar`, `sha256sum` | |
 
 Compute nodes do not need internet: models are downloaded when a run is prepared, normally on a login node.
@@ -250,10 +250,8 @@ allocation with a GPU, run `aimip run … --local`: the model runs at once. With
 where there is internet (`aimip run …` without `--local`), and put the `aimip exec-fme <run dir>` line from its
 `job.sbatch` into your job script.
 
-**No internet at all on the machine.** Build or fetch the image on another machine
-(`apptainer build aimip.sif docker://ghcr.io/clidyn/aimip-claima:<version>` for a release), copy it to
-`/big/disk/aimip/images/aimip-<version>.sif` and run the installer: it uses the image that is already there. Copy the
-model data the same way (`aimip fetch -m X` on a connected machine, then the `data/` directory).
+**No internet anywhere on the cluster** (you can log in and copy files in, but nothing can be downloaded): see
+[the next section](#clusters-without-internet-for-example-marenostrum-5).
 
 **A web proxy.** Set `https_proxy` (and `http_proxy`) before installing and before `aimip run`.
 
@@ -281,6 +279,79 @@ switches this off (or on, on other machines).
 **GPUs older than A100.** The DLESyM HEALPix kernel is compiled for A100, H100 and GH200 (compute capability 8.0 and
 9.0). For another GPU, add its compute capability to `TORCH_CUDA_ARCH_LIST` in `container/Dockerfile` (then install
 with `--build`) or in `install/install-native.sh`.
+
+## Clusters without internet (for example MareNostrum 5)
+
+On some clusters no node can reach the internet. You can log in with SSH and copy files in with `scp` or `rsync`, but
+the cluster cannot download anything: the installer cannot fetch or build the image, and aimip cannot download
+models. Prepare everything on a second machine that has internet, then copy it over.
+
+The second machine needs Linux on the same processor type as the cluster (x86_64 for MareNostrum 5), Apptainer,
+Singularity, Docker or Podman, and disk space for the models you want. It needs no GPU. A login node of another
+cluster or a Linux workstation will do.
+
+**On the machine with internet:**
+
+1. Install aimip as in [section 5](#5-run-the-installer), with `--site local` (these site settings are not copied;
+   leave out `--build` for a release version):
+
+   ```bash
+   git clone https://github.com/CliDyn/aimip-claima.git
+   cd aimip-claima
+   install/install-container.sh --prefix /big/disk/aimip --run-root /big/disk/aimip-runs --site local --build
+   ```
+
+2. Download the models you will use:
+
+   ```bash
+   /big/disk/aimip/bin/aimip fetch -m ace2-era5
+   /big/disk/aimip/bin/aimip fetch -m archesweather
+   ```
+
+3. Copy three things to the cluster: the code, the image and the model data. The paths on the cluster can be
+   different from the paths here.
+
+   ```bash
+   rsync -a aimip-claima/            mycluster:/gpfs/projects/myproject/aimip-claima/
+   rsync -a /big/disk/aimip/images/  mycluster:/gpfs/projects/myproject/aimip/images/
+   rsync -a /big/disk/aimip/data/    mycluster:/gpfs/projects/myproject/aimip/data/
+   ```
+
+**On the cluster:**
+
+4. If the cluster provides Apptainer or Singularity as a module, load it (`module avail apptainer singularity`
+   shows what there is). Then run the installer with the cluster's settings and **without** `--build`. It finds the
+   image in `images/`, checks that it holds the same aimip version as the code, and downloads nothing:
+
+   ```bash
+   cd /gpfs/projects/myproject/aimip-claima
+   install/install-container.sh --prefix /gpfs/projects/myproject/aimip \
+       --run-root /gpfs/scratch/myproject/aimip-runs \
+       --site generic-slurm --partition <partition> --account <project>
+   ```
+
+5. Check it with `aimip doctor`. When you prepare runs, add `--no-fetch`: if a file is missing, the run then stops at
+   once with a clear message instead of waiting for a network that is not there.
+
+   ```bash
+   aimip run ace2-era5 --start 1979-01-01 --steps 8 --name first --no-fetch
+   ```
+
+To add models later, repeat steps 2 and 3 (`rsync` copies only what is new). To update aimip, repeat steps 1–4 with
+the new version.
+
+What does not work on such a cluster:
+
+- **DLESyM** (`dlesym-*`) and **Samudra-OM4**: they download their starting data each time a run is prepared (ERA5
+  from Google Cloud, ocean states from OSN).
+- **Native mode**: it installs Python packages from the internet.
+- **CAMulator** from start dates other than 1980-01-01 and 1981-01-01: `aimip fetch` downloads only the files for
+  these two. For another start, prepare one run with that start on the machine with internet (`aimip run camulator
+  --start …` downloads the extra files), then copy `data/` again.
+
+**Job options that aimip does not write,** such as the QoS that MareNostrum 5 uses to choose a queue: set them as
+Slurm environment variables before `aimip submit`, for example `export SBATCH_QOS=<your QoS>`. `sbatch` reads
+these variables, and they take precedence over the job script.
 
 ## Changing the settings later
 

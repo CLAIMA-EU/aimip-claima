@@ -32,6 +32,7 @@ Every error message of `aimip` says what was wrong, and most end with a `next:` 
 | `model X is not installed here: ask the install owner to run 'aimip fetch -m X'` | someone else owns the installation; only the owner can download models |
 | `... --no-fetch was specified` | the model is not downloaded yet: run `aimip fetch -m <model>` (or leave out `--no-fetch`) |
 | `Could not fetch the ERA5 initial state` (DLESyM) | DLESyM downloads its start state when the run is prepared: run `aimip run` where there is internet |
+| a download hangs or fails with a network error | the machine cannot reach the internet: download the model elsewhere and copy it in ([clusters without internet](installation.md#clusters-without-internet-for-example-marenostrum-5)), and use `--no-fetch` |
 | `path must be absolute`, `refusing path` | use absolute paths with only letters, digits and `. _ / + -`; no spaces, no `~`, no `..` |
 | `run/output paths must live under <run root>` | `--out` points outside your run root: use `--name` instead, or a path under the run root |
 | `path will not be visible inside the container` | your `--ic` or `--lora` file is outside the run root and the installation: copy it into your run root |
