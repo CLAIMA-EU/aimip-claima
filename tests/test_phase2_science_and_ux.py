@@ -203,7 +203,7 @@ def test_all_16_canonical_models_plan_through_services_and_check_ic_and_arches_c
         elif resolved.family == "geoarches":
             assert "outputs 1978-10-01 .." in card_txt and "daily steps / monthly means" in card_txt
             assert "ERA5 daily-mean state of 1978-09-30" in card_txt
-            assert "pressure levels in monthly_levels.nc" in card_txt
+            assert "pressure levels in monthly_levels.nc" in card_txt and "restart.nc" in card_txt
         elif mname == "md-1.5":
             assert "outputs 1978-10 .. 1979-09" in card_txt
             assert "single monthly states" in card_txt and "730h" not in card_txt
@@ -211,6 +211,28 @@ def test_all_16_canonical_models_plan_through_services_and_check_ic_and_arches_c
             assert "1mo step" in show_txt and "730h step" not in show_txt
         elif resolved.family == "fme":
             assert "initial condition: not checked until the files are fetched" in card_txt
+
+    # ArchesWeatherGen continuation: members come from the restart, and the plan digest binds the restart's bytes.
+    from test_geoarches import write_test_restart
+
+    prev = runs_dir / "aw-seg1"
+    prev.mkdir()
+    write_test_restart(prev / "restart.nc", step=20, members=2)
+    cont = services.plan(RunSpec(model="archesweathergen", name="p-cont", start="1978-10-20", steps=11, ic=str(prev)))
+    card_txt = services.render_plan_card(cont, is_tty=False)
+    assert "outputs 1978-10-21 .. 1978-10-31" in card_txt and "restart of a previous run" in card_txt
+    write_test_restart(prev / "restart.nc", step=20, members=2, month="")
+    again = services.plan(RunSpec(model="archesweathergen", name="p-cont", start="1978-10-20", steps=11, ic=str(prev)))
+    assert again.digest != cont.digest
+    with pytest.raises(ConfigError, match="use --start 1978-10-20T00:00:00"):
+        services.plan(RunSpec(model="archesweathergen", start="1978-10-25", steps=5, ic=str(prev)))
+    # A run writes its files only at the end: the card says when the job cannot finish (site limit 8 h here).
+    fits = services.render_plan_card(services.plan(RunSpec(model="archesweathergen", start="1978-09-30", length="6y")),
+                                     is_tty=False)
+    assert "CAPPED from" in fits and "keeps nothing" in fits and "expected time exceeds" not in fits
+    long = services.render_plan_card(services.plan(RunSpec(model="archesweathergen", start="1978-09-30", length="20y")),
+                                     is_tty=False)
+    assert "keeps nothing; the expected time exceeds the wall time" in long
 
     # Unfetched FME model rejects impossible `--start` date BEFORE downloading anything
     with pytest.raises(ConfigError, match="No shipped initial condition"):
