@@ -786,6 +786,42 @@
       "notes": "DLESyMv0-ISCCP (Earth2Studio): the climate checkpoint Earth2Studio documents for 100-1000-year rollouts (Cresswell-Clay et al. 2024). It takes ISCCP-like OLR; with use_ttr the ERA5 OLR of the initial state is converted by the authors' day-of-year moment matching, then the model uses its own OLR. Deterministic; starts from ERA5 at --start; --steps counts 6-h steps."
     },
     {
+      "name": "dlesym-aimip",
+      "family": "e2s-dlesym",
+      "fme_module": "aimip.emu_job",
+      "calendar": "proleptic_gregorian",
+      "checkpoint": "${DATA}/models/dlesym-v0-isccp/atmos_model_0.mdlus",
+      "checkpoint_sha256": "a930bbfbcbe6a1e0c7d76b493bdff33b564d734f40a1f735b1709c0603ad0f5f",
+      "ic_files": [],
+      "forcing_sets": [
+        {
+          "name": "aimip",
+          "dir": "${DATA}/raw/zenodo-17065758",
+          "window": [
+            "1978-10-03T00:00:00",
+            "2024-12-28T00:00:00"
+          ]
+        }
+      ],
+      "required_files": [
+        "models/dlesym-v0-isccp/atmos_model_0.mdlus",
+        "models/dlesym-v0-isccp/config.yaml",
+        "models/dlesym-v0-isccp/era5_ttr_doy_stats_hpx64.nc",
+        "models/dlesym-v0-isccp/hpx_lat.npy",
+        "models/dlesym-v0-isccp/hpx_lon.npy",
+        "models/dlesym-v0-isccp/isccp_olr_doy_stats_hpx64.nc",
+        "models/dlesym-v0-isccp/land_sea_mask.npy",
+        "models/dlesym-v0-isccp/ocean_model_0.mdlus",
+        "models/dlesym-v0-isccp/precip_model_0.mdlus",
+        "models/dlesym-v0-isccp/topography.npy",
+        "raw/zenodo-17065758/ERA5-0.25deg-monthly-mean-forcing-1978-2024.nc"
+      ],
+      "timestep_hours": 6,
+      "stochastic": false,
+      "default_n_ensemble_per_ic": 1,
+      "notes": "DLESyM, AIMIP Phase 1 version (UW; Cresswell-Clay et al. 2025, DLESyM_aimip-2026): the dlesym-v0-isccp checkpoints with the SST prescribed from the AIMIP forcing (Zenodo 17065758) instead of predicted, linear in time between the monthly stamps, as the authors' ground-truth ocean. Deterministic; the authors' five members start from ERA5 at 1978-10-03 .. 07 00 UTC (one run per start); --steps counts 6-h steps, through 2024-12-31. Trained on 1983-2016, so it saw part of the AIMIP evaluation period."
+    },
+    {
       "name": "archesclimate-ssp",
       "family": "arches",
       "fme_module": "aimip.emu_job",

@@ -20,6 +20,8 @@ Model facts:
   @ 924b2d6 (the climate checkpoint Earth2Studio documents for 100-1000-year rollouts; `use_ttr=True` converts the
   initial ERA5 OLR to the model's ISCCP-like OLR). The V1 checkpoints were built for S2S forecasts. Atmosphere outputs every
   6 h, ocean every 48 h, on the 0.25 degree lat-lon grid; no forcing (insolation is computed).
+- dlesym-aimip: the v0-ISCCP checkpoints with the SST prescribed from the AIMIP forcing (Zenodo 17065758, linear in time
+  between its month-start stamps), as the authors' AIMIP runs (DLESyM_aimip-2026); emu_job.PrescribedSST.
 - ArchesClimate-SSP deterministic: HF gclyne/ArchesClimate @ 06a914d, data gclyne/ArchesClimate-data @ b9f5458.
   Monthly steps on 144x144 (1.25 x 2.5 degree), IPSL-CM6A-LR r1i1p1f1 scenario forcing. The authors' rollout starts from
   dataset item 0 (state 2015-02, previous state 2015-01), so the first output is March 2015.
@@ -79,6 +81,9 @@ from .emu_catalog import (
     AW_RESTART,
     AW_RESTART_FORMAT,
     AW_START,
+    AIMIP_SST_REL,
+    DLESYM_AIMIP_FORCING_END,
+    DLESYM_AIMIP_WINDOW,
     DLESYM_IC_WINDOW,
     SAMUDRA_WINDOW,
     aw_package_digest,
@@ -148,7 +153,11 @@ DLESYM_MODELS: dict[str, dict[str, Any]] = {
     "dlesym-v1.0": {"package": "models/dlesym-v1", "version": "v1.0", "flavor": "v1", "members": False},
     "dlesym-v1.1": {"package": "models/dlesym-v1", "version": "v1.1", "flavor": "v1", "members": True},
     "dlesym-v0-isccp": {"package": "models/dlesym-v0-isccp", "version": "v0", "flavor": "v0", "members": False},
+    # AIMIP version: the same checkpoints with the SST prescribed from the AIMIP forcing (emu_job.PrescribedSST)
+    "dlesym-aimip": {"package": "models/dlesym-v0-isccp", "version": "v0", "flavor": "v0", "members": False,
+                     "prescribed_sst": True},
 }
+DLESYM_HOURS_PER_ITERATION = 96   # one coupled step of the DLESyM checkpoints (16 atmosphere steps of 6 h)
 ARCHES_START = "2015-01-01T00:00:00"
 ARCHES_FIRST_OUTPUT_MONTH = (2015, 3)       # item 0 = state 2015-02 with previous state 2015-01 -> first output 2015-03
 ARCHES_MAX_STEPS = 1029                     # 1032 monthly states (2015-01..2100-12) minus previous state and offsets
@@ -368,7 +377,22 @@ def precheck_emu_request(
             raise ConfigError(f"Unknown DLESyM model {model.name!r}.")
         if norm_start[11:] not in ("00:00:00", "06:00:00", "12:00:00", "18:00:00"):
             raise ConfigError(f"--start for {model.name} must be at 00, 06, 12 or 18 UTC, got {norm_start}.")
-        if not (DLESYM_IC_WINDOW[0] <= norm_start <= DLESYM_IC_WINDOW[1]):
+        if info.get("prescribed_sst"):
+            if not (DLESYM_AIMIP_WINDOW[0] <= norm_start <= DLESYM_AIMIP_WINDOW[1]):
+                raise ConfigError(
+                    f"--start {norm_start} is outside the AIMIP SST forcing this model needs ({DLESYM_AIMIP_WINDOW[0]} "
+                    f".. {DLESYM_AIMIP_WINDOW[1]}; the authors' members start 1978-10-03 .. 1978-10-07 at 00 UTC)."
+                )
+            start_dt = datetime.datetime.fromisoformat(norm_start)
+            last = datetime.datetime.fromisoformat(DLESYM_AIMIP_FORCING_END)
+            max_steps = int((last - start_dt).total_seconds() // (3600 * DLESYM_HOURS_PER_ITERATION)) * (
+                DLESYM_HOURS_PER_ITERATION // 6)
+            if n_steps > max_steps:
+                raise ConfigError(
+                    f"--steps {n_steps} runs past the AIMIP SST forcing: at most {max_steps} 6-h steps from {norm_start} "
+                    f"(whole {DLESYM_HOURS_PER_ITERATION}-h model steps ending by {DLESYM_AIMIP_FORCING_END})."
+                )
+        elif not (DLESYM_IC_WINDOW[0] <= norm_start <= DLESYM_IC_WINDOW[1]):
             raise ConfigError(
                 f"--start {norm_start} is outside the ERA5 initial states this model can use "
                 f"({DLESYM_IC_WINDOW[0]} .. {DLESYM_IC_WINDOW[1]}, ARCO-ERA5)."
@@ -378,7 +402,10 @@ def precheck_emu_request(
                 f"{model.name} is deterministic: --members must be 1 (dlesym-v1.1 samples noise and supports members)."
             )
         if forcing_set_name is not None and forcing_set_name != model.forcing_sets[0].name:
-            raise ConfigError(f"{model.name} has no forcing sets to choose from (it is not forced; insolation is computed).")
+            raise ConfigError(
+                f"{model.name} has one forcing set only ({model.forcing_sets[0].name}: the AIMIP SST)."
+                if info.get("prescribed_sst") else
+                f"{model.name} has no forcing sets to choose from (it is not forced; insolation is computed).")
         scenario = model.forcing_sets[0].name
         start_dt = datetime.datetime.fromisoformat(norm_start)
         end_iso = (start_dt + datetime.timedelta(hours=6 * n_steps)).strftime("%Y-%m-%dT%H:%M:%S")
@@ -925,8 +952,11 @@ def prepare_emu_run(
         info = DLESYM_MODELS[model.name]
         package_dir = os.path.join(data_root, info["package"])
         job = {"family": model.family, "model": model.name, "version": info["version"], "flavor": info["flavor"],
-               "package_dir": package_dir}
+               "package_dir": package_dir,
+               "sst_forcing": os.path.join(data_root, AIMIP_SST_REL) if info.get("prescribed_sst") else None}
         ic_provenance = f"ERA5 state at {req['start']} from ARCO-ERA5 (gs://gcp-public-data-arco-era5), staged at prepare time"
+        if info.get("prescribed_sst"):
+            ic_provenance += "; SST prescribed from the AIMIP forcing (Zenodo 17065758) at every step"
     elif model.family == "geoarches":
         from .emu_catalog import AW_DIR, AW_FORCING_STATS, AW_GEN, AW_NORM_STATS, AW_RESIDUAL_STATS, AW_SEEDS
         from .geoarches_src import GEOARCHES_TREE_FILES, GEOARCHES_TREE_SHA256, code_dir, tree_digest
@@ -1458,7 +1488,12 @@ def _check_job_matches_manifest(job: dict[str, Any], manifest: dict[str, Any]) -
         if info is None or job.get("version") != info["version"] or job.get("flavor") != info["flavor"]:
             fail("version/flavor")
         pkg = str(job.get("package_dir", "")).rstrip("/") + "/"
-        if not job["checkpoint"].startswith(pkg) or not all(p.startswith(pkg) for p in pinned):
+        sst = job.get("sst_forcing")
+        if bool(info.get("prescribed_sst")) != bool(sst):
+            fail("sst_forcing")
+        if sst and (sst not in pinned or not sst.endswith("/" + AIMIP_SST_REL)):
+            fail("sst_forcing")
+        if not job["checkpoint"].startswith(pkg) or not all(p.startswith(pkg) for p in pinned if p != sst):
             fail("package_dir")
         if str(manifest.get("ic_path")) != os.path.join(job["out_dir"], "ic_era5.pt"):
             fail("initial state")
