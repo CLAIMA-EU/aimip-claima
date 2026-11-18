@@ -731,6 +731,53 @@ MODEL_CARDS: dict[str, dict[str, Any]] = {
         ],
         "bibtex": [MD15_BIBTEX, ERA5_BIBTEX],
     },
+    "md-1.5-aimip": {
+        "title": "Monthly Diffusion v0.9 at 1.5 deg, AIMIP Phase 1 version (UMD, MD-1p5.pth)",
+        "task": "amip",
+        "status": "runs",
+        "verified_on": (
+            "1x NVIDIA GH200 (aarch64 image; 5 members x 555 months, 1978-10 .. 2024-12, in 2 min, against the "
+            "authors' submission)"
+        ),
+        "licence": (
+            "Code & weights: MIT (kjhall01/monthly-diffusion@b077d3bc, Zenodo 21430292); "
+            "AIMIP forcing: CC-BY-4.0 (Zenodo 17065758); rebuilt ERA5 initial state and statistics: CC-BY-4.0"
+        ),
+        "upstream_url": "https://github.com/kjhall01/monthly-diffusion",
+        "data_urls": [
+            "https://doi.org/10.5281/zenodo.21430292",
+            "https://doi.org/10.5281/zenodo.17065758",
+        ],
+        "grid": "121 x 240 regular lat-lon (1.5 deg, lat -90..90, lon 0..358.5), 7 pressure levels (1000-50 hPa)",
+        "outputs": [
+            "TMP2m (K, 2 m air temperature)",
+            "surface_temperature (K, skin temperature)",
+            "sp (Pa), msl (Pa), d2m (K), u10, v10, mtpr (kg m-2 s-1), z500 (m2 s-2)",
+            "t, q, u, v on 1000/850/700/500/250/100/50 hPa (37 prognostic channels total)",
+        ],
+        "cost_note": MD15_COST_NOTE,
+        "limitations": (
+            "A reconstruction of the authors' AIMIP Phase 1 run (Hall & Molina, 2026, arXiv:2604.13481), not a copy: "
+            "`MD-1p5.pth` was saved by earlier, unpublished code, so the published classes are built with the settings "
+            "its tensors imply (every tensor loads); the 1985-2014 statistics and the ERA5 state of October 1978 are "
+            "rebuilt from ERA5 (DKRZ pool) with the authors' data pipeline. The job follows the authors' code path "
+            "exactly (the decoded first month matches their `forced_run` on the same inputs to 0.001 K), but the "
+            "decoded October 1978 is 0.43 K warmer in global-mean 2-m temperature than the authors' (287.44 vs "
+            "287.01 K). Five members over 1979-2024: global-mean 2-m temperature 287.28-287.31 K (authors: "
+            "287.32-287.33 K), trend 0.067-0.072 K per decade (0.058-0.069), seasonal cycle about 0.6 K larger "
+            "(January-April up to 0.45 K colder, July-September up to 0.4 K warmer). Authors' limits: trained on "
+            "1985-2014 (the AIMIP evaluation period overlaps training); QBO spin-up bias in the first ~5 years; "
+            "meridional temperature gradient too strong, weak ENSO teleconnections and NAO variability. Step 0 is "
+            "the encoder-decoder reconstruction of the initial state; each later step is one monthly state "
+            "(counts = 1). Members are batched noise draws (as the authors' `forced_run`); CUDA and CPU draw "
+            "different noise for the same seed. No +2 K / +4 K experiments yet."
+        ),
+        "examples": [
+            "aimip plan md-1.5-aimip --start 1978-10-01 --steps 555 --members 5 --name md15-aimip",
+            "aimip run md-1.5-aimip --start 1978-10-01 --steps 12 --members 2 --name md15-aimip-1y",
+        ],
+        "bibtex": [MD15_BIBTEX, ERA5_BIBTEX],
+    },
     "camulator": {
         "title": "CAMulator Atmosphere Emulator of CAM6 / ERA5-scaled (NCAR MILES/CREDIT, ckpt 69)",
         "task": "amip",

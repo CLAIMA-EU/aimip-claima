@@ -1217,7 +1217,7 @@ def test_md15_registered_in_default_catalog_card_and_cite(
     monkeypatch.setenv("AIMIP_DATA", str(empty_data))
 
     md_models = services.models(family="md")
-    assert [m["name"] for m in md_models] == ["md-1.5"]
+    assert [m["name"] for m in md_models] == ["md-1.5", "md-1.5-aimip"]
     emu_models = services.models(family="emu")
     assert "md-1.5" in {m["name"] for m in emu_models}
 

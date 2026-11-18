@@ -50,6 +50,9 @@ even --steps >= 2, replays OM4 window staged from OSN);
 md-1.5 (Monthly Diffusion v0.9 at 1.5 deg, stochastic monthly latent-diffusion atmosphere
 emulator, AIMIP monthly SST/SIC forcing 1978-10-01..2025-01-01, requires >= 10y spin-up,
 upstream publishes no initial state so pass --ic <era5_monthly.nc> or stage inputs/md-1.5/ic/);
+md-1.5-aimip (MD-1.5 as run for AIMIP Phase 1: the MD-1p5.pth checkpoint, 1985-2014 statistics and
+the October 1978 ERA5 state rebuilt from ERA5, conservatively regridded forcing; --start 1978-10-01,
+--steps 555 to December 2024, members are batched noise draws);
 camulator (CAM6 / ERA5-scaled atmosphere emulator, 6-hourly noleap steps, 69 published starts
 1980-01-01 and Jan 1 / Jul 1 of 1981-2014, forcing sets camulator-cyclic-1yr or
 camulator-branch-1980-2014);

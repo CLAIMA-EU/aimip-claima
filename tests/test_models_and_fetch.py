@@ -330,7 +330,7 @@ def test_registry_default_and_lock_contract_for_all_models(
 
     reg = load_registry(data_dir=str(data_dir))
     assert tuple(reg.keys()) == CANONICAL_MODELS
-    assert len(reg) == len(CANONICAL_MODELS) == 22
+    assert len(reg) == len(CANONICAL_MODELS) == 23
 
     expected_meta = {
         "ace2-era5": ("2026.5.1", "fme.ace.inference", "proleptic_gregorian", 6, False),
@@ -354,6 +354,7 @@ def test_registry_default_and_lock_contract_for_all_models(
         "archesweathergen": ("geoarches", 24, True, ["aimip"]),
         "samudra-om4": ("samudra", 120, False, ["om4-jra55do-replay"]),
         "md-1.5": ("md", 730, True, ["aimip-era5-monthly"]),
+        "md-1.5-aimip": ("md", 730, True, ["aimip-era5-monthly"]),
         "camulator": ("camulator", 6, False, ["camulator-cyclic-1yr", "camulator-branch-1980-2014"]),
         "cbottle-3d": ("cbottle", 24, True, ["pcmdi-amip-1-1-9-sst"]),
         "spherical-dyffusion": ("sdyff", 6, True, ["fv3gfs-repeating-climsst-1deg"]),
@@ -366,7 +367,11 @@ def test_registry_default_and_lock_contract_for_all_models(
         if name in expected_emu:
             fam, step, stoch, sets = expected_emu[name]
             assert (model.family, model.timestep_hours, model.stochastic) == (fam, step, stoch)
-            assert model.fme_module == "aimip.emu_job" and model.ic_files == () and not model.is_coupled
+            assert model.fme_module == "aimip.emu_job" and not model.is_coupled
+            if name == "md-1.5-aimip":   # the pinned, rebuilt ERA5 state of October 1978
+                assert [os.path.basename(p) for p in model.ic_files] == ["md15_era5_ic_1978-10-01_1p5.nc"]
+            else:
+                assert model.ic_files == ()
             assert [fs.name for fs in model.forcing_sets] == sets
             assert model.checkpoint.endswith((".mdlus", "model.ckpt", "checkpoint.ckpt", ".pt", ".checkpoint", ".ckpt"))
             for req_rel in model.required_files:

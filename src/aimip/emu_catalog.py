@@ -20,6 +20,7 @@ EMU_MODELS: tuple[str, ...] = (
     "archesweathergen",
     "samudra-om4",
     "md-1.5",
+    "md-1.5-aimip",
     "camulator",
     "cbottle-3d",
     "spherical-dyffusion",
@@ -37,6 +38,9 @@ DLESYM_AIMIP_FORCING_END = "2025-01-01T00:00:00"
 ARCHES_WINDOW: tuple[str, str] = ("2015-01-01T00:00:00", "2100-11-01T00:00:00")   # outputs March 2015 .. November 2100
 SAMUDRA_WINDOW: tuple[str, str] = ("1975-01-08T12:00:00", "2022-12-29T12:00:00")   # OM4 5-day Julian states (time[1] .. time[-1])
 MD15_WINDOW: tuple[str, str] = ("1978-10-01T00:00:00", "2025-01-01T00:00:00")   # 556 month-start-centred AIMIP forcing points
+# md-1.5-aimip (MD-1.5 as run for AIMIP Phase 1): the initial state of October 1978 and the 1985-2014 statistics
+# rebuilt from ERA5 (tools/md15), pinned from a Zenodo record (`zenodo:md-1.5-aimip-inputs` in emu_sources.json).
+MD15_AIMIP_INPUTS_DIR = "inputs/md-1.5-aimip"
 CAMULATOR_CYCLIC_WINDOW: tuple[str, str] = ("1980-01-01T00:00:00", "2100-12-31T18:00:00")
 CAMULATOR_BRANCH_WINDOW: tuple[str, str] = ("1980-01-01T00:00:00", "2014-12-31T18:00:00")
 CBOTTLE_WINDOW: tuple[str, str] = ("1940-01-01T00:00:00", "2022-12-16T00:00:00")
@@ -152,11 +156,15 @@ def _place(repo: str, path: str) -> tuple[str, tuple[str, ...]] | None:
     if repo == "zenodo:10791087":
         return f"inputs/spherical-dyffusion/fv3gfs-2021/{path}", ("spherical-dyffusion",)
     if repo == "github:kjhall01/monthly-diffusion":
+        if path.startswith("models/MD-1p5.pth/"):
+            return f"models/md-1.5/{path[len('models/'):]}", ("md-1.5-aimip",)
         if path.startswith("models/"):
             return f"models/md-1.5/{path[len('models/'):]}", ("md-1.5",)
         if path.startswith("scripts/"):
             return f"models/md-1.5/{path[len('scripts/'):]}", ("md-1.5",)
         return f"models/md-1.5/{path}", ("md-1.5",)
+    if repo == "zenodo:md-1.5-aimip-inputs":
+        return f"{MD15_AIMIP_INPUTS_DIR}/{path}", ("md-1.5-aimip",)
     return None
 
 
@@ -213,7 +221,7 @@ def required_files(model: str) -> list[str]:
     rels = [a["rel_path"] for a in artifacts() if model in a["models"]]
     if model == "dlesym-aimip":
         rels.append(AIMIP_SST_REL)
-    elif model == "md-1.5":
+    elif model in ("md-1.5", "md-1.5-aimip"):
         return [
             AIMIP_SST_REL,
             *rels,
@@ -347,6 +355,25 @@ def registry_entries(p: str) -> list[dict[str, Any]]:
                  "SST/SIC (Zenodo 17065758, CC-BY-4.0, 556 month-start-centred points 1978-10-01 .. 2025-01-01; "
                  "training 1985-2014, independent test 2015-2022; requires >= 10-year spin-up). Upstream publishes "
                  "no initial state: pass --ic <era5_monthly_state.nc> or stage inputs/md-1.5/ic/ic_<YYYY-MM-DD>.nc.",
+    })
+    mdackpt = "models/md-1.5/MD-1p5.pth/weights.pt"
+    out.append({
+        "name": "md-1.5-aimip", "family": "md", "fme_module": "aimip.emu_job", "calendar": "proleptic_gregorian",
+        "checkpoint": f"{p}/{mdackpt}", "checkpoint_sha256": _sha(mdackpt),
+        "ic_files": [f"{p}/{MD15_AIMIP_INPUTS_DIR}/md15_era5_ic_1978-10-01_1p5.nc"],
+        "forcing_sets": [
+            {"name": "aimip-era5-monthly", "dir": f"{p}/raw/zenodo-17065758",
+             "window": list(MD15_WINDOW)},
+        ],
+        "required_files": required_files("md-1.5-aimip"), "timestep_hours": 730, "stochastic": True,
+        "default_n_ensemble_per_ic": 1,
+        "notes": "MD-1.5 as run for AIMIP Phase 1 (Hall & Molina 2026, arXiv:2604.13481; kjhall01/monthly-diffusion"
+                 "@b077d3bc MIT): MD-1p5.pth, the checkpoint the authors' run_aimip_runs.py loads, built with the "
+                 "settings its tensors imply (the published code cannot read its config); 1985-2014 normalization "
+                 "statistics and the ERA5 state of October 1978 rebuilt from ERA5 (not published; tools/md15); AIMIP "
+                 "forcing regridded conservatively as in the authors' notebooks. --start 1978-10-01 (the AIMIP start); "
+                 "--steps counts output months including the decoded initial state (555 = through December 2024); "
+                 "members are batched draws of the diffusion noise, as in the authors' forced_run.",
     })
     cckpt = "models/camulator/checkpoint.pt00069.pt"
     out.append({

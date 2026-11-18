@@ -84,6 +84,44 @@ MD15_STATS_SHA256 = (
     "443e684601519cb4c29e20e2e00dce359e7e4b8f476a8af2b3ad8f623b2cafc4"
 )
 
+# `md-1.5-aimip`: MD-1.5 as the authors ran it for AIMIP Phase 1. Their `scripts/run_aimip_runs.py` loads
+# `models/MD-1p5.pth` (same archive), whose `config.pkl` was written by earlier, unpublished code: the published
+# `CVAE` takes the settings below, read off the checkpoint's tensor shapes, and every tensor loads (`strict=True`
+# after dropping two loss buffers). The run script normalizes with 1985-2014 statistics (the training period) and
+# starts from ERA5 October 1978; neither file is published, so both are rebuilt from ERA5 with the authors' data
+# pipeline (`tools/md15/make_inputs.py`) and pinned below. The forcing is regridded as the authors' notebooks do
+# (first-order conservative, normalized by the valid fraction), not subsampled.
+MD15_AIMIP_MODEL = "md-1.5-aimip"
+MD15_AIMIP_CONFIG_REL_PATH = "models/md-1.5/MD-1p5.pth/config.pkl"
+MD15_AIMIP_CONFIG_SIZE = 582_489
+MD15_AIMIP_CONFIG_SHA256 = "c652426f3f425221b9105db42e34848a6f51e7da552c3c2362f0476e8328d29b"
+MD15_AIMIP_WEIGHTS_REL_PATH = "models/md-1.5/MD-1p5.pth/weights.pt"
+MD15_AIMIP_WEIGHTS_SIZE = 28_998_624
+MD15_AIMIP_WEIGHTS_SHA256 = "7a217274bcb83d2d262412ccf21358d45dac4d4bac6fdb37c42da7f7339e2da2"
+MD15_AIMIP_INPUTS_RECORD = "PENDING"
+MD15_AIMIP_IC_REL_PATH = "inputs/md-1.5-aimip/md15_era5_ic_1978-10-01_1p5.nc"
+MD15_AIMIP_STATS_REL_PATH = "inputs/md-1.5-aimip/md15_variable_statistics_198501-201412.json"
+MD15_AIMIP_START = "1978-10-01T00:00:00"
+MD15_AIMIP_ARCH: dict[str, Any] = {
+    "seasonality_basis": 3,
+    "encoder_sfno_embed_dim": 128, "encoder_rank": 64, "encoder_operator_type": "spectral_fc",
+    "encoder_conditioning_operator_type": "driscoll-healy", "encoder_conditioning_rank": 4,
+    "decoder_sfno_embed_dim": 1024, "decoder_rank": 256, "decoder_operator_type": "spectral_fc",
+    "decoder_conditioning_operator_type": "spectral_fc", "decoder_conditioning_rank": 4,
+    "diffusion_sfno_embed_dim": 512, "diffusion_rank": 256, "diffusion_operator_type": "spectral_fc",
+    "diffusion_conditioning_operator_type": "driscoll-healy", "diffusion_conditioning_rank": 4,
+}
+# `config.pkl` entries the published `CVAE` takes unchanged from the old config.
+MD15_AIMIP_CONFIG_KEYS: tuple[str, ...] = (
+    "forcing_dim", "data_dimensions", "activation", "n_statics", "statics", "hidden_channels",
+    "squeeze_factors", "variable_names", "seasonality_dim",
+)
+# Loss buffers of the old code, not used by the published classes.
+MD15_AIMIP_UNUSED_WEIGHTS: tuple[str, ...] = (
+    "latent_spectral_l2loss_sphere.quad_weights",
+    "phys_spectral_l2loss_sphere.quad_weights",
+)
+
 MD15_FORCING_WINDOW: tuple[str, str] = ("1978-10-01T00:00:00", "2025-01-01T00:00:00")
 MD15_FORCING_STEPS_TOTAL = 556
 MD15_TRAIN_PERIOD: tuple[str, str] = ("1985-01-01", "2014-12-01")
@@ -163,6 +201,27 @@ MD15_T2M_BAND_K: tuple[float, float] = (200.0, 330.0)
 EXIT_UNSTABLE = 5
 
 _EPO_1970 = datetime.date(1970, 1, 1)
+
+
+def md15_variant(model_name: str) -> dict[str, Any]:
+    """Checkpoint, statistics, architecture and forcing regridding of `md-1.5` or `md-1.5-aimip`."""
+    if model_name == MD15_AIMIP_MODEL:
+        return {
+            "config_rel": MD15_AIMIP_CONFIG_REL_PATH,
+            "weights_rel": MD15_AIMIP_WEIGHTS_REL_PATH,
+            "stats_rel": MD15_AIMIP_STATS_REL_PATH,
+            "arch": dict(MD15_AIMIP_ARCH),
+            "forcing_regrid": "conservative",
+            "published_starts": (MD15_AIMIP_START,),
+        }
+    return {
+        "config_rel": MD15_CONFIG_REL_PATH,
+        "weights_rel": MD15_WEIGHTS_REL_PATH,
+        "stats_rel": MD15_STATS_REL_PATH,
+        "arch": None,
+        "forcing_regrid": "coincident",
+        "published_starts": MD15_PUBLISHED_STARTS,
+    }
 
 
 def md15_step_months(year: int, month: int, n_months: int) -> tuple[int, int]:
@@ -352,7 +411,19 @@ def extract_and_verify_md15_archive(
             safe_model_dir = validate_safe_path(model_target_dir, label="MD-1.5 model directory")
             ckpt_out = os.path.join(safe_model_dir, "MD-1p5-latest.pth")
             makedirs_no_group_other_write(ckpt_out)
+            aimip_ckpt_out = os.path.join(safe_model_dir, "MD-1p5.pth")
+            makedirs_no_group_other_write(aimip_ckpt_out)
             copies = (
+                (
+                    os.path.join(stage_root, "models", "MD-1p5.pth", "config.pkl"),
+                    os.path.join(aimip_ckpt_out, "config.pkl"),
+                    MD15_AIMIP_CONFIG_SHA256,
+                ),
+                (
+                    os.path.join(stage_root, "models", "MD-1p5.pth", "weights.pt"),
+                    os.path.join(aimip_ckpt_out, "weights.pt"),
+                    MD15_AIMIP_WEIGHTS_SHA256,
+                ),
                 (
                     os.path.join(stage_root, "models", "MD-1p5-latest.pth", "config.pkl"),
                     os.path.join(ckpt_out, "config.pkl"),
@@ -528,8 +599,13 @@ def load_md15_cvae(
     device: Any,
     md_module: Any,
     expected_variable_names: Sequence[str] | None = MD15_CONFIG_VARIABLE_NAMES,
+    arch: Mapping[str, Any] | None = None,
 ) -> tuple[Any, dict[str, Any]]:
-    """Verify `config.pkl` and `weights.pt` on `O_NOFOLLOW` fds before restricted unpickling and `strict=True` load."""
+    """Verify `config.pkl` and `weights.pt` on `O_NOFOLLOW` fds before restricted unpickling and `strict=True` load.
+
+    With *arch* (`md-1.5-aimip`), the `CVAE` is built from `MD15_AIMIP_CONFIG_KEYS` of the old config plus *arch*,
+    and the old code's loss buffers `MD15_AIMIP_UNUSED_WEIGHTS` are dropped before the strict load.
+    """
     import torch
 
     safe_dir = validate_safe_path(ckpt_dir, label="MD-1.5 checkpoint directory")
@@ -576,7 +652,14 @@ def load_md15_cvae(
         if not bool(torch.isfinite(statics_raw).all()):
             raise ValidationError("MD-1.5 config.pkl `statics` tensor contains non-finite values.")
 
-    cfg_runtime = dict(cfg)
+    if arch is not None:
+        missing_cfg = [k for k in MD15_AIMIP_CONFIG_KEYS if k not in cfg]
+        if missing_cfg:
+            raise ValidationError(f"MD-1.5 config.pkl is missing {missing_cfg} needed with the inferred architecture.")
+        cfg_runtime = {k: cfg[k] for k in MD15_AIMIP_CONFIG_KEYS}
+        cfg_runtime.update(arch, loading=True)
+    else:
+        cfg_runtime = dict(cfg)
     cfg_runtime["device"] = device
     if isinstance(cfg_runtime.get("statics"), torch.Tensor):
         cfg_runtime["statics"] = cfg_runtime["statics"].to(device=device, dtype=torch.float32)
@@ -599,6 +682,11 @@ def load_md15_cvae(
         weights_only=True,
         label="MD-1.5 weights.pt",
     )
+    if arch is not None:
+        absent = [k for k in MD15_AIMIP_UNUSED_WEIGHTS if k not in state]
+        if absent:
+            raise ValidationError(f"MD-1.5 weights.pt lacks the expected old-code buffers {absent}.")
+        state = {k: v for k, v in state.items() if k not in MD15_AIMIP_UNUSED_WEIGHTS}
     model.load_state_dict(state, strict=True)
     model.eval()
     return model, cfg
@@ -905,6 +993,93 @@ def _decode_nc_time_ym_strings(nc_ds: Any) -> list[str]:
     return [str(v)[:10] for v in raw_vals]
 
 
+MD15_FORCING_REGRIDS: tuple[str, ...] = ("coincident", "conservative")
+
+
+def _md15_cell_edges(centers: Any, clip: tuple[float, float]) -> Any:
+    """The authors' `edges_from_centers` (data-pipeline notebooks): midpoints, half a cell beyond the ends, clipped."""
+    import numpy as np
+
+    c = np.asarray(centers, dtype=np.float64)
+    d = np.diff(c)
+    edges = np.concatenate(([c[0] - d[0] / 2], (c[:-1] + c[1:]) / 2, [c[-1] + d[0] / 2]))
+    return np.clip(edges, *clip)
+
+
+def _md15_overlap(dst_edges: Any, src_edges: Any, cumulative: Any) -> Any:
+    """Overlap weights `(n_dst, n_src)` of 1-D cells; *cumulative* maps a coordinate to its cumulative measure."""
+    import numpy as np
+
+    lo = np.maximum(dst_edges[:-1, None], src_edges[None, :-1])
+    hi = np.minimum(dst_edges[1:, None], src_edges[None, 1:])
+    return np.where(hi > lo, cumulative(hi) - cumulative(lo), 0.0)
+
+
+def _md15_conservative(x: Any, valid: Any, wlat: Any, wlon: Any) -> Any:
+    """Valid-fraction-normalized conservative regrid; like ESMF's sparse weights, a NaN inside *valid* makes only
+    the destination cells it overlaps NaN (a dense product would spread it everywhere, since 0 * NaN = NaN)."""
+    import numpy as np
+
+    ok = (valid > 0) & np.isfinite(x)
+    num = wlat @ np.where(ok, x, 0.0) @ wlon.T
+    den = wlat @ valid @ wlon.T
+    out = np.where(den > 0, num / np.where(den > 0, den, 1.0), np.nan)
+    bad = (valid > 0) & ~np.isfinite(x)
+    if bad.any():
+        out[(wlat @ bad.astype(np.float64) @ wlon.T) > 0] = np.nan
+    return out
+
+
+def conservative_aimip_forcing_1p5(ds: Any, lat_name: str, lon_name: str) -> dict[str, Any]:
+    """AIMIP SST, sea-ice cover and land-sea mask (0.25 deg) on `121 x 240` as the authors' `regrid_forcings.ipynb`:
+    xESMF `conservative_normed` with the first month's mask for SST and sea ice, cell edges from
+    `edges_from_centers`. On regular grids the weights are separable (sin(latitude) band times longitude overlap).
+    Destination cells that no ocean cell overlaps are NaN."""
+    import numpy as np
+
+    for name in ("sea_surface_temperature", "sea_ice_cover", "land_sea_mask"):
+        if name not in ds.variables:
+            raise ValidationError(f"Conservative MD-1.5 forcing regridding needs `{name}` in the forcing file.")
+    src_lat = np.asarray(ds.variables[lat_name][:], dtype=np.float64)
+    src_lon = np.asarray(ds.variables[lon_name][:], dtype=np.float64)
+    flip = bool(src_lat[0] > src_lat[-1])
+    if flip:
+        src_lat = src_lat[::-1]
+    lat_out = np.linspace(-90.0, 90.0, MD15_LAT_COUNT)
+    lon_out = np.arange(MD15_LON_COUNT) * 1.5
+    wlat = _md15_overlap(
+        _md15_cell_edges(lat_out, (-90.0, 90.0)),
+        _md15_cell_edges(src_lat, (-90.0, 90.0)),
+        lambda v: np.sin(np.deg2rad(v)),
+    )
+    wlon = _md15_overlap(
+        _md15_cell_edges(lon_out, (0.0, 360.0)), _md15_cell_edges(src_lon, (0.0, 360.0)), lambda v: v
+    )
+
+    def _raw(name: str, i: int) -> Any:
+        var = ds.variables[name]
+        x = np.ma.filled(var[i] if var.ndim == 3 else var[...], np.nan).astype(np.float64)
+        return x[::-1] if flip else x
+
+    n_total = int(ds.variables["sea_surface_temperature"].shape[0])
+    out = {}
+    for name in ("sea_surface_temperature", "sea_ice_cover"):
+        valid = np.isfinite(_raw(name, 0)).astype(np.float64)
+        series = np.empty((n_total, MD15_LAT_COUNT, MD15_LON_COUNT), dtype=np.float32)
+        for i in range(n_total):
+            series[i] = _md15_conservative(_raw(name, i), valid, wlat, wlon)
+        out[name] = series
+    lsm0 = _raw("land_sea_mask", 0)
+    lsm = _md15_conservative(lsm0, np.isfinite(lsm0).astype(np.float64), wlat, wlon).astype(np.float32)
+    return {
+        "sst": out["sea_surface_temperature"],
+        "sic": out["sea_ice_cover"],
+        "lsm": np.broadcast_to(lsm[np.newaxis], (n_total, MD15_LAT_COUNT, MD15_LON_COUNT)).copy(),
+        "target_lat": lat_out,
+        "target_lon": lon_out,
+    }
+
+
 def subsample_and_normalize_aimip_forcing(
     forcing_nc_path: str,
     *,
@@ -913,9 +1088,12 @@ def subsample_and_normalize_aimip_forcing(
     train_period: tuple[str, str] = MD15_TRAIN_PERIOD,
     sst_offset_k: float = 0.0,
     allow_short_train_fallback: bool = False,
+    regrid: str = "coincident",
 ) -> dict[str, Any]:
-    """Subsample `ERA5-0.25deg-monthly-mean-forcing-1978-2024.nc` onto `121 x 240` and standardize per `run_aimip_runs.py`.
+    """Put `ERA5-0.25deg-monthly-mean-forcing-1978-2024.nc` on `121 x 240` and standardize per `run_aimip_runs.py`.
 
+    `regrid="coincident"` subsamples the coinciding 0.25 deg points (`md-1.5`); `"conservative"` regrids as the
+    authors' notebooks (`md-1.5-aimip`, `conservative_aimip_forcing_1p5`).
     Preserves the exact index pairing between forcing timestamp and predicted month, and reproduces
     `md.preprocess_by_variables(..., group_levels=False)` over `1985-01-01 .. 2014-12-01` (including
     ocean-only NaN masking on `SSTKSFC` and `da.where(da > 1e-3, 1e-3)` logit scaling on `CISFC`).
@@ -924,6 +1102,8 @@ def subsample_and_normalize_aimip_forcing(
     import numpy as np
     from scipy.special import logit
 
+    if regrid not in MD15_FORCING_REGRIDS:
+        raise ValidationError(f"Unknown MD-1.5 forcing regridding {regrid!r}; choose one of {MD15_FORCING_REGRIDS}.")
     safe_nc = validate_safe_path(forcing_nc_path, label="AIMIP monthly forcing NetCDF")
     if not os.path.isfile(safe_nc) or os.path.islink(safe_nc):
         raise ValidationError(f"AIMIP monthly forcing NetCDF is missing or symlinked: {safe_nc}")
@@ -934,12 +1114,19 @@ def subsample_and_normalize_aimip_forcing(
         if not lat_name or not lon_name:
             raise ValidationError(f"Forcing NetCDF {safe_nc} is missing latitude/longitude coordinates.")
 
-        grid_map = find_coincident_1p5_indices(ds.variables[lat_name][:], ds.variables[lon_name][:])
-        lat_idx = grid_map["lat_indices"]
-        lon_idx = grid_map["lon_indices"]
         date_strs = _decode_nc_time_ym_strings(ds)
+        if regrid == "conservative":
+            cons = conservative_aimip_forcing_1p5(ds, lat_name, lon_name)
+            grid_map = {"target_lat": cons["target_lat"], "target_lon": cons["target_lon"]}
+            sst, sic, lsm = cons["sst"], cons["sic"], cons["lsm"]
+        else:
+            grid_map = find_coincident_1p5_indices(ds.variables[lat_name][:], ds.variables[lon_name][:])
+        lat_idx = grid_map.get("lat_indices")
+        lon_idx = grid_map.get("lon_indices")
 
-        if "sea_surface_temperature" in ds.variables:
+        if regrid == "conservative":
+            pass
+        elif "sea_surface_temperature" in ds.variables:
             sst = _slice_2d_or_3d_coincident(ds.variables["sea_surface_temperature"], lat_idx, lon_idx)
             sic = _slice_2d_or_3d_coincident(ds.variables["sea_ice_cover"], lat_idx, lon_idx)
             lsm = _slice_2d_or_3d_coincident(ds.variables["land_sea_mask"], lat_idx, lon_idx)
@@ -1276,6 +1463,7 @@ def _write_md15_outputs(
     lat: Any,
     lon: Any,
     seed: int,
+    model_name: str = "md-1.5",
 ) -> dict[str, str]:
     """Write `<out_dir>/monthly_mean_predictions.nc` (all 37 channels, `counts=1`) and `<out_dir>/restart.nc`."""
     import netCDF4
@@ -1295,7 +1483,7 @@ def _write_md15_outputs(
     tmp_monthly = f"{monthly_nc}.tmp-{os.getpid()}"
     with netCDF4.Dataset(tmp_monthly, "w", format="NETCDF4") as ds:
         ds.Conventions = "CF-1.8"
-        ds.model = "md-1.5"
+        ds.model = model_name
         ds.upstream_commit = MD15_COMMIT
         ds.monthly_representation = MD15_MONTHLY_REPRESENTATION
         ds.forcing_time_convention = (
@@ -1352,7 +1540,7 @@ def _write_md15_outputs(
     tmp_restart = f"{restart_nc}.tmp-{os.getpid()}"
     with netCDF4.Dataset(tmp_restart, "w", format="NETCDF4") as rds:
         rds.Conventions = "CF-1.8"
-        rds.model = "md-1.5"
+        rds.model = model_name
         rds.upstream_commit = MD15_COMMIT
         rds.restart_timestamp = f"{ly:04d}-{lm:02d}-01T00:00:00"
 
@@ -1394,6 +1582,7 @@ def run_md15(out_dir: str, job: Mapping[str, Any]) -> dict[str, Any]:
     members = int(job["members"])
     seed = int(job["seed"])
     start_iso = str(job["start"])
+    model_name = str(job.get("model") or "md-1.5")
     requested_device = str(job.get("device", "cuda:0"))
     device = select_md15_device(requested_device, torch.cuda.is_available())
 
@@ -1453,6 +1642,7 @@ def run_md15(out_dir: str, job: Mapping[str, Any]) -> dict[str, Any]:
             steps=steps,
             sst_offset_k=float(job.get("sst_offset_k", 0.0)),
             allow_short_train_fallback=bool(job.get("allow_short_train_fallback", False)),
+            regrid=str(job.get("forcing_regrid", "coincident")),
         )
 
         ic_path = str(job["ic_file"])
@@ -1479,6 +1669,7 @@ def run_md15(out_dir: str, job: Mapping[str, Any]) -> dict[str, Any]:
             device=device,
             md_module=md_mod,
             expected_variable_names=job.get("expected_variable_names", MD15_CONFIG_VARIABLE_NAMES),
+            arch=job.get("arch"),
         )
 
         lat = forcing_info["target_lat"]
@@ -1513,7 +1704,7 @@ def run_md15(out_dir: str, job: Mapping[str, Any]) -> dict[str, Any]:
 
         t_run0 = time.time()
         _log(
-            f"md-1.5 rollout start={start_iso[:10]} steps={steps} members={members} seed={seed} device={device}"
+            f"{model_name} rollout start={start_iso[:10]} steps={steps} members={members} seed={seed} device={device}"
         )
         with torch.no_grad():
             f0 = forcings_t[0].unsqueeze(0).expand(members, -1, -1, -1)
@@ -1543,8 +1734,9 @@ def run_md15(out_dir: str, job: Mapping[str, Any]) -> dict[str, Any]:
             lat=lat,
             lon=lon,
             seed=seed,
+            model_name=model_name,
         )
-        _log(f"md-1.5 rollout completed in {wall_infer:.2f}s -> {paths['monthly_nc']}")
+        _log(f"{model_name} rollout completed in {wall_infer:.2f}s -> {paths['monthly_nc']}")
 
         return {
             "months_written": {"atmosphere": steps},
@@ -1553,6 +1745,7 @@ def run_md15(out_dir: str, job: Mapping[str, Any]) -> dict[str, Any]:
             "members": members,
             "seed": seed,
             "monthly_representation": MD15_MONTHLY_REPRESENTATION,
+            "forcing_regrid": str(job.get("forcing_regrid", "coincident")),
             "spinup_warning": (
                 steps < 120
                 and "Requires >= 10-year (120-month) spin-up (Hall & Molina, 2026); early years have strong QBO spin-up bias."

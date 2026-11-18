@@ -141,6 +141,11 @@ MODEL_IC_PROVENANCE: dict[str, str] = {
         "1978-10-01 authors' AIMIP start, 1979-01-01, 1985-01-01, 2015-01-01; ERA5 from "
         "Copernicus/ECMWF Climate Data Store after 2025-07-02 is CC-BY-4.0)."
     ),
+    "md-1.5-aimip": (
+        "ERA5 monthly-mean state of October 1978 on the 1.5 deg grid, rebuilt from ERA5 with the authors' data "
+        "pipeline (they did not publish theirs; aimip tools/md15), pinned as "
+        "inputs/md-1.5-aimip/md15_era5_ic_1978-10-01_1p5.nc; or pass `--ic <path.nc>`."
+    ),
     "camulator": (
         "69 published noleap initial-condition tensors (`init_camulator_condition_tensor_<date>T00Z.pth`: "
         "1980-01-01, plus Jan 1 and Jul 1 of 1981-2014) from hf://willychap/camulator@01afc272 "

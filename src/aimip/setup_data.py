@@ -79,6 +79,7 @@ CANONICAL_MODELS: tuple[str, ...] = (
     "archesweathergen",
     "samudra-om4",
     "md-1.5",
+    "md-1.5-aimip",
     "camulator",
     "cbottle-3d",
     "spherical-dyffusion",
@@ -491,8 +492,8 @@ def build_artifact_catalog(
         ArtifactSpec(
             rel_path=ZENODO_AIMIP_REL_PATH,
             role="raw",
-            models_output=("dlesym-aimip", "md-1.5"),      # read directly by dlesym-aimip and md-1.5
-            models_needed=oos_models + ("dlesym-aimip", "md-1.5"),
+            models_output=("dlesym-aimip", "md-1.5", "md-1.5-aimip"),   # read directly by these models
+            models_needed=oos_models + ("dlesym-aimip", "md-1.5", "md-1.5-aimip"),
             source_kind="zenodo",
             zenodo_record=ZENODO_AIMIP_RECORD,
             zenodo_file=ZENODO_AIMIP_FILENAME,
@@ -1674,6 +1675,8 @@ def ensure_md15_code_and_weights(
             (_md15_mod.MD15_CONFIG_REL_PATH, _md15_mod.MD15_CONFIG_SHA256),
             (_md15_mod.MD15_WEIGHTS_REL_PATH, _md15_mod.MD15_WEIGHTS_SHA256),
             (_md15_mod.MD15_STATS_REL_PATH, _md15_mod.MD15_STATS_SHA256),
+            (_md15_mod.MD15_AIMIP_CONFIG_REL_PATH, _md15_mod.MD15_AIMIP_CONFIG_SHA256),
+            (_md15_mod.MD15_AIMIP_WEIGHTS_REL_PATH, _md15_mod.MD15_AIMIP_WEIGHTS_SHA256),
         )
     )
     override_md15 = os.environ.get("AIMIP_MD15_CODE")
@@ -2589,7 +2592,7 @@ def run_setup(
         if "archesclimate-ssp" in selected and arches_code_fetcher is None:
             verify_arches_code_dir(resolved_dest)
         if (
-            "md-1.5" in selected
+            {"md-1.5", "md-1.5-aimip"} & set(selected)
             and md15_code_fetcher is None
             and not os.environ.get("AIMIP_MD15_CODE")
         ):
@@ -2675,14 +2678,15 @@ def run_setup(
 
         md15_code_info: dict[str, Any] | None = None
         md15_code_err: str | None = None
-        if "md-1.5" in wanted:
+        md15_wanted = tuple(m for m in ("md-1.5", "md-1.5-aimip") if m in wanted)
+        if md15_wanted:
             md15_fn = md15_code_fetcher or ensure_md15_code_and_weights
             try:
                 md15_code_info = md15_fn(resolved_dest, progress_stream=progress_stream)
             except (ValidationError, ConfigError) as exc:
                 if only_download:
                     if os.path.isfile(os.path.join(resolved_dest, "registry.json")):
-                        _write_data_registry(resolved_dest, (), failed_models=("md-1.5",))
+                        _write_data_registry(resolved_dest, (), failed_models=md15_wanted)
                     raise
                 md15_code_err = str(exc)
 
@@ -3050,8 +3054,10 @@ def run_setup(
         model_failures: dict[str, list[str]] = {m: [] for m in selected}
         if arches_code_err is not None and "archesclimate-ssp" in model_failures:
             model_failures["archesclimate-ssp"].append(arches_code_err)
-        if md15_code_err is not None and "md-1.5" in model_failures:
-            model_failures["md-1.5"].append(md15_code_err)
+        if md15_code_err is not None:
+            for md15_name in ("md-1.5", "md-1.5-aimip"):
+                if md15_name in model_failures:
+                    model_failures[md15_name].append(md15_code_err)
         if camulator_code_err is not None and "camulator" in model_failures:
             model_failures["camulator"].append(camulator_code_err)
         if sdyff_code_err is not None and "spherical-dyffusion" in model_failures:
