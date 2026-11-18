@@ -821,18 +821,11 @@ class EmuFamilyAdapter:
         *,
         data_dir: str | None = None,
     ) -> dict[str, Any]:
-        if spec.outputs:
-            resolve_outputs(
-                spec.outputs,
-                model_name=model.name,
-                family=model.family,
-                is_coupled=bool(model.is_coupled),
-                timestep_hours=int(model.timestep_hours),
-                start_iso=spec.start,
-                end_iso=spec.start,
-                steps=1,
-                calendar=model.calendar,
-            )
+        if spec.outputs and model.family not in ("e2s-dlesym", "geoarches"):
+            # refuse before any other check, with the family named
+            resolve_outputs(spec.outputs, model_name=model.name, family=model.family, is_coupled=False,
+                            timestep_hours=int(model.timestep_hours), start_iso=spec.start, end_iso=spec.start,
+                            steps=1, calendar=model.calendar)
         norm_start = validate_iso_timestamp(spec.start, label="--start")
         steps, end_iso = resolve_horizon(
             start_iso=norm_start,
@@ -1011,11 +1004,23 @@ class EmuFamilyAdapter:
             if model.family == "md"
             else True
         )
+        resolved_outputs = resolve_outputs(
+            spec.outputs,
+            model_name=model.name,
+            family=model.family,
+            is_coupled=False,
+            timestep_hours=int(model.timestep_hours),
+            start_iso=norm_start,
+            end_iso=end_iso,
+            steps=int(steps),
+            calendar=model.calendar,
+        )
         return {
             "norm_start": norm_start,
             "end_time": end_iso,
             "steps": steps,
             "calendar": model.calendar,
+            "outputs": resolved_outputs,
             "members": total_members,
             "seed": seed,
             "forcing_set": selected_fs,
@@ -1420,6 +1425,7 @@ class EmuFamilyAdapter:
             out_dir=out_dir,
             save_monthly=spec.monthly,
             save_prediction=spec.prediction,
+            outputs=validated.get("outputs") or [],
             mode=manifest_mode,
             slurm_opts=slurm_opts,
             site_config=site_config,

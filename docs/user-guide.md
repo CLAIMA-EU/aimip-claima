@@ -198,8 +198,8 @@ to run at once on the current machine.
 
 ### Choosing what is written
 
-Every run writes the monthly means of all its variables (`monthly_mean_predictions.nc`). For the ACE models you can
-add files with another frequency, only the variables you need, and only part of the run, with `--output`. Repeat it
+Every run writes the monthly means of all its variables (`monthly_mean_predictions.nc`). For the ACE, DLESyM and
+ArchesWeather models you can add files with another frequency, only the variables you need, and only part of the run, with `--output`. Repeat it
 for several files:
 
 ```bash
@@ -248,8 +248,20 @@ outputs:
   - step:TMP2m@1979-01-01..1979-02-01
 ```
 
-The other models (DLESyM, ArchesWeather, the coupled SamudrACE models and the rest) write monthly means only for now,
-and `--output` works on the command line and in settings files, not yet in the web interface, MCP or the assistant.
+For DLESyM and ArchesWeather:
+
+- **DLESyM** (`dlesym-*`): the atmosphere variables (`t2m`, `z500`, `tcwv`, … as in its monthly file), every 6 hours
+  or as means, on the 0.25° output grid. These files are large: one variable at every step is about 6 GB per member
+  and year before compression, its daily means about 1.5 GB (the plan card shows the size). The ocean and the precipitation stay
+  monthly.
+- **ArchesWeather and ArchesWeatherGen**: each step is the daily-mean state of one day, stamped with its date (00
+  UTC). Periods start on the first output day, so `step:tas@1979-01-01..1979-02-01` gives the 31 days of January,
+  and `5d` means cover 1–5 October, 6–10 October, … for a run from 1978-09-30. The pressure-level variables (`ta`,
+  `zg`, `ua`, `va`, `hus`, `wap`) keep their 13 levels. aimip-claima checks the variable names when it plans the run.
+
+The other models (the coupled SamudrACE models, Samudra-OM4, MD-1.5, CAMulator, cBottle-3d, Spherical DYffusion)
+write monthly means only for now, and `--output` works on the command line and in settings files, not yet in the web
+interface, MCP or the assistant.
 `--prediction` still writes every step of all variables (about 6 GB per member and year for ACE), and
 `--no-monthly` switches the monthly file off.
 

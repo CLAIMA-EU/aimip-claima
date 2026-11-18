@@ -361,12 +361,15 @@ def render_plan_card(plan: ResolvedPlan, *, is_tty: bool = False) -> str:
         outputs_line = "restart state only (restart.nc)"
     extra_outputs = list((plan.canonical_payload or {}).get("outputs") or [])
     if extra_outputs:
-        from ..outputs import describe_outputs
+        from ..outputs import describe_outputs, output_grid
         from .metadata import MODEL_CARDS
 
-        grid_m = re.match(r"\s*(\d+)\s*x\s*(\d+)", str((MODEL_CARDS.get(plan.model) or {}).get("grid") or ""))
-        grid_cells = int(grid_m.group(1)) * int(grid_m.group(2)) if grid_m else None
-        extra_lines = describe_outputs(extra_outputs, members=int(plan.members or 1), grid_cells=grid_cells)
+        grid_cells, level_names, n_levels = output_grid(plan.family)
+        if grid_cells is None:
+            grid_m = re.match(r"\s*(\d+)\s*x\s*(\d+)", str((MODEL_CARDS.get(plan.model) or {}).get("grid") or ""))
+            grid_cells = int(grid_m.group(1)) * int(grid_m.group(2)) if grid_m else None
+        extra_lines = describe_outputs(extra_outputs, members=int(plan.members or 1), grid_cells=grid_cells,
+                                       level_names=level_names, n_levels=n_levels)
         outputs_line = outputs_line + "".join(f"\n               + {line}" for line in extra_lines)
     digest_line = (
         f"  digest:      {plan.short_digest}  (approval prefix: {plan.approval_prefix}; "

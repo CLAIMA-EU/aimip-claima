@@ -30,8 +30,8 @@ with the date windows and initial conditions.
 
 ## Steps
 
-All models write monthly means. The ACE models can also write each step, means over any multiple of the step, and
-chosen variables and periods ([`--output`](user-guide.md#choosing-what-is-written)); no model can write anything
+All models write monthly means. The ACE, DLESyM and ArchesWeather models can also write each step, means over any
+multiple of the step, and chosen variables and periods ([`--output`](user-guide.md#choosing-what-is-written)); no model can write anything
 finer than its step.
 
 | models | one step | one year |

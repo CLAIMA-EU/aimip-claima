@@ -10,12 +10,15 @@ with its own frequency, variables and period:
   and inside the run. Not with `monthly`.
 
 The ACE models implement the files with fme's per-file writers (`data_writer.files`); a block mean of N steps is
-fme's `block_mean` over steps 1..N after the initial condition, then N+1..2N, and so on. Other families refuse the
-option until their writers support it.
+fme's `block_mean` over steps 1..N after the initial condition, then N+1..2N, and so on. DLESyM (atmosphere
+variables) and ArchesWeather use the same blocks in aimip's own writer (`emu_job.ExtraOutputs`); ArchesWeather's
+step k is the daily-mean state of day start + k, so its periods start on the first output day. Other families
+refuse the option until their writers support it.
 """
 from __future__ import annotations
 
 import dataclasses
+import datetime
 import math
 import re
 from collections.abc import Sequence
@@ -24,6 +27,7 @@ from typing import Any
 from .errors import ConfigError
 
 MAX_OUTPUTS = 8
+SUPPORTED_FAMILIES = ("fme", "e2s-dlesym", "geoarches")   # fme: the uncoupled ACE models
 MAX_BLOCK_STEPS = 240          # longest block mean (60 days of 6-h steps); use `monthly` beyond
 DEFAULT_STEPS_IN_MEMORY = 40   # fme forward_steps_in_memory used by aimip without block means
 
@@ -89,6 +93,15 @@ def parse_output(text: str) -> OutputRequest:
     return OutputRequest(text=raw, freq=freq, hours=hours, names=tuple(names), window=window)
 
 
+def _known_names(family: str) -> list[str] | None:
+    """Variable names a family writes, when known before the run (ArchesWeather); None otherwise."""
+    if family == "geoarches":
+        from .emu_job import AW_LEVEL_OUT, AW_SURFACE_OUT
+
+        return [v[0] for v in AW_SURFACE_OUT.values()] + [v[0] for v in AW_LEVEL_OUT.values()]
+    return None
+
+
 def _hours_between(a: Any, b: Any) -> float:
     return (b - a).total_seconds() / 3600.0
 
@@ -129,25 +142,38 @@ def resolve_outputs(
     """Check the `--output` requests against the model and the run; return one JSON-safe entry per file."""
     if not texts:
         return []
-    if family != "fme" or is_coupled:
+    if family not in SUPPORTED_FAMILIES or (family == "fme" and is_coupled):
         what = "coupled atmosphere-ocean models" if is_coupled else f"the {family} models"
         raise ConfigError(
             f"--output is not available for {model_name} yet: {what} write monthly means only "
-            "(the ACE models support it).",
+            "(the ACE, DLESyM and ArchesWeather models support it).",
             field="output",
         )
+    known_names = _known_names(family)
     if len(texts) > MAX_OUTPUTS:
         raise ConfigError(f"At most {MAX_OUTPUTS} --output files per run.", field="output")
     from .time_utils import format_cftime, parse_cftime
 
     t0 = parse_cftime(start_iso, calendar)
-    t1 = parse_cftime(end_iso, calendar)
-    run_hours = _hours_between(t0, t1)
+    # ArchesWeather's step k gives the daily-mean state of day start + k, stamped with its date: its periods start
+    # on the first output day. The other models' step k gives the state at start + k * step, the end of its period.
+    origin_hours = timestep_hours if family == "geoarches" else 0
+    origin = t0 + datetime.timedelta(hours=origin_hours)
+    run_hours = float(steps * timestep_hours)
+    span = f"{format_cftime(origin)} .. {format_cftime(origin + datetime.timedelta(hours=run_hours))}"
     seen: set[str] = set()
     tags: dict[str, int] = {}
     out: list[dict[str, Any]] = []
     for text in texts:
         req = parse_output(text)
+        if known_names is not None:
+            unknown = [n for n in req.names if n not in known_names]
+            if unknown:
+                raise ConfigError(
+                    f"--output {req.text!r}: {model_name} has no variable {', '.join(unknown)}; its variables are "
+                    f"{', '.join(known_names)}.",
+                    field="output",
+                )
         key = f"{req.freq}|{','.join(req.names)}|{req.window}"
         if key in seen:
             raise ConfigError(f"--output {req.text!r} is given twice.", field="output")
@@ -188,18 +214,17 @@ def resolve_outputs(
             assert period_hours is not None and block is not None
             w0 = parse_cftime(req.window[0], calendar)
             w1 = parse_cftime(req.window[1], calendar)
-            h0, h1 = _hours_between(t0, w0), _hours_between(t0, w1)
+            h0, h1 = _hours_between(origin, w0), _hours_between(origin, w1)
             if not (0 <= h0 < h1 <= run_hours):
                 raise ConfigError(
-                    f"--output {req.text!r}: the period must lie inside the run ({start_iso} .. {end_iso}) and END "
-                    "must be after START.",
+                    f"--output {req.text!r}: the period must lie inside the run ({span}) and END must be after START.",
                     field="output",
                 )
             if h0 % period_hours or h1 % period_hours:
                 raise ConfigError(
                     f"--output {req.text!r}: START and END must fall on the boundaries of the "
-                    f"{'model steps' if req.freq == 'step' else _period_noun(req.freq)}, counted from the start of the "
-                    f"run ({start_iso}, every {period_hours} h).",
+                    f"{'model steps' if req.freq == 'step' else _period_noun(req.freq)}, counted from "
+                    f"{format_cftime(origin)} (every {period_hours} h).",
                     field="output",
                 )
             index_slice = (int(h0 // period_hours), int(h1 // period_hours))
@@ -258,7 +283,20 @@ def steps_in_memory(steps: int, resolved: Sequence[dict[str, Any]]) -> int:
     return min(per, steps)
 
 
-def describe_outputs(resolved: Sequence[dict[str, Any]], *, members: int, grid_cells: int | None) -> list[str]:
+def output_grid(family: str) -> tuple[int | None, set[str], int]:
+    """(grid cells of the written files, names that have pressure levels, number of levels) of a family's
+    `--output` files; (None, set(), 1) when the plan card takes the grid from the model card."""
+    if family == "e2s-dlesym":
+        return 721 * 1440, set(), 1                       # Earth2Studio's 0.25 deg lat-lon output
+    if family == "geoarches":
+        from .emu_job import AW_LEVEL_OUT
+
+        return 181 * 360, {v[0] for v in AW_LEVEL_OUT.values()}, 13
+    return None, set(), 1
+
+
+def describe_outputs(resolved: Sequence[dict[str, Any]], *, members: int, grid_cells: int | None,
+                     level_names: set[str] | frozenset[str] = frozenset(), n_levels: int = 1) -> list[str]:
     """One plan-card line per file, with the number of values and, when known, its size."""
     lines = []
     for item in resolved:
@@ -268,7 +306,8 @@ def describe_outputs(resolved: Sequence[dict[str, Any]], *, members: int, grid_c
         count = "one value per month" if n is None else f"{n} per member"
         size = ""
         if n is not None and item["names"] and grid_cells:
-            nbytes = n * len(item["names"]) * grid_cells * 4 * max(1, members)
+            fields = sum(n_levels if name in level_names else 1 for name in item["names"])
+            nbytes = n * fields * grid_cells * 4 * max(1, members)
             size = f", ~{nbytes / 2**30:.2f} GiB" if nbytes >= 2**30 else f", ~{nbytes / 2**20:.0f} MiB"
         lines.append(f"{item['file']}: {item['description']} of {what}, {span} ({count}{size})")
     return lines

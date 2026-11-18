@@ -859,6 +859,7 @@ def prepare_emu_run(
     data_dir: str | None,
     auto_fetch: bool,
     argv: Sequence[str] | None,
+    outputs: Sequence[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     from .runner import (   # local import: runner imports this module
         SlurmOptions,
@@ -1319,7 +1320,8 @@ def prepare_emu_run(
         ic_provenance = (f"IPSL-CM6A-LR r1i1p1f1 {scen} state of 2015-02 (previous state 2015-01) from "
                          "gclyne/ArchesClimate-data; first output month 2015-03")
     job.update({"out_dir": validated_out, "start": req["start"], "end": req["end"], "steps": req["steps"],
-                "members": req["members"], "seed": resolved_seed, "checkpoint": model.checkpoint})
+                "members": req["members"], "seed": resolved_seed, "checkpoint": model.checkpoint,
+                "outputs": list(outputs or [])})
 
     config_path = validate_run_path(f"{validated_out}/config.yaml", label="config.yaml")
     with open(config_path, "w", encoding="utf-8") as fh:    # JSON is valid YAML; the job reads it with json
@@ -1377,6 +1379,7 @@ def prepare_emu_run(
         "sbatch_path": sbatch_path,
         "registry_entry": model.to_dict(),
         "family": model.family,
+        "outputs": list(outputs or []),
         "checkpoint_path": model.checkpoint,
         "checkpoint_sha256": pkg_sha[model.checkpoint],
         "package_files_sha256": pkg_sha,
@@ -1480,6 +1483,8 @@ def _check_job_matches_manifest(job: dict[str, Any], manifest: dict[str, Any]) -
         want = reg.get("name") if mkey is None else manifest.get(mkey)
         if str(job.get(key)) != str(want):
             fail(key)
+    if list(job.get("outputs") or []) != list(manifest.get("outputs") or []):
+        fail("outputs")
     pinned = set((manifest.get("package_files_sha256") or {}).keys())
     if job["checkpoint"] not in pinned:
         fail("checkpoint")
@@ -1857,6 +1862,10 @@ def exec_emu(validated_out: str, manifest: dict[str, Any], manifest_path: str) -
         manifest["wall_seconds"] = round(time.monotonic() - t0, 3)
         if err:
             manifest["error"] = err
+        if rc == 0 and manifest.get("outputs"):
+            from .outputs import check_output_files
+
+            manifest["outputs_check"] = check_output_files(validated_out, manifest["outputs"])
         result_file = os.path.join(validated_out, "emu-result.json")
         if os.path.isfile(result_file) and not os.path.islink(result_file):
             try:
