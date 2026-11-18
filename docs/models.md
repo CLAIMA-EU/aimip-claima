@@ -105,7 +105,7 @@ on 13 pressure levels, `zg` = geopotential / 9.80665). On one A100 a whole run 1
 5 hours for `archesweather` and about 21 hours per member for `archesweathergen` (about 28 minutes per member-year).
 Every run writes `restart.nc` (the states of its last two days, and the running sums of a month it ended in), and
 `--ic <run directory>` continues it with the same result as one longer run, so long `archesweathergen` runs go in
-segments ([user-guide.md](user-guide.md#continue-a-run)). The ArchesWeatherGen checkpoint also stores one
+segments ([user-guide.md](user-guide.md#continuing-a-run)). The ArchesWeatherGen checkpoint also stores one
 deterministic network of its own; like geoarches' loader with the published configuration, aimip uses the four
 ArchesWeather-M networks instead.
 
