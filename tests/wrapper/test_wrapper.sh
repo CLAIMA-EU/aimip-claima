@@ -112,6 +112,15 @@ grep -q SYNTHETIC_SECRET_123 "$FAKE_LOG.argv" && bad "key in argv (chat)" || ok 
 grep -q "^APPTAINERENV_GEMINI_API_KEY=SYNTHETIC_SECRET_123" "$FAKE_LOG.env" && ok "chat gets the key via APPTAINERENV_" || bad "chat did not get the key"
 # Empty arrays under set -u (bash 3.2)
 "$P/bin/aimip" --version >/dev/null 2>&1 && ok "--version with no arrays filled" || bad "--version failed under $BASH_VERSION"
+# --unsquash only when the installer wrote UNSQUASH=1 (its default on aarch64 hosts)
+"$P/bin/aimip" models >/dev/null 2>&1
+grep -qx -- "--unsquash" "$FAKE_LOG.argv" && bad "--unsquash passed without UNSQUASH=1" || ok "no --unsquash unless UNSQUASH=1"
+sed -e "s#@PREFIX@#$P#" -e "s#@RUNTIME@#apptainer#" -e "s#@RUNTIME_BIN@#$W/fakebin/fakert#" -e "s#@IMAGE@#$P/img.sif#" \
+    -e "s#@SCHEDULER@#slurm#" -e "s#@RUN_ROOT@#$W/runs#" -e "s#@EXTRA_RO@##" -e "s#@UNSQUASH@#1#" "$H/container/aimip-wrapper.in" > "$P/bin/aimip-unsq"
+chmod +x "$P/bin/aimip-unsq"; rm -f "$FAKE_LOG.argv"
+"$P/bin/aimip-unsq" models >/dev/null 2>&1
+[ "$(sed -n 2p "$FAKE_LOG.argv" 2>/dev/null)" = exec ] && [ "$(sed -n 3p "$FAKE_LOG.argv" 2>/dev/null)" = --unsquash ] \
+  && ok "UNSQUASH=1 runs the image with exec --unsquash" || bad "UNSQUASH=1 did not pass --unsquash after exec"
 # Apptainer --env values must never contain commas (apptainer splits --env KEY=VAL on commas)
 mkdir -p "$W/docbin"
 for ucmd in id mkdir head tr cut dirname ls awk sed sha256sum shasum; do
