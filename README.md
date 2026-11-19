@@ -40,8 +40,8 @@ aimip summary my-first-year                                                  # g
 - **Prepares a run directory** with the model configuration, the job script and a record of the command, the
   checksums of the files used, the seed and the software versions.
 - **Runs it** on Slurm or on the current machine, and summarises the results.
-- **Writes what you ask for:** monthly means by default; for the ACE models also daily or 6-hourly files of chosen
-  variables and periods (`--output`).
+- **Writes what you ask for:** monthly means by default; for the ACE, DLESyM and ArchesWeather models also daily or
+  6-hourly files of chosen variables and periods (`--output`).
 - Ensembles, continued runs, scenarios, LoRA checkpoints, an optional assistant (`aimip chat`) and a web interface
   (`aimip ui`).
 

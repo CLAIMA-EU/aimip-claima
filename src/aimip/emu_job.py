@@ -174,6 +174,142 @@ class MonthAccumulator:
         return out
 
 
+class ExtraOutputs:
+    """The `--output` files of an emulator job (resolved by aimip/outputs.py), at the run directory's top level.
+
+    Per file: the state at every step, the mean over blocks of steps (optionally only a range of blocks), or monthly
+    means, of the requested variables (all if none are named). The job calls add() with every step's states as
+    groups of (names, tensor), the tensor's first dimension running over the names. Block sums stay on the device
+    and cover only the requested variables. The time of a value is the mean time of its steps, as fme labels its
+    coarsened outputs. *post(name, array)* converts a field before it is written (units, grid order)."""
+
+    def __init__(self, out_dir: str, resolved: list, *, lat, lon, n_members: int, units: dict | None = None,
+                 levels=None, level_names=(), attrs: dict | None = None, post=None):
+        import netCDF4
+        import numpy as np
+
+        self.np = np
+        self.post = post or (lambda name, arr: arr)
+        self.units = units or {}
+        self.levels = levels
+        self.level_names = set(level_names)
+        self.lat, self.lon = np.asarray(lat, "f8"), np.asarray(lon, "f8")
+        self.items = []
+        for r in resolved:
+            path = os.path.join(out_dir, r["file"])
+            ds = netCDF4.Dataset(path + ".part", "w", format="NETCDF4")
+            ds.createDimension("sample", n_members)
+            ds.createDimension("time", r["values_per_member"] if r["freq"] != "monthly" else None)
+            ds.createDimension("lat", len(self.lat))
+            ds.createDimension("lon", len(self.lon))
+            for name, vals, u in (("lat", self.lat, "degrees_north"), ("lon", self.lon, "degrees_east")):
+                v = ds.createVariable(name, "f8", (name,))
+                v[:] = vals
+                v.units = u
+            for tn, dims in (("time", ("time",)), ("valid_time", ("sample", "time"))):
+                v = ds.createVariable(tn, "f8", dims)
+                v.units, v.calendar = TIME_UNITS, "proleptic_gregorian"
+                v.long_name = "mean time of the states in each value"
+            ds.createVariable("counts", "i4", ("sample", "time")).long_name = "model states averaged"
+            for k, val in (attrs or {}).items():
+                setattr(ds, k, val)
+            ds.aimip_output = r["request"]
+            ds.description = r["description"]
+            self.items.append({"r": r, "path": path, "ds": ds, "vars": {}, "acc": None, "months": []})
+
+    def _ensure_vars(self, item, groups) -> list:
+        """(group index, row, name) of the requested variables present in *groups*; creates them on first use."""
+        want = item["r"]["names"]
+        picks = [(gi, k, n) for gi, (names, _) in enumerate(groups) for k, n in enumerate(names)
+                 if not want or n in want]
+        ds = item["ds"]
+        for _, _, n in picks:
+            if n not in item["vars"]:
+                if n in self.level_names and "level" not in ds.dimensions:     # only files with level variables
+                    ds.createDimension("level", len(self.levels))
+                    lv = ds.createVariable("level", "f8", ("level",))
+                    lv[:] = self.np.asarray(self.levels, "f8")
+                    lv.units = "hPa"
+                dims = (("sample", "time", "level", "lat", "lon") if n in self.level_names
+                        else ("sample", "time", "lat", "lon"))
+                chunks = tuple(1 if d in ("sample", "time") else ds.dimensions[d].size for d in dims)
+                v = ds.createVariable(n, "f4", dims, zlib=True, complevel=1, shuffle=True, chunksizes=chunks)
+                if n in self.units:
+                    v.units = self.units[n]
+                item["vars"][n] = v
+        return picks
+
+    def _write(self, item, member: int, index: int, t_days: float, count: int, fields: dict) -> None:
+        ds = item["ds"]
+        ds["time"][index] = t_days
+        ds["valid_time"][member, index] = t_days
+        ds["counts"][member, index] = int(count)
+        for n, arr in fields.items():
+            item["vars"][n][member, index, ...] = self.post(n, arr)
+
+    def add(self, member: int, step: int, t, groups) -> None:
+        """*step*: 1-based step of this run; *t*: numpy datetime64 time of these states."""
+        np = self.np
+        t_days = float((np.datetime64(t, "s") - np.datetime64("1970-01-01T00:00:00")) / np.timedelta64(1, "D"))
+        for item in self.items:
+            r = item["r"]
+            picks = self._ensure_vars(item, groups)
+            if r["freq"] == "monthly":
+                month = np.datetime64(t, "M")
+                acc = item["acc"]
+                if acc is not None and acc["key"] != month:
+                    self._flush_month(item, member)
+                    acc = None
+                if acc is None:
+                    item["acc"] = acc = {"key": month, "sum": {}, "t": 0.0, "n": 0}
+            else:
+                block = int(r["block_steps"])
+                i = (step - 1) // block
+                if r["index_slice"] and not (r["index_slice"][0] <= i < r["index_slice"][1]):
+                    continue
+                acc = item["acc"]
+                if acc is None:
+                    item["acc"] = acc = {"key": i, "sum": {}, "t": 0.0, "n": 0}
+            for gi, k, n in picks:
+                x = groups[gi][1][k]
+                x = x.double() if hasattr(x, "double") else np.asarray(x, "f8")
+                acc["sum"][n] = x if n not in acc["sum"] else acc["sum"][n] + x
+            acc["t"] += t_days
+            acc["n"] += 1
+            if r["freq"] != "monthly" and acc["n"] == int(r["block_steps"]):
+                index = acc["key"] - (r["index_slice"][0] if r["index_slice"] else 0)
+                self._write(item, member, index, acc["t"] / acc["n"], acc["n"], self._means(acc))
+                item["acc"] = None
+
+    def _means(self, acc) -> dict:
+        out = {}
+        for n, s in acc["sum"].items():
+            m = s / acc["n"]
+            out[n] = (m.float().cpu().numpy() if hasattr(m, "cpu") else m.astype("f4"))
+        return out
+
+    def _flush_month(self, item, member: int) -> None:
+        acc = item["acc"]
+        if acc is None or acc["n"] == 0:
+            return
+        months = item["months"]
+        if acc["key"] not in months:
+            months.append(acc["key"])
+        self._write(item, member, months.index(acc["key"]), acc["t"] / acc["n"], acc["n"], self._means(acc))
+        item["acc"] = None
+
+    def end_member(self, member: int) -> None:
+        for item in self.items:
+            if item["r"]["freq"] == "monthly":
+                self._flush_month(item, member)
+            item["acc"] = None
+
+    def close(self) -> None:
+        for item in self.items:
+            item["ds"].close()
+            os.replace(item["path"] + ".part", item["path"])
+
+
 # ------------------------------------------------------------------ DLESyM
 
 class Unstable(Exception):
@@ -381,15 +517,30 @@ def run_dlesym(out_dir: str, job: dict) -> dict:
         writers[key].write(member, month, fields, count)
         written[key] = written.get(key, 0) + 1
 
+    extra_box: dict = {}
+
+    def extra_add(member, t, names, x, lat, lon):
+        """--output files: the atmosphere state at every 6-h step (aimip/outputs.py)."""
+        if "w" not in extra_box:
+            extra_box["w"] = ExtraOutputs(out_dir, job["outputs"], lat=lat, lon=lon, n_members=n_members, attrs=attrs)
+        step = int((np.datetime64(t, "s") - np.datetime64(start, "s")) / np.timedelta64(6, "h"))
+        extra_box["w"].add(member, step, t, [(names, x)])
+
+    def extra_end(member):
+        if "w" in extra_box:
+            extra_box["w"].end_member(member)
+
     unstable = None
     try:
         _dlesym_members(model, staged, job, end, n_iter, hours_per_step, writers, files, attrs, precip_meta,
-                        flush, n_members, dev)
+                        flush, n_members, dev, extra_add if job.get("outputs") else None, extra_end)
     except Unstable as exc:
         unstable = exc
         _log(f"UNSTABLE {exc}: the run stops; months before it are written")
     for w in writers.values():
         w.close()
+    if "w" in extra_box:
+        extra_box["w"].close()
     out = {"iterations_per_member": n_iter, "hours_per_iteration": hours_per_step, "months_written": written,
            "members": n_members, "healpix_pad_backend": _healpix_pad_backend()}
     if sst is not None:
@@ -403,7 +554,7 @@ def run_dlesym(out_dir: str, job: dict) -> dict:
 
 
 def _dlesym_members(model, staged, job, end, n_iter, hours_per_step, writers, files, attrs, precip_meta, flush,
-                    n_members, dev):
+                    n_members, dev, extra_add=None, extra_end=None):
     from collections import OrderedDict
 
     import numpy as np
@@ -451,6 +602,9 @@ def _dlesym_members(model, staged, job, end, n_iter, hours_per_step, writers, fi
                         t = base + lt
                         if t > end:
                             break
+                        if extra_add is not None and key == "atmosphere":
+                            extra_add(member, t, fnames, fields[0, j] if fields.dim() == 5 else fields[0, 0, j],
+                                      np.asarray(yac["lat"]), np.asarray(yac["lon"]))
                         if key == "precip":
                             t = t - np.timedelta64(step_h // 2, "h")   # a 6-h accumulation belongs to its interval
                         done = a.add(np.datetime64(t, "M"), fields[0, j] if fields.dim() == 5 else fields[0, 0, j])
@@ -460,6 +614,8 @@ def _dlesym_members(model, staged, job, end, n_iter, hours_per_step, writers, fi
             done = a.pop()
             if done is not None:
                 flush(key, names_of[key], member, done)
+        if extra_end is not None:
+            extra_end(member)
         _log(f"member {member} seed {seed} done in {time.time() - tw:.1f}s")
 
 
@@ -953,6 +1109,15 @@ def run_geoarches(out_dir: str, job: dict) -> dict:
                        levels=levels, level_units="hPa")
     zg_i = lv.index("geopotential")
     w_lat = np.cos(np.deg2rad(lat))[:, None] * np.ones((1, len(lon)))
+    extra = None
+    if job.get("outputs"):          # --output files: the daily states (aimip/outputs.py)
+        def post(name, arr):
+            return np.roll(arr / G0 if name == "zg" else arr, -half, axis=-1)
+
+        extra = ExtraOutputs(out_dir, job["outputs"], lat=lat, lon=lon, n_members=n_members,
+                             units={**{AW_SURFACE_OUT[v][0]: AW_SURFACE_OUT[v][1] for v in sv},
+                                    **{AW_LEVEL_OUT[v][0]: AW_LEVEL_OUT[v][1] for v in lv}},
+                             levels=levels, level_names=lev_names, attrs=attrs, post=post)
 
     def flush(member, month, acc, n):
         surf = (acc["surface"][0, :, 0] / n).float().cpu().numpy()
@@ -1008,6 +1173,9 @@ def run_geoarches(out_dir: str, job: dict) -> dict:
                 pred = step_fn(batch, i, member_seed)
                 phys = {k: (pred[k] * std[k] + mean[k]).double() for k in ("surface", "level")}
                 phys["surface"] = torch.where(land["surface"], torch.nan, phys["surface"])
+                if extra is not None:   # step i + 1 - i0 of this run gives the daily-mean state of day t_next
+                    extra.add(member, i + 1 - i0, np.datetime64(t_next.to_datetime64(), "s"),
+                              [(surf_names, phys["surface"][0, :, 0]), (lev_names, phys["level"][0])])
                 m_next = np.datetime64(t_next.strftime("%Y-%m"), "M")
                 if month is not None and m_next != month:
                     g = flush(member, month, acc, n)
@@ -1033,11 +1201,15 @@ def run_geoarches(out_dir: str, job: dict) -> dict:
             g = flush(member, month, acc, n)
             if member == 0 and len(first_year) < 12:
                 first_year.append(g)
+            if extra is not None:
+                extra.end_member(member)
     except Unstable as exc:
         unstable = exc
         _log(f"UNSTABLE {exc}: the run stops; months before it are written")
     ws.close()
     wl.close()
+    if extra is not None:
+        extra.close()
     restart_path = None
     if unstable is None:
         restart_path = os.path.join(out_dir, AW_RESTART)
