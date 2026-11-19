@@ -26,6 +26,7 @@ import yaml
 
 from .. import __version__
 from ..cbottle import CBOTTLE_SEED_SCHEME
+from ..model_variables import variables_of
 from ..errors import (
     AimipError,
     ApprovalError,
@@ -577,6 +578,7 @@ def show(
         "forcing_sets": [fs.to_dict() for fs in spec.forcing_sets],
         "ic_provenance": get_model_ic_provenance(spec.name),
         "outputs": card["outputs"],
+        "variables": variables_of(spec.name),
         "cost_note": card["cost_note"],
         "limitations": card["limitations"],
         "notes": spec.notes,

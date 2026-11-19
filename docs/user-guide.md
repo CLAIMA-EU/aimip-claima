@@ -50,6 +50,7 @@ ace2-era5 — ACE2-ERA5 (Ai2)
   forcing:     amip-hist (1979-01-01..2014-12-31)
   ic:          Shipped ERA5 initial conditions: 12 monthly timestamps in 1979 (ic_1979.nc) and 12 monthly timestamps in 2001 (ic_2001.nc) from allenai/ACE2-ERA5.
   outputs:     TMP2m, surface_temperature, PRATEsfc, PRESsfc
+  variables:   50 + 11 derived: PRESsfc, surface_temperature, air_temperature_0, air_temperature_1, … (aimip show ace2-era5 --variables lists all)
   installed:   no (0/39 files, ~20.52 GiB)
   ...
 ```
@@ -223,7 +224,7 @@ Each `--output` has the form `FREQUENCY[:VARIABLES][@START..END]`:
 | FREQUENCY | `step` | the state after every model step (every 6 hours for the ACE models) |
 | | `12h`, `daily`, `5d` | means over periods of that length; any multiple of the model step |
 | | `monthly` | monthly means |
-| VARIABLES | `TMP2m,PRATEsfc` | the variables to write, as the model names them; without it, all variables. `ncdump -h monthly_mean_predictions.nc` of an earlier run lists the names |
+| VARIABLES | `TMP2m,PRATEsfc` | the variables to write, as the model names them; without it, all variables. `aimip show <model> --variables` lists them |
 | START..END | `1979-01-01..1979-02-01` | only this part of the run; not with `monthly` |
 
 How the times work:
@@ -238,9 +239,11 @@ How the times work:
   `--steps` would fit.
 
 The files are called `output_<frequency>.nc` (`output_daily.nc`, `output_6h.nc`; a second daily file is
-`output_daily_2.nc`). A variable the model does not have is left out of the file without an error from the model;
-aimip then warns at the end of the job (`output file output_daily.nc without X`) and records it in
-`aimip-manifest.json` (`outputs_check`). In a settings file, list the outputs under `outputs:`:
+`output_daily_2.nc`). aimip-claima checks the variable names when it plans the run and suggests the closest ones
+for a typing error. For the ACE models it also accepts the quantities `fme` derives (`total_water_path`,
+`windspeed_at_10m`, …), which are written when the model has their inputs; if one is not, aimip-claima warns at the
+end of the job (`output file output_daily.nc without X`) and records it in `aimip-manifest.json` (`outputs_check`).
+In a settings file, list the outputs under `outputs:`:
 
 ```yaml
 outputs:
@@ -257,7 +260,7 @@ For DLESyM and ArchesWeather:
 - **ArchesWeather and ArchesWeatherGen**: each step is the daily-mean state of one day, stamped with its date (00
   UTC). Periods start on the first output day, so `step:tas@1979-01-01..1979-02-01` gives the 31 days of January,
   and `5d` means cover 1–5 October, 6–10 October, … for a run from 1978-09-30. The pressure-level variables (`ta`,
-  `zg`, `ua`, `va`, `hus`, `wap`) keep their 13 levels. aimip-claima checks the variable names when it plans the run.
+  `zg`, `ua`, `va`, `hus`, `wap`) keep their 13 levels.
 
 The other models (the coupled SamudrACE models, Samudra-OM4, MD-1.5, CAMulator, cBottle-3d, Spherical DYffusion)
 write monthly means only for now, and `--output` works on the command line and in settings files, not yet in the web

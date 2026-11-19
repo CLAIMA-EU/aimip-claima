@@ -376,7 +376,7 @@ def _cmd_show(args: argparse.Namespace) -> int:
     )
     if args.json:
         return _emit_json_ok(card)
-    print(render_show_card(card, include_examples=args.examples))
+    print(render_show_card(card, include_examples=args.examples, all_variables=args.variables))
     return 0
 
 
@@ -1332,6 +1332,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_show.add_argument("model", help="Model name in registry.")
     p_show.add_argument("--examples", action="store_true", help="Print ready-to-copy CLI examples.")
+    p_show.add_argument("--variables", action="store_true", help="List all the variables the model writes.")
     p_show.add_argument("--json", action="store_true", help="Emit JSON output.")
     _add_registry_args(p_show)
 

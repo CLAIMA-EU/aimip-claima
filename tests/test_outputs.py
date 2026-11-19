@@ -167,14 +167,18 @@ def test_archesweather_days_and_names():
                           end_iso="1978-11-29T00:00:00", steps=60, **AW)
     assert out[0]["index_slice"] == [0, 7] and out[0]["values_per_member"] == 7      # 1..7 October
     assert out[0]["file"] == "output_daily.nc" and out[1]["index_slice"] == [1, 4]
-    with pytest.raises(ConfigError, match="no variable t2m; its variables are uas, vas, tas"):
+    with pytest.raises(ConfigError, match=r"no variable t2m; .aimip show archesweather --variables"):
         resolve_outputs(["daily:t2m"], end_iso="1978-11-29T00:00:00", steps=60, **AW)
     with pytest.raises(ConfigError, match=r"inside the run \(1978-10-01T00:00:00 \.\. 1978-11-30T00:00:00\)"):
         resolve_outputs(["step:tas@1978-09-30..1978-10-02"], end_iso="1978-11-29T00:00:00", steps=60, **AW)
-    dl = resolve_outputs(["step:t2m", "daily:anything"], model_name="dlesym-aimip", family="e2s-dlesym",
+    dl = resolve_outputs(["step:t2m", "daily:z500"], model_name="dlesym-aimip", family="e2s-dlesym",
                          is_coupled=False, timestep_hours=6, start_iso="1978-10-03T00:00:00",
                          end_iso="1978-10-07T00:00:00", steps=16, calendar="proleptic_gregorian")
-    assert [o["block_steps"] for o in dl] == [1, 4]            # DLESyM names are checked after the run
+    assert [o["block_steps"] for o in dl] == [1, 4]
+    with pytest.raises(ConfigError, match="no variable sst"):    # DLESyM: atmosphere variables only
+        resolve_outputs(["daily:sst"], model_name="dlesym-aimip", family="e2s-dlesym", is_coupled=False,
+                        timestep_hours=6, start_iso="1978-10-03T00:00:00", end_iso="1978-10-07T00:00:00", steps=16,
+                        calendar="proleptic_gregorian")
 
 
 def test_extra_outputs_writer(tmp_path: pathlib.Path) -> None:
@@ -182,7 +186,7 @@ def test_extra_outputs_writer(tmp_path: pathlib.Path) -> None:
     from aimip.emu_job import ExtraOutputs
 
     resolved = resolve_outputs(["step:a", "daily:a,b@2001-01-01..2001-01-02", "monthly:b"], **dict(
-        ACE, model_name="dlesym-aimip", family="e2s-dlesym", end_iso="2001-01-03T00:00:00", steps=8))
+        ACE, model_name="a-test-model", family="e2s-dlesym", end_iso="2001-01-03T00:00:00", steps=8))
     lat, lon = np.array([-45.0, 45.0]), np.array([0.0, 120.0, 240.0])
     w = ExtraOutputs(str(tmp_path), resolved, lat=lat, lon=lon, n_members=2, units={"a": "K"},
                      post=lambda n, arr: arr * 10 if n == "b" else arr)

@@ -30,7 +30,7 @@ Every error message of aimip-claima says what was wrong, and most end with a `ne
 | `--output '...' needs a whole number of days` (or of other periods) | the run must be a whole number of output periods: use one of the `--steps` values the message gives |
 | `--output '...': START and END must fall on the boundaries ...` | the period of an output must begin and end on its period boundaries, counted from the start of the run ([choosing what is written](user-guide.md#choosing-what-is-written)) |
 | `--output is not available for <model> yet` | only the ACE, DLESyM and ArchesWeather models support `--output` so far; the other models write monthly means |
-| `--output '...': <model> has no variable X; its variables are ...` | ArchesWeather: use one of the names listed |
+| `--output '...': <model> has no variable X` | a typing error or another name: `aimip show <model> --variables` lists the model's variables |
 | `Model '<model>' is deterministic: --members K requires a multi-sample IC` | a deterministic model needs a different initial state per member: see [ensembles](user-guide.md#ensembles) |
 | `forcing sets 1xCO2, 3xCO2 all cover this window` | the model has several forcing sets for these dates: choose one with `--forcing-set` |
 | `model X is not installed here: ask the install owner to run 'aimip fetch -m X'` | someone else owns the installation; only the owner can download models |
