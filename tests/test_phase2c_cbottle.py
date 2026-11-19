@@ -25,6 +25,7 @@ import zipfile
 
 import pytest
 
+import aimip.cbottle as cbottle_mod
 from aimip.cbottle import (
     CBOTTLE_BATCH_SIZE,
     CBOTTLE_CHECKPOINT_REL_PATHS,
@@ -38,12 +39,14 @@ from aimip.cbottle import (
     CBOTTLE_HF_REPO,
     CBOTTLE_HF_REVISION,
     CBOTTLE_OUTPUT_VARS,
+    CBOTTLE_SEED_MODULUS,
     CBOTTLE_SEED_SCHEME,
     CBOTTLE_SST_REL_PATH,
     CBOTTLE_TREE_FILES,
     CBOTTLE_TREE_SHA256,
     CBOTTLE_WINDOW,
     EXIT_UNSTABLE,
+    build_cbottle_seed_schedule,
     cbottle_batch_seed,
     cbottle_sample_timestamps,
     run_cbottle,
@@ -655,6 +658,63 @@ def test_cbottle_end_to_end_run_reproducibility_summary_and_exit_5(
     m_sum_2 = summarize_run(m_dir_2)["variables"]["t2m"]["series"]
     assert m_sum_1 == m_sum_2
     assert m_sum_1[0]["members"][0] != m_sum_1[0]["members"][1]
+
+    # Collision-free runs keep the exact `cbottle_batch_seed` values unchanged!
+    for s_chk in (0, 42, 99):
+        raw_sched = [[cbottle_batch_seed(s_chk, m_i, b_i) for b_i in range(12)] for m_i in range(4)]
+        assert len({x for row in raw_sched for x in row}) == 48
+        assert build_cbottle_seed_schedule(s_chk, 4, 12) == raw_sched
+
+    # Deterministic collision resolution (including chained collisions and 2^31-1 modulus wrap-around)
+    wrap_tbl = {
+        (0, 0): CBOTTLE_SEED_MODULUS - 1,
+        (0, 1): CBOTTLE_SEED_MODULUS - 1,
+        (1, 0): 0,
+        (1, 1): 1,
+    }
+    assert build_cbottle_seed_schedule(
+        7, 2, 2, seed_fn=lambda _s, m_i, b_i: wrap_tbl[(m_i, b_i)]
+    ) == [[CBOTTLE_SEED_MODULUS - 1, 0], [1, 2]]
+
+    # End-to-end forced seed collision across members and batches: manifest, member_seeds, and sampler agree!
+    forced_raw = {
+        (0, 0): 700,
+        (0, 1): 700,
+        (0, 2): 701,
+        (1, 0): 700,
+        (1, 1): 705,
+        (1, 2): 705,
+    }
+    orig_seed_fn = cbottle_mod.cbottle_batch_seed
+    monkeypatch.setattr(cbottle_mod, "cbottle_batch_seed", lambda _s, m_i, b_i: forced_raw[(m_i, b_i)])
+    try:
+        recorded_batch_seeds.clear()
+        spec_col = RunSpec(
+            model="cbottle-3d",
+            start="1995-01-01",
+            steps=10,
+            members=2,
+            seed=17,
+            name="cb-forced-collision",
+        )
+        prep_col = prepare(spec_col)
+        expected_resolved = [[700, 701, 702], [703, 705, 706]]
+        assert prep_col.manifest["batch_seeds"] == expected_resolved
+        assert prep_col.manifest["member_seeds"] == [700, 703]
+        job_col = json.loads((Path(prep_col.run_dir) / "config.yaml").read_text(encoding="utf-8"))
+        assert job_col["batch_seeds"] == expected_resolved
+        job_col["device"] = "cpu"
+        res_col = run_cbottle(prep_col.run_dir, job_col)
+        assert list(recorded_batch_seeds) == [700, 701, 702, 703, 705, 706]
+        assert len(set(recorded_batch_seeds)) == 6
+        assert res_col["batch_seeds"] == expected_resolved
+        with pytest.raises(ValidationError, match="batch_seeds does not match"):
+            run_cbottle(
+                prep_col.run_dir,
+                {**job_col, "batch_seeds": [[700, 700, 701], [700, 705, 705]]},
+            )
+    finally:
+        monkeypatch.setattr(cbottle_mod, "cbottle_batch_seed", orig_seed_fn)
 
     # Corrupting 1 byte in an expert checkpoint aborts BEFORE `MixtureOfExpertsDenoiser.from_pretrained` is called!
     moe_before = len(moe_calls)

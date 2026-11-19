@@ -32,7 +32,7 @@ Generator & security invariants:
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 import contextlib
 import datetime
 import hashlib
@@ -114,10 +114,11 @@ CBOTTLE_DEFAULT_CADENCE = "daily_synoptic"
 CBOTTLE_ALLOWED_CADENCES: tuple[str, ...] = ("daily_synoptic", "6h")
 CBOTTLE_DATE_ORDER = "chronological"
 CBOTTLE_SEED_SCHEME = "sha256_uint31(aimip:cbottle-3d:v1:{seed}:{member_index}:{batch_index})"
+CBOTTLE_SEED_MODULUS = 2_147_483_647
 
 
 def cbottle_batch_seed(run_seed: int, member_index: int, batch_index: int) -> int:
-    """Derive a disjoint 31-bit non-negative seed from `(run_seed, member_index, batch_index)`.
+    """Derive a deterministic 31-bit non-negative base seed from `(run_seed, member_index, batch_index)`.
 
     Earth2Studio's `CBottle3D.__call__` resets its local batch counter on each invocation and
     passes `self.seed + i` to the diffusion sampler. Deriving a deterministic SHA-256 seed per
@@ -128,7 +129,45 @@ def cbottle_batch_seed(run_seed: int, member_index: int, batch_index: int) -> in
         "ascii"
     )
     raw64 = int.from_bytes(hashlib.sha256(token).digest()[:8], "big")
-    return int(raw64 % 2_147_483_647)
+    return int(raw64 % CBOTTLE_SEED_MODULUS)
+
+
+def build_cbottle_seed_schedule(
+    run_seed: int,
+    n_members: int,
+    n_batches: int,
+    *,
+    seed_fn: Callable[[int, int, int], int] | None = None,
+) -> list[list[int]]:
+    """Build the full `n_members x n_batches` seed schedule and resolve collisions deterministically.
+
+    Assigns `seed_fn(run_seed, m_idx, b_idx)` in row-major `(member_index, batch_index)` order and
+    probes `(cand + 1) % CBOTTLE_SEED_MODULUS` if an earlier slot already claimed `cand`. Collision-free
+    runs keep the exact `cbottle_batch_seed` values unchanged.
+    """
+    if int(n_members) < 1:
+        raise ValidationError(f"cbottle-3d n_members must be >= 1 (got {n_members}).", field="members")
+    if int(n_batches) < 1:
+        raise ValidationError(f"cbottle-3d n_batches must be >= 1 (got {n_batches}).", field="steps")
+    total_slots = int(n_members) * int(n_batches)
+    if total_slots > CBOTTLE_SEED_MODULUS:
+        raise ValidationError(
+            f"cbottle-3d member*batch count ({total_slots}) exceeds 31-bit seed space ({CBOTTLE_SEED_MODULUS}).",
+            field="steps",
+        )
+    eff_seed_fn = cbottle_batch_seed if seed_fn is None else seed_fn
+    used: set[int] = set()
+    schedule: list[list[int]] = []
+    for m_idx in range(int(n_members)):
+        row: list[int] = []
+        for b_idx in range(int(n_batches)):
+            cand = int(eff_seed_fn(int(run_seed), m_idx, b_idx)) % CBOTTLE_SEED_MODULUS
+            while cand in used:
+                cand = (cand + 1) % CBOTTLE_SEED_MODULUS
+            used.add(cand)
+            row.append(cand)
+        schedule.append(row)
+    return schedule
 
 CBOTTLE_OUTPUT_VARS: tuple[str, ...] = (
     "t2m",
@@ -695,10 +734,20 @@ def run_cbottle(out_dir: str, job: Mapping[str, Any]) -> dict[str, Any]:
         monthly_fields[(m_idx, ym)] = mean_arr
         monthly_counts[(m_idx, ym)] = int(count)
 
-    batch_seeds_by_member: list[list[int]] = []
+    n_batches = (len(sample_dts) + batch_size - 1) // batch_size
+    expected_schedule = build_cbottle_seed_schedule(seed, members, n_batches)
+    if "batch_seeds" in job and job["batch_seeds"] is not None:
+        if job["batch_seeds"] != expected_schedule:
+            raise ValidationError(
+                "cbottle-3d job batch_seeds does not match deterministic collision-resolved schedule."
+            )
+        batch_seeds_by_member = [[int(x) for x in row] for row in job["batch_seeds"]]
+    else:
+        batch_seeds_by_member = expected_schedule
+
     for m_idx in range(members):
-        member_batch_seeds: list[int] = []
-        init_seed = cbottle_batch_seed(seed, m_idx, 0)
+        member_batch_seeds = batch_seeds_by_member[m_idx]
+        init_seed = member_batch_seeds[0]
         generator = CBottle3D(
             core,
             sst_ds,
@@ -713,8 +762,7 @@ def run_cbottle(out_dir: str, job: Mapping[str, Any]) -> dict[str, Any]:
 
         for batch_idx, b_start in enumerate(range(0, len(sample_dts), batch_size)):
             batch_tt = sample_dts[b_start : b_start + batch_size]
-            batch_seed = cbottle_batch_seed(seed, m_idx, batch_idx)
-            member_batch_seeds.append(batch_seed)
+            batch_seed = member_batch_seeds[batch_idx]
             generator.seed = batch_seed
             np.random.seed(batch_seed)
             torch.manual_seed(batch_seed)
@@ -754,7 +802,6 @@ def run_cbottle(out_dir: str, job: Mapping[str, Any]) -> dict[str, Any]:
 
         if cur_ym is not None and cur_sum is not None and cur_n > 0:
             _check_and_store_month(m_idx, cur_ym, cur_sum, cur_n, lat_vals)
-        batch_seeds_by_member.append(member_batch_seeds)
 
     if device.startswith("cuda") and torch.cuda.is_available():
         torch.cuda.synchronize()

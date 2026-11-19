@@ -70,7 +70,7 @@ from .cbottle import (
     CBOTTLE_SECONDS_PER_YEAR,
     CBOTTLE_SEED_SCHEME,
     CBOTTLE_SST_REL_PATH,
-    cbottle_batch_seed,
+    build_cbottle_seed_schedule,
     cbottle_sample_timestamps,
 )
 from .errors import EXIT_UNSTABLE, ConfigError, MissingAssetsError, ValidationError
@@ -1196,10 +1196,11 @@ def prepare_emu_run(
         if sst_p not in pkg_sha:
             raise ConfigError(f"{model.name}: conditioning SST file {sst_p} missing from required_files.")
         n_cb_batches = (int(req["steps"]) + CBOTTLE_BATCH_SIZE - 1) // CBOTTLE_BATCH_SIZE
-        cb_batch_seeds = [
-            [cbottle_batch_seed(resolved_seed, m_i, b_i) for b_i in range(n_cb_batches)]
-            for m_i in range(int(req["members"]))
-        ]
+        cb_batch_seeds = build_cbottle_seed_schedule(
+            resolved_seed,
+            int(req["members"]),
+            n_cb_batches,
+        )
         job = {
             "family": model.family,
             "model": model.name,
@@ -1211,6 +1212,7 @@ def prepare_emu_run(
             "cadence": CBOTTLE_DEFAULT_CADENCE,
             "date_order": CBOTTLE_DATE_ORDER,
             "seed_scheme": CBOTTLE_SEED_SCHEME,
+            "batch_seeds": cb_batch_seeds,
         }
         window_meta = {
             "batch_size": CBOTTLE_BATCH_SIZE,
@@ -1440,7 +1442,7 @@ def prepare_emu_run(
         "seed": resolved_seed,
         "seed_explicit": seed_explicit,
         "member_seeds": (
-            [cbottle_batch_seed(resolved_seed, k, 0) for k in range(req["members"])]
+            [row[0] for row in cb_batch_seeds]
             if model.family == "cbottle"
             else [resolved_seed + k for k in range(req["members"])]
         ),
@@ -1661,6 +1663,16 @@ def _check_job_matches_manifest(job: dict[str, Any], manifest: dict[str, Any]) -
             or job.get("seed_scheme") != CBOTTLE_SEED_SCHEME
         ):
             fail("seed_scheme")
+        exp_cb_batches = (int(manifest["steps"]) + CBOTTLE_BATCH_SIZE - 1) // CBOTTLE_BATCH_SIZE
+        exp_cb_seeds = build_cbottle_seed_schedule(
+            int(manifest["seed"]),
+            int(manifest["members"]),
+            exp_cb_batches,
+        )
+        if manifest.get("batch_seeds") != exp_cb_seeds:
+            fail("batch_seeds")
+        if job.get("batch_seeds") is not None and job.get("batch_seeds") != exp_cb_seeds:
+            fail("batch_seeds")
     elif job["family"] == "sdyff":
         pkg_map = manifest.get("package_files_sha256") or {}
         if (
