@@ -405,8 +405,10 @@ def render_plan_card(plan: ResolvedPlan, *, is_tty: bool = False) -> str:
     return "\n".join(lines)
 
 
-def render_show_card(card: dict[str, Any], *, include_examples: bool = False) -> str:
+def render_show_card(card: dict[str, Any], *, include_examples: bool = False, all_variables: bool = False) -> str:
     """Format `services.show(model)` for terminal output."""
+    from ..model_variables import full_listing, summary
+
     fsets = ", ".join(
         f"{fs['name']} ({fs['window'][0][:10]}..{fs['window'][1][:10]})"
         for fs in card.get("forcing_sets", [])
@@ -430,6 +432,12 @@ def render_show_card(card: dict[str, Any], *, include_examples: bool = False) ->
             else []
         ),
         f"  outputs:     {', '.join(card.get('outputs', [])) or '(not recorded)'}",
+        *(
+            [f"  variables:   {line}" if i == 0 else f"               {line}"
+             for i, line in enumerate(full_listing(card["name"]))]
+            if all_variables
+            else [f"  variables:   {summary(card['name']) or '(not recorded)'}"]
+        ),
         f"  installed:   {'yes' if card.get('installed') else 'no'} ({card.get('cached_files', 0)}/{card.get('total_files', 0)} files, ~{format_bytes(card.get('total_bytes', 0))})",
         f"  cost:        {card['cost_note']}",
         f"  licence:     {card['licence']}",

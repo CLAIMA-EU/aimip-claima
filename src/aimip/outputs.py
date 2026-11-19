@@ -93,15 +93,6 @@ def parse_output(text: str) -> OutputRequest:
     return OutputRequest(text=raw, freq=freq, hours=hours, names=tuple(names), window=window)
 
 
-def _known_names(family: str) -> list[str] | None:
-    """Variable names a family writes, when known before the run (ArchesWeather); None otherwise."""
-    if family == "geoarches":
-        from .emu_job import AW_LEVEL_OUT, AW_SURFACE_OUT
-
-        return [v[0] for v in AW_SURFACE_OUT.values()] + [v[0] for v in AW_LEVEL_OUT.values()]
-    return None
-
-
 def _hours_between(a: Any, b: Any) -> float:
     return (b - a).total_seconds() / 3600.0
 
@@ -149,7 +140,9 @@ def resolve_outputs(
             "(the ACE, DLESyM and ArchesWeather models support it).",
             field="output",
         )
-    known_names = _known_names(family)
+    from .model_variables import output_names
+
+    known_names = output_names(model_name, family)
     if len(texts) > MAX_OUTPUTS:
         raise ConfigError(f"At most {MAX_OUTPUTS} --output files per run.", field="output")
     from .time_utils import format_cftime, parse_cftime
@@ -169,10 +162,15 @@ def resolve_outputs(
         if known_names is not None:
             unknown = [n for n in req.names if n not in known_names]
             if unknown:
+                import difflib
+
+                hints = sorted({c for n in unknown for c in difflib.get_close_matches(n, known_names, n=3, cutoff=0.6)})
                 raise ConfigError(
-                    f"--output {req.text!r}: {model_name} has no variable {', '.join(unknown)}; its variables are "
-                    f"{', '.join(known_names)}.",
+                    f"--output {req.text!r}: {model_name} has no variable {', '.join(unknown)}"
+                    + (f" (did you mean {', '.join(hints)}?)" if hints else "")
+                    + f"; `aimip show {model_name} --variables` lists its variables.",
                     field="output",
+                    allowed=known_names,
                 )
         key = f"{req.freq}|{','.join(req.names)}|{req.window}"
         if key in seen:
