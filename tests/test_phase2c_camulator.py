@@ -49,11 +49,12 @@ from aimip.camulator import (
     verify_camulator_code_dir,
 )
 from aimip.emu_catalog import artifacts, on_demand_artifacts, required_files
-from aimip.errors import ConfigError, ValidationError
+from aimip.errors import ApprovalError, ConfigError, ValidationError
+from aimip.families import get_family_adapter
 from aimip.plan_types import RunSpec
 from aimip.runner import exec_fme
 from aimip.safe_pickle import compute_sha256sum_tree_digest
-from aimip.services import Authorization, MemoryApprovalBroker, cite, current_user, plan, prepare, show
+from aimip.services import Authorization, MemoryApprovalBroker, cite, current_user, plan, prepare, show, submit
 from aimip.setup_data import ensure_camulator_selected_assets, load_lock_file
 from aimip.status import summarize_run
 
@@ -997,6 +998,64 @@ printf '{"months_written": {"atmosphere": 2}}\\n' > "$out/emu-result.json"
     assert fin_manifest["rc"] == 0
     assert fin_manifest["result"]["months_written"] == {"atmosphere": 2}
     assert tree_files_ok == 1 and len(tree_sha_ok) == 64
+
+    # Source checkout edited (or switched) between `adapter.build_config` and `final_plan` in `prepare()`
+    # MUST be refused BEFORE sealing `$AIMIP_STATE/prepared/` or writing `plan.json`!
+    cam_adapter = get_family_adapter("camulator")
+    orig_build_config = cam_adapter.build_config
+    state_prep_dir = tmp_path / "state" / "prepared"
+    seals_before = set(state_prep_dir.glob("*.json")) if state_prep_dir.is_dir() else set()
+
+    def _build_then_mutate_sha(*b_args: Any, **b_kwargs: Any) -> dict[str, Any]:
+        built = orig_build_config(*b_args, **b_kwargs)
+        qc_script.write_bytes(orig_qc_bytes + b"\n# mid-prepare source edit\n")
+        return built
+
+    monkeypatch.setattr(cam_adapter, "build_config", _build_then_mutate_sha)
+    try:
+        with pytest.raises(ApprovalError, match="source_tree path or SHA-256 changed during preparation"):
+            prepare(
+                RunSpec(
+                    model="camulator",
+                    start="1981-01-01T00:00:00",
+                    steps=236,
+                    name="cam-race-sha",
+                )
+            )
+        seals_after_sha = set(state_prep_dir.glob("*.json")) if state_prep_dir.is_dir() else set()
+        assert seals_after_sha == seals_before
+        assert not (runs_dir / "cam-race-sha" / "plan.json").exists()
+        with pytest.raises(ApprovalError):
+            submit(str(runs_dir / "cam-race-sha"))
+    finally:
+        qc_script.write_bytes(orig_qc_bytes)
+        monkeypatch.setattr(cam_adapter, "build_config", orig_build_config)
+
+    (other_cam_code / "climate").mkdir(parents=True, exist_ok=True)
+    (other_cam_code / "climate" / "Quick_Climate.py").write_bytes(orig_qc_bytes)
+
+    def _build_then_switch_path(*b_args: Any, **b_kwargs: Any) -> dict[str, Any]:
+        built = orig_build_config(*b_args, **b_kwargs)
+        monkeypatch.setenv("AIMIP_CAMULATOR_CODE", str(other_cam_code))
+        return built
+
+    monkeypatch.setattr(cam_adapter, "build_config", _build_then_switch_path)
+    try:
+        with pytest.raises(ApprovalError, match="source_tree path or SHA-256 changed during preparation"):
+            prepare(
+                RunSpec(
+                    model="camulator",
+                    start="1981-01-01T00:00:00",
+                    steps=236,
+                    name="cam-race-path",
+                )
+            )
+        seals_after_path = set(state_prep_dir.glob("*.json")) if state_prep_dir.is_dir() else set()
+        assert seals_after_path == seals_before
+        assert not (runs_dir / "cam-race-path" / "plan.json").exists()
+    finally:
+        monkeypatch.setenv("AIMIP_CAMULATOR_CODE", str(code_dir))
+        monkeypatch.setattr(cam_adapter, "build_config", orig_build_config)
 
     # 3. Out-of-band `TREFHT` (`500 K`) in `consolidate_camulator_monthly_outputs` exits with `EXIT_UNSTABLE == 5`!
     raw_bad = tmp_path / "raw_unstable"

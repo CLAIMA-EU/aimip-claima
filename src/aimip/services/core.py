@@ -6,7 +6,7 @@ and the MCP server (`aimip mcp`). Neither the agent nor MCP shells out to `aimip
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 import dataclasses
 import datetime
 import fcntl
@@ -1044,6 +1044,96 @@ def _raise_no_fetch_missing_assets(spec: RunSpec, resolved: ResolvedPlan) -> NoR
     )
 
 
+def _verify_prepared_source_tree_matches_plan(
+    run_dir: str,
+    manifest: Mapping[str, Any],
+    resolved_plan: ResolvedPlan,
+    *,
+    resolved_data: str | None,
+) -> None:
+    """Require prepared job/manifest source identity (`code_dir` + `code_tree_sha256`) to equal *resolved_plan*'s `source_tree` asset."""
+    source_tree_assets = [a for a in resolved_plan.assets if a.role == "source_tree"]
+    has_manifest_source = (
+        manifest.get("code_dir") is not None or manifest.get("code_tree_sha256") is not None
+    )
+
+    job_has_source = False
+    job_dir = ""
+    job_sha = ""
+    if resolved_plan.family != "fme":
+        cfg_file = os.path.join(run_dir, "config.yaml")
+        if os.path.isfile(cfg_file) and not os.path.islink(cfg_file):
+            try:
+                with open(cfg_file, encoding="utf-8") as cfh:
+                    job_doc = json.load(cfh)
+                if isinstance(job_doc, Mapping) and (
+                    job_doc.get("code_dir") is not None or job_doc.get("code_tree_sha256") is not None
+                ):
+                    job_has_source = True
+                    job_dir = str(job_doc.get("code_dir") or "")
+                    job_sha = str(job_doc.get("code_tree_sha256") or "").strip().lower()
+            except (OSError, json.JSONDecodeError) as exc:
+                raise ApprovalError(
+                    f"Corrupted config.yaml in {run_dir}: {exc}",
+                    field="source_tree",
+                ) from exc
+
+    if not source_tree_assets and not has_manifest_source and not job_has_source:
+        return
+
+    if len(source_tree_assets) != 1:
+        raise ApprovalError(
+            "Plan changed, approve again (prepared source_tree provenance does not match final plan).",
+            field="source_tree",
+        )
+    st_asset = source_tree_assets[0]
+    plan_sha = str(st_asset.sha256 or "").strip().lower()
+    if not st_asset.path or not _HEX64_DIGEST_RE.match(plan_sha) or st_asset.prospective:
+        raise ApprovalError(
+            "Plan changed, approve again (final plan source_tree asset is incomplete).",
+            field="source_tree",
+        )
+
+    if has_manifest_source or job_has_source:
+        if not has_manifest_source:
+            raise ApprovalError(
+                "Plan changed, approve again (aimip-manifest.json omits source_tree identity present in config.yaml).",
+                field="source_tree",
+            )
+        prep_dir = str(manifest.get("code_dir") or "")
+        prep_sha = str(manifest.get("code_tree_sha256") or "").strip().lower()
+        if job_has_source and (job_dir != prep_dir or job_sha != prep_sha):
+            raise ApprovalError(
+                "Plan changed, approve again (config.yaml source_tree identity differs from aimip-manifest.json).",
+                field="source_tree",
+            )
+    elif resolved_plan.family == "arches":
+        from ..setup_data import ARCHES_CODE_REL_DIR, ARCHES_TREE_SHA256
+
+        prep_dir = (
+            os.path.join(resolved_data, ARCHES_CODE_REL_DIR)
+            if resolved_data
+            else ARCHES_CODE_REL_DIR
+        )
+        prep_sha = ARCHES_TREE_SHA256.lower()
+    else:
+        raise ApprovalError(
+            f"Plan changed, approve again (prepared manifest for {resolved_plan.family} omits source_tree identity).",
+            field="source_tree",
+        )
+
+    if (
+        not prep_dir
+        or not _HEX64_DIGEST_RE.match(prep_sha)
+        or prep_dir != st_asset.path
+        or prep_sha != plan_sha
+    ):
+        raise ApprovalError(
+            "Plan changed, approve again (source_tree path or SHA-256 changed during preparation).",
+            field="source_tree",
+        )
+
+
 def prepare(
     spec: RunSpec,
     *,
@@ -1213,6 +1303,12 @@ def prepare(
             from ..lora import sha256_file
 
             trusted_out = check_trusted_run_dir(canonical_out)
+            _verify_prepared_source_tree_matches_plan(
+                trusted_out,
+                manifest,
+                final_plan,
+                resolved_data=resolved_data,
+            )
 
             if spec.mode == "local":
                 manifest["mode"] = "local"
@@ -1507,6 +1603,12 @@ def verify_prepared_run_for_submit(
             "Plan changed, approve again (config.yaml does not match aimip-manifest.json config_sha256).",
             field="digest",
         )
+    _verify_prepared_source_tree_matches_plan(
+        trusted_dir,
+        manifest_doc,
+        rechecked,
+        resolved_data=resolve_data_dir(data_dir, playground_dir=resolved_pg),
+    )
 
     return trusted_dir, saved_digest, spec_for_replan.mode
 
