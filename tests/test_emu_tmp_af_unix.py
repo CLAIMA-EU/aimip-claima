@@ -27,4 +27,9 @@ def test_setup_tmp_keeps_af_unix_dir_short_under_long_tmpdir(tmp_path: Path, mon
     assert not mp_dir.startswith(str(long_dir)), mp_dir
     assert len(os.path.join(mp_dir, "listener-xxxxxxxx")) < 107
     assert tmp == str(long_dir / "emu")                     # the job's own files still go to the run's temp dir
-    assert os.environ["TMPDIR"] == tmp
+    # spawned workers see a short TMPDIR that resolves to the run's temp dir
+    env_tmp = os.environ["TMPDIR"]
+    assert len(env_tmp) <= 40, env_tmp
+    assert os.path.realpath(env_tmp) == os.path.realpath(tmp)
+    assert len(os.path.join(env_tmp, "pymp-xxxxxxxx", "listener-xxxxxxxx")) < 107
+    os.unlink(env_tmp)

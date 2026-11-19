@@ -49,8 +49,25 @@ def _setup_tmp() -> str:
     os.makedirs(tmp, mode=0o700, exist_ok=True)
     for sub in ("e2s-cache", "mpl"):
         os.makedirs(os.path.join(tmp, sub), exist_ok=True)
-    tempfile.tempdir = tmp
-    os.environ["TMPDIR"] = tmp
+    # Worker processes that are SPAWNED (not forked) start a fresh multiprocessing temp dir under TMPDIR, so TMPDIR
+    # itself must be short: it is a symlink /tmp/aimip-<random> -> the run's temp dir. Files still land in the run
+    # directory; only the path the workers see is short.
+    tmpdir_for_env = tmp
+    if short and len(tmp) > 40:
+        import secrets
+
+        for _ in range(8):
+            link = os.path.join(short, "aimip-" + secrets.token_hex(6))
+            try:
+                os.symlink(tmp, link)
+            except FileExistsError:
+                continue
+            except OSError:
+                break
+            tmpdir_for_env = link
+            break
+    tempfile.tempdir = tmpdir_for_env
+    os.environ["TMPDIR"] = tmpdir_for_env
     return tmp
 
 
