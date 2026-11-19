@@ -908,6 +908,7 @@ def plan(
         "lora_sha256": validated.get("lora_sha256"),
         "monthly": bool(spec.monthly),
         "prediction": bool(spec.prediction),
+        "outputs": list(validated.get("outputs") or []),
         "mode": spec.mode,
         "output_dir": output_dir,
         "resources": {

@@ -13,6 +13,7 @@ from ..plan_types import (
     canonical_json,
     coerce_bool,
     coerce_optional_int,
+    coerce_outputs,
     compute_plan_digest,
 )
 
@@ -27,5 +28,6 @@ __all__ = [
     "canonical_json",
     "coerce_bool",
     "coerce_optional_int",
+    "coerce_outputs",
     "compute_plan_digest",
 ]

@@ -12,7 +12,7 @@ import yaml
 from ..errors import ValidationError
 from ..validators import validate_safe_path
 from .approval import format_bytes
-from .types import ResolvedPlan, RunSpec, coerce_bool, coerce_optional_int
+from .types import ResolvedPlan, RunSpec, coerce_bool, coerce_optional_int, coerce_outputs
 
 _ANSI_CSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 _ANSI_OSC_RE = re.compile(r"\x1b\].*?(?:\x07|\x1b\\)", re.DOTALL)
@@ -35,6 +35,7 @@ ALLOWED_CONFIG_KEYS: frozenset[str] = frozenset(
         "out",
         "monthly",
         "prediction",
+        "outputs",
         "mode",
         "resources",
         "partition",
@@ -192,6 +193,7 @@ def merge_config_and_cli(
     out_raw = _pick("out")
     monthly_raw = _pick("monthly", True)
     pred_raw = _pick("prediction", False)
+    outputs_raw = _pick("outputs")
     mode_raw = _pick("mode", "slurm")
 
     if merged_res.get("cpus_per_task") is not None:
@@ -215,6 +217,7 @@ def merge_config_and_cli(
         out=str(out_raw) if out_raw is not None else None,
         monthly=coerce_bool(monthly_raw, "monthly", default=True),
         prediction=coerce_bool(pred_raw, "prediction", default=False),
+        outputs=coerce_outputs(outputs_raw),
         resources=merged_res,
         mode=str(mode_raw),
         config_file=validate_safe_path(
@@ -356,6 +359,15 @@ def render_plan_card(plan: ResolvedPlan, *, is_tty: bool = False) -> str:
         outputs_line = "monthly means (monthly_mean_predictions.nc)"
     else:
         outputs_line = "restart state only (restart.nc)"
+    extra_outputs = list((plan.canonical_payload or {}).get("outputs") or [])
+    if extra_outputs:
+        from ..outputs import describe_outputs
+        from .metadata import MODEL_CARDS
+
+        grid_m = re.match(r"\s*(\d+)\s*x\s*(\d+)", str((MODEL_CARDS.get(plan.model) or {}).get("grid") or ""))
+        grid_cells = int(grid_m.group(1)) * int(grid_m.group(2)) if grid_m else None
+        extra_lines = describe_outputs(extra_outputs, members=int(plan.members or 1), grid_cells=grid_cells)
+        outputs_line = outputs_line + "".join(f"\n               + {line}" for line in extra_lines)
     digest_line = (
         f"  digest:      {plan.short_digest}  (approval prefix: {plan.approval_prefix}; "
         "prospective prepare stage — final submit digest after staging)"

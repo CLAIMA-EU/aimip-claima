@@ -27,6 +27,9 @@ Every error message of aimip-claima says what was wrong, and most end with a `ne
 |---|---|
 | `No shipped initial condition for '<model>' at <date>` | the model can start only on the dates the message lists (also in `aimip show <model>`); or pass your own state with `--ic`, or make one with `aimip ic spin` |
 | `Refusing run: end time ... exceeds forcing set ...` | the run would end after the forcing data do; the message gives the largest `--steps` or `--end` that fits |
+| `--output '...' needs a whole number of days` (or of other periods) | the run must be a whole number of output periods: use one of the `--steps` values the message gives |
+| `--output '...': START and END must fall on the boundaries ...` | the period of an output must begin and end on its period boundaries, counted from the start of the run ([choosing what is written](user-guide.md#choosing-what-is-written)) |
+| `--output is not available for <model> yet` | only the ACE models support `--output` so far; the other models write monthly means |
 | `Model '<model>' is deterministic: --members K requires a multi-sample IC` | a deterministic model needs a different initial state per member: see [ensembles](user-guide.md#ensembles) |
 | `forcing sets 1xCO2, 3xCO2 all cover this window` | the model has several forcing sets for these dates: choose one with `--forcing-set` |
 | `model X is not installed here: ask the install owner to run 'aimip fetch -m X'` | someone else owns the installation; only the owner can download models |
@@ -53,6 +56,7 @@ Every error message of aimip-claima says what was wrong, and most end with a `ne
 |---|---|
 | `State: failed` | `aimip logs <name>` shows the end of the logs; the full logs are `slurm-<jobid>.err`, `slurm-<jobid>.out` and `inference_out.log` (without Slurm: `local-run.log`) in the run directory |
 | the job ends as `TIMEOUT` | the run was longer than the job time: prepare it again with a larger `--time`, or split it into [segments](user-guide.md#continuing-a-run) |
+| `aimip warning: output file output_... without X` at the end of the job | the model has no variable `X` (a typing error, or another name): `ncdump -h monthly_mean_predictions.nc` lists the model's names |
 | exit code 5, and `unstable_from` in `aimip-manifest.json` | the model became unstable (values out of range); aimip-claima stopped it and kept the months before. This is a property of the model ([models.md](models.md)), not an installation problem |
 | `cuFFT error: CUFFT_INTERNAL_ERROR` at the first step (GH200, aarch64) | the image is read from a mounted file: install again with the current version, which unpacks it, or `export APPTAINER_UNSQUASH=1` ([aarch64](installation.md#special-situations)) |
 | `CUDA out of memory` | too many members for one GPU: fewer `--members` per run, or a GPU with more memory |
