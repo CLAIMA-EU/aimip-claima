@@ -1191,6 +1191,23 @@ def _cmd_setup(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_bundle(args: argparse.Namespace) -> int:
+    from .bundle import make_bundle
+    from .site_config import load_site_config
+
+    site = load_site_config(None)
+    manifest = make_bundle(
+        str(args.models).split(","),
+        args.out,
+        source=args.source,
+        runtime=getattr(site, "runtime", None),
+        progress=(lambda msg: print(msg, file=sys.stderr)) if args.json else print,
+    )
+    if args.json:
+        return _emit_json_ok(manifest)
+    return 0
+
+
 def _cmd_fetch(args: argparse.Namespace) -> int:
     from .setup_data import fetch_model
 
@@ -1761,6 +1778,17 @@ def build_parser() -> argparse.ArgumentParser:
     p_setup.add_argument("--json", action="store_true", help="Emit JSON output.")
 
     # 9b. `aimip fetch -m <model>`
+    p_bundle = subparsers.add_parser(
+        "bundle",
+        help="Copy the image, the files of chosen models and the source into one directory, for a cluster without "
+        "internet (container installations).",
+    )
+    p_bundle.add_argument("-m", "--models", required=True, help="Comma-separated model names.")
+    p_bundle.add_argument("--out", required=True, help="New directory for the bundle (absolute path).")
+    p_bundle.add_argument("--source", default=None,
+                          help="aimip-claima source tree of this version (default: the copy inside the image).")
+    p_bundle.add_argument("--json", action="store_true", help="Emit JSON output.")
+
     p_fetch = subparsers.add_parser(
         "fetch",
         help="Download, build (if derived), and lock-verify only the requested model(s) into $AIMIP_DATA.",
@@ -1968,6 +1996,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _cmd_completion(args)
         if args.command == "setup":
             return _cmd_setup(args)
+        if args.command == "bundle":
+            return _cmd_bundle(args)
         if args.command == "fetch":
             return _cmd_fetch(args)
         if args.command == "site":

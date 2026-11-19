@@ -287,14 +287,14 @@ On some clusters no node can reach the internet. You can log in with SSH and cop
 the cluster cannot download anything: the installer cannot fetch or build the image, and aimip-claima cannot download
 models. Prepare everything on a second machine that has internet, then copy it over.
 
-The second machine needs Linux on the same processor type as the cluster (x86_64 for MareNostrum 5), Apptainer,
-Singularity, Docker or Podman, and disk space for the models you want. It needs no GPU. A login node of another
-cluster or a Linux workstation will do.
+The second machine needs Linux on the same processor type as the cluster (x86_64 for MareNostrum 5), Apptainer or
+Singularity, and disk space for the models you want. It needs no GPU. A login node of another cluster or a Linux
+workstation will do.
 
 **On the machine with internet:**
 
-1. Install aimip-claima as in [section 5](#5-run-the-installer), with `--site local` (these site settings are not copied;
-   leave out `--build` for a release version):
+1. Install aimip-claima in container mode as in [section 5](#5-run-the-installer), with `--site local` (these site
+   settings are not copied; leave out `--build` for a release version):
 
    ```bash
    git clone https://github.com/CliDyn/aimip-claima.git
@@ -305,50 +305,66 @@ cluster or a Linux workstation will do.
 2. Download the models you will use:
 
    ```bash
-   /big/disk/aimip/bin/aimip fetch -m ace2-era5
-   /big/disk/aimip/bin/aimip fetch -m archesweather
+   aimip fetch -m ace2-era5
+   aimip fetch -m archesweather
    ```
 
-3. Copy three things to the cluster: the code, the image and the model data. The paths on the cluster can be
-   different from the paths here.
+3. Put everything the cluster needs for these models into one new directory, the bundle:
 
    ```bash
-   rsync -a aimip-claima/            mycluster:/gpfs/projects/myproject/aimip-claima/
-   rsync -a /big/disk/aimip/images/  mycluster:/gpfs/projects/myproject/aimip/images/
-   rsync -a /big/disk/aimip/data/    mycluster:/gpfs/projects/myproject/aimip/data/
+   aimip bundle -m ace2-era5,archesweather --out /big/disk/aimip-bundle
+   ```
+
+   It holds the container image, every file of the models (including the files their forcing is built from) and the
+   aimip-claima source of the same version, with the steps for the cluster in `BUNDLE.md`. It is laid out like an
+   installation directory. For ArchesWeather alone it is 7.2 GiB, 4.3 GiB of it the image.
+
+4. Copy it to the cluster, to where the installation should live there:
+
+   ```bash
+   rsync -a /big/disk/aimip-bundle/ mycluster:/gpfs/projects/myproject/aimip/
    ```
 
 **On the cluster:**
 
-4. If the cluster provides Apptainer or Singularity as a module, load it (`module avail apptainer singularity`
-   shows what there is). Then run the installer with the cluster's settings and **without** `--build`. It finds the
-   image in `images/`, checks that it holds the same aimip-claima version as the code, and downloads nothing:
+5. If the cluster provides Apptainer or Singularity as a module, load it (`module avail apptainer singularity`
+   shows what there is). Then run the installer from the bundle, with the bundle as the prefix, the cluster's settings
+   and **without** `--build`. It finds the image, checks that it holds the same version as the source, and downloads
+   nothing:
 
    ```bash
-   cd /gpfs/projects/myproject/aimip-claima
+   cd /gpfs/projects/myproject/aimip/aimip-claima
    install/install-container.sh --prefix /gpfs/projects/myproject/aimip \
        --run-root /gpfs/scratch/myproject/aimip-runs \
        --site generic-slurm --partition <partition> --account <project>
    ```
 
-5. Check it with `aimip doctor`. When you prepare runs, add `--no-fetch`: if a file is missing, the run then stops at
-   once with a clear message instead of waiting for a network that is not there.
+6. Check the copied files against the lock file (nothing is downloaded when they are all there) and the installation:
 
    ```bash
-   aimip run ace2-era5 --start 1979-01-01 --steps 8 --name first --no-fetch
+   export PATH=/gpfs/projects/myproject/aimip/bin:$PATH
+   aimip fetch -m ace2-era5
+   aimip fetch -m archesweather
+   aimip doctor
    ```
 
-To add models later, repeat steps 2 and 3 (`rsync` copies only what is new). To update aimip-claima, repeat steps 1–4 with
-the new version.
+   When you prepare runs, add `--no-fetch`: if a file is missing, the run then stops at once with a clear message
+   instead of waiting for a network that is not there.
+
+To add models later, fetch them on the machine with internet, make a bundle of the new models, copy its `data/`
+directory into the installation on the cluster (`rsync -a <bundle>/data/ mycluster:/gpfs/projects/myproject/aimip/data/`)
+and run `aimip fetch -m <model>` there. To update aimip-claima, make a new bundle with the new version and install
+from it.
 
 What does not work on such a cluster:
 
 - **DLESyM** (`dlesym-*`) and **Samudra-OM4**: they download their starting data each time a run is prepared (ERA5
-  from Google Cloud, ocean states from OSN).
+  from Google Cloud, ocean states from OSN); `aimip bundle` refuses them.
 - **Native mode**: it installs Python packages from the internet.
 - **CAMulator** from start dates other than 1980-01-01 and 1981-01-01: `aimip fetch` downloads only the files for
   these two. For another start, prepare one run with that start on the machine with internet (`aimip run camulator
-  --start …` downloads the extra files), then copy `data/` again.
+  --start …` downloads the extra files) before you make the bundle; it includes the extra files it finds.
+- **Docker or Podman** on the machine with internet: `aimip bundle` needs the Apptainer or Singularity image file.
 
 **Job options that aimip-claima does not write,** such as the QoS that MareNostrum 5 uses to choose a queue: set them as
 Slurm environment variables before `aimip submit`, for example `export SBATCH_QOS=<your QoS>`. `sbatch` reads

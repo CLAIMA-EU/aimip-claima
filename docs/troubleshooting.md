@@ -36,6 +36,8 @@ Every error message of aimip-claima says what was wrong, and most end with a `ne
 | `... --no-fetch was specified` | the model is not downloaded yet: run `aimip fetch -m <model>` (or leave out `--no-fetch`) |
 | `Could not fetch the ERA5 initial state` (DLESyM) | DLESyM downloads its start state when the run is prepared: run `aimip run` where there is internet |
 | a download hangs or fails with a network error | the machine cannot reach the internet: download the model elsewhere and copy it in ([clusters without internet](installation.md#clusters-without-internet-for-example-marenostrum-5)), and use `--no-fetch` |
+| `aimip bundle needs a container installation with Apptainer or Singularity` | make the bundle on a machine with a container installation; a native installation cannot be moved |
+| `Some files of these models are not here yet` (`aimip bundle`) | download them first with `aimip fetch -m <model>` |
 | `path must be absolute`, `refusing path` | use absolute paths with only letters, digits and `. _ / + -`; no spaces, no `~`, no `..` |
 | `run/output paths must live under <run root>` | `--out` points outside your run root: use `--name` instead, or a path under the run root |
 | `path will not be visible inside the container` | your `--ic` or `--lora` file is outside the run root and the installation: copy it into your run root |
