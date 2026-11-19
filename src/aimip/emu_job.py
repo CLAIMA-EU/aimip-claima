@@ -34,7 +34,17 @@ def _log(msg: str) -> None:
 def _setup_tmp() -> str:
     import multiprocessing.util
 
-    multiprocessing.util.get_temp_dir()          # AF_UNIX sockets stay in the short system /tmp
+    # AF_UNIX sockets (torch DataLoader workers, multiprocessing.resource_sharer) live in multiprocessing's temp dir,
+    # and a socket path longer than 107 characters fails ("AF_UNIX path too long"), which hangs the job until its
+    # time limit. The parent may already have pointed TMPDIR into a long run directory, so the temp dir is created
+    # in the short system /tmp explicitly, whatever TMPDIR says.
+    saved_tempdir = tempfile.tempdir
+    short = "/tmp" if os.path.isdir("/tmp") and os.access("/tmp", os.W_OK) else None
+    tempfile.tempdir = short
+    try:
+        multiprocessing.util.get_temp_dir()
+    finally:
+        tempfile.tempdir = saved_tempdir
     tmp = os.environ.get("AIMIP_EMU_TMP") or tempfile.mkdtemp()
     os.makedirs(tmp, mode=0o700, exist_ok=True)
     for sub in ("e2s-cache", "mpl"):
