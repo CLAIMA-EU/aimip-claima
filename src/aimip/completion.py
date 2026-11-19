@@ -25,6 +25,7 @@ TOP_LEVEL_COMMANDS: tuple[str, ...] = (
     "lora",
     "setup",
     "fetch",
+    "bundle",
     "site",
     "chat",
     "mcp",
@@ -192,6 +193,10 @@ _aimip_completions() {{
             COMPREPLY=( $(compgen -W "-m --model --dest --lock --playground --accept-derived --json" -- "${{cur}}") )
             return 0
             ;;
+        bundle)
+            COMPREPLY=( $(compgen -W "-m --models --out --source --json" -- "${{cur}}") )
+            return 0
+            ;;
         mcp)
             COMPREPLY=( $(compgen -W "--state-dir --help" -- "${{cur}}") )
             return 0
@@ -331,6 +336,9 @@ _aimip() {{
             ;;
         fetch)
             compadd -- -m --model --dest --lock --playground --accept-derived --json
+            ;;
+        bundle)
+            compadd -- -m --models --out --source --json
             ;;
         mcp)
             compadd -- --state-dir --help

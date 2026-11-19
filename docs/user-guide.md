@@ -475,6 +475,7 @@ A monthly file of `ace2-era5` takes about 16 MB per member and month.
 | `aimip cancel <name>` | stop a queued or running job |
 | `aimip ic list -m <model>`, `aimip ic spin …`, `aimip collect …` | initial states: list them, spin new ones up, collect them into one file |
 | `aimip fetch -m <model>`, `aimip setup --models all` | download models in advance |
+| `aimip bundle -m <models> --out <dir>` | the image, the models' files and the source in one directory, for a cluster without internet ([installation](installation.md#clusters-without-internet-for-example-marenostrum-5)) |
 | `aimip doctor`, `aimip site show` | check the installation, show the settings |
 | `aimip lora info/scale …` | inspect or rescale a LoRA checkpoint |
 | `aimip chat`, `aimip ui`, `aimip mcp`, `aimip approve` | the assistant, the web interface, the MCP server, approvals ([console.md](console.md)) |
