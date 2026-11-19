@@ -44,7 +44,7 @@ from typing import Any
 import zipfile
 
 from .errors import ConfigError, ValidationError
-from .safe_pickle import normalize_sha256, open_verified_hash_stream
+from .safe_pickle import normalize_sha256, open_verified_bound_stream, open_verified_hash_stream
 from .validators import validate_safe_path
 
 CBOTTLE_CODE_REPO = "NVlabs/cBottle"
@@ -420,7 +420,8 @@ def verified_cbottle_pretrained_loader(
         expected_by_realpath[real_s] = abs_s
 
     verified_zip_realpaths: set[str] = set()
-    verified_torch_loads = 0
+    loaded_net_state_realpaths: set[str] = set()
+    bound_net_state_streams: dict[int, tuple[Any, str]] = {}
 
     orig_zipfile = zipfile.ZipFile
     orig_load = getattr(torch, "_aimip_orig_torch_load", torch.load)
@@ -429,26 +430,16 @@ def verified_cbottle_pretrained_loader(
     with contextlib.ExitStack() as stack:
 
         def _verified_zipfile(file: Any, mode: str = "r", *args: Any, **kwargs: Any) -> Any:
-            cand_path = _extract_cbottle_load_path(file)
-            if cand_path is None:
-                return orig_zipfile(file, mode, *args, **kwargs)
             if mode != "r":
                 raise ValidationError(
-                    f"Refusing non-read ZipFile mode {mode!r} in cBottle-3d checkpoint loader: {cand_path}"
+                    f"Refusing non-read ZipFile mode {mode!r} in cBottle-3d checkpoint loader: {file!r}"
                 )
-            abs_p = os.path.abspath(cand_path)
-            want_sha = digest_map.get(abs_p)
-            if want_sha is None:
-                raise ValidationError(
-                    f"Refusing unverified cBottle-3d checkpoint archive: {abs_p}"
-                )
-
-            stream_ctx = open_verified_hash_stream(
-                abs_p,
-                want_sha,
-                label=f"cBottle-3d {os.path.basename(abs_p)}",
+            stream_ctx = open_verified_bound_stream(
+                file,
+                digest_map,
+                loader_label="cBottle-3d checkpoint",
             )
-            stream = stream_ctx.__enter__()
+            stream, abs_p, real_p = stream_ctx.__enter__()
             closed = False
 
             def _close_stream() -> None:
@@ -482,8 +473,20 @@ def verified_cbottle_pretrained_loader(
                 _close_stream()
                 raise
 
-            verified_zip_realpaths.add(os.path.realpath(abs_p))
+            verified_zip_realpaths.add(real_p)
+            orig_zf_open = zf.open
             orig_zf_close = zf.close
+
+            def _wrapped_open(member: Any, zmode: str = "r", *o_args: Any, **o_kwargs: Any) -> Any:
+                if zmode != "r":
+                    raise ValidationError(
+                        f"Refusing non-read ZipFile.open mode {zmode!r} in cBottle-3d checkpoint loader: {abs_p}"
+                    )
+                member_fh = orig_zf_open(member, zmode, *o_args, **o_kwargs)
+                member_name = member.filename if isinstance(member, zipfile.ZipInfo) else str(member)
+                if member_name == "net_state.pth":
+                    bound_net_state_streams[id(member_fh)] = (member_fh, real_p)
+                return member_fh
 
             def _wrapped_close() -> None:
                 try:
@@ -491,11 +494,11 @@ def verified_cbottle_pretrained_loader(
                 finally:
                     _close_stream()
 
+            zf.open = _wrapped_open  # type: ignore[method-assign]
             zf.close = _wrapped_close  # type: ignore[method-assign]
             return zf
 
         def _verified_torch_load(f: Any, *args: Any, **kwargs: Any) -> Any:
-            nonlocal verified_torch_loads
             if kwargs.get("weights_only") is False:
                 raise ValidationError(
                     "Refusing torch.load(..., weights_only=False) inside cBottle-3d checkpoint loader."
@@ -505,16 +508,23 @@ def verified_cbottle_pretrained_loader(
                 raise ValidationError(
                     f"Refusing direct path torch.load inside cBottle-3d checkpoint loader: {cand_path}"
                 )
+            bound_entry = bound_net_state_streams.get(id(f))
+            if bound_entry is None or bound_entry[0] is not f:
+                raise ValidationError(
+                    "Refusing unbound stream in cBottle-3d checkpoint loader; "
+                    "expected net_state.pth opened from a verified checkpoint archive."
+                )
+            bound_net_state_streams.pop(id(f), None)
             kwargs["weights_only"] = True
             loaded_obj = orig_load(f, *args, **kwargs)
-            verified_torch_loads += 1
+            loaded_net_state_realpaths.add(bound_entry[1])
             return loaded_obj
 
         zipfile.ZipFile = _verified_zipfile  # type: ignore[misc]
         torch.load = _verified_torch_load  # type: ignore[assignment]
         torch.serialization.load = _verified_torch_load  # type: ignore[assignment]
         try:
-            yield verified_zip_realpaths
+            yield loaded_net_state_realpaths
         finally:
             zipfile.ZipFile = orig_zipfile  # type: ignore[misc]
             torch.load = orig_load  # type: ignore[assignment]
@@ -530,10 +540,14 @@ def verified_cbottle_pretrained_loader(
                     "cBottle-3d pretrained loader bypassed verified ZipFile wrapper for checkpoint(s): "
                     f"{', '.join(missing_archives)}"
                 )
-            if verified_torch_loads < len(expected_by_realpath):
+            missing_states = [
+                disp for real_p, disp in expected_by_realpath.items()
+                if real_p not in loaded_net_state_realpaths
+            ]
+            if missing_states:
                 raise ValidationError(
-                    "cBottle-3d pretrained loader bypassed verified torch.load wrapper "
-                    f"(expected >= {len(expected_by_realpath)} state loads, got {verified_torch_loads})."
+                    "cBottle-3d pretrained loader did not load verified net_state.pth for checkpoint(s): "
+                    f"{', '.join(missing_states)}"
                 )
 
 

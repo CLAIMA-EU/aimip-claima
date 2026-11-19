@@ -55,6 +55,7 @@ from .errors import ConfigError, ValidationError
 from .safe_pickle import (
     compute_sha256sum_tree_digest,
     normalize_sha256,
+    open_verified_bound_stream,
     open_verified_hash_stream,
     stage_verified_code_snapshot,
     torch_load_verified,
@@ -1066,30 +1067,20 @@ def install_camulator_verified_torch_load(
                 "Refusing torch.load(..., weights_only=False) inside CAMulator runtime."
             )
         kwargs["weights_only"] = True
-        cand_path = _extract_camulator_load_path(f)
-        if cand_path is not None:
-            abs_p = os.path.abspath(cand_path)
-            want_sha = digest_map.get(abs_p)
-            if want_sha is None:
-                raise ValidationError(
-                    f"Refusing unverified CAMulator torch.load path: {abs_p}"
-                )
-            with open_verified_hash_stream(
-                abs_p,
-                want_sha,
-                label=f"CAMulator {os.path.basename(abs_p)}",
-            ) as stream:
-                loaded_obj = orig_load(stream, *args, **kwargs)
-            real_p = os.path.realpath(abs_p)
-            if recorded_realpaths is not None:
-                recorded_realpaths.add(real_p)
-            if audit_log_path:
-                _append_camulator_audit_record(
-                    audit_log_path,
-                    {"abspath": abs_p, "realpath": real_p},
-                )
-            return loaded_obj
-        return orig_load(f, *args, **kwargs)
+        with open_verified_bound_stream(
+            f,
+            digest_map,
+            loader_label="CAMulator torch.load",
+        ) as (stream, abs_p, real_p):
+            loaded_obj = orig_load(stream, *args, **kwargs)
+        if recorded_realpaths is not None:
+            recorded_realpaths.add(real_p)
+        if audit_log_path:
+            _append_camulator_audit_record(
+                audit_log_path,
+                {"abspath": abs_p, "realpath": real_p},
+            )
+        return loaded_obj
 
     torch.load = _verified_camulator_torch_load  # type: ignore[assignment]
     torch.serialization.load = _verified_camulator_torch_load  # type: ignore[assignment]

@@ -15,7 +15,7 @@ from __future__ import annotations
 import builtins
 import collections
 import contextlib
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 import hashlib
 import io
 import os
@@ -90,6 +90,15 @@ def _verify_directory_permissions(
             f"Refusing group- or world-writable directory in {label}: {dir_path} "
             f"(fix with: chmod go-w {dir_path})"
         )
+
+
+_ACTIVE_VERIFIED_STREAMS: dict[int, tuple[Any, str, str, str]] = {}
+_STDLIB_FD_STREAM_TYPES: tuple[type[Any], ...] = (
+    io.FileIO,
+    io.BufferedReader,
+    io.BufferedRandom,
+    io.TextIOWrapper,
+)
 
 
 @contextlib.contextmanager
@@ -170,8 +179,129 @@ def open_verified_hash_stream(
                 pass
         raise
 
+    abs_safe = os.path.abspath(safe_path)
+    real_safe = os.path.realpath(safe_path)
     with stream:
-        yield stream
+        stream_id = id(stream)
+        _ACTIVE_VERIFIED_STREAMS[stream_id] = (stream, abs_safe, real_safe, want)
+        try:
+            yield stream
+        finally:
+            _ACTIVE_VERIFIED_STREAMS.pop(stream_id, None)
+
+
+@contextlib.contextmanager
+def open_verified_bound_stream(
+    target: Any,
+    digest_map: Mapping[str, str],
+    *,
+    loader_label: str,
+) -> Iterator[tuple[Any, str, str]]:
+    """Bind a path or file-like stream *target* to its SHA-256-verified file in *digest_map*.
+
+    - Paths (`str | bytes | os.PathLike`) are opened via `open_verified_hash_stream`.
+    - Streams yielded by `open_verified_hash_stream` are verified against *digest_map* at offset 0.
+    - External file-like streams (`open(..., 'rb'|'r')` or `fsspec` `LocalFileOpener`) must be backed
+      by a real C-stdlib file descriptor at offset 0 whose `(st_dev, st_ino)` matches the verified
+      descriptor opened from `digest_map[abs_p]`.
+    - Anonymous streams (`io.BytesIO`, `io.StringIO`, `ZipExtFile`, custom wrappers) and streams
+      whose descriptor inode differs from their claimed path are refused fail-closed.
+    """
+    if type(target) in (str, bytes) or isinstance(target, os.PathLike):
+        abs_p = os.path.abspath(os.fsdecode(target))
+        want_sha = digest_map.get(abs_p)
+        if want_sha is None:
+            raise ValidationError(f"Refusing unverified {loader_label} path: {abs_p}")
+        with open_verified_hash_stream(
+            abs_p,
+            want_sha,
+            label=f"{loader_label} {os.path.basename(abs_p)}",
+        ) as vstream:
+            yield vstream, abs_p, os.path.realpath(abs_p)
+        return
+
+    active_entry = _ACTIVE_VERIFIED_STREAMS.get(id(target))
+    if active_entry is not None and active_entry[0] is target:
+        _vstream, abs_p, real_p, stream_sha = active_entry
+        want_sha = digest_map.get(abs_p) or digest_map.get(real_p)
+        if want_sha is None or want_sha != stream_sha:
+            raise ValidationError(f"Refusing unverified {loader_label} path: {abs_p}")
+        if target.tell() != 0:
+            raise ValidationError(
+                f"Refusing non-zero stream offset ({target.tell()}) in {loader_label} for {abs_p}."
+            )
+        yield target, abs_p, real_p
+        return
+
+    if isinstance(target, zipfile.ZipExtFile):
+        raise ValidationError(f"Refusing unbound archive member stream in {loader_label}.")
+
+    cand_path: str | None = None
+    fs_path = getattr(target, "path", None)
+    if type(fs_path) in (str, bytes) or isinstance(fs_path, os.PathLike):
+        cand_path = os.fsdecode(fs_path)
+    else:
+        fh_name = getattr(target, "name", None)
+        if type(fh_name) in (str, bytes) or isinstance(fh_name, os.PathLike):
+            cand_path = os.fsdecode(fh_name)
+    if not cand_path:
+        raise ValidationError(f"Refusing unbound anonymous stream in {loader_label}.")
+
+    raw_stream = target if type(target) in _STDLIB_FD_STREAM_TYPES else getattr(target, "f", None)
+    if (
+        raw_stream is None
+        or type(raw_stream) not in _STDLIB_FD_STREAM_TYPES
+        or getattr(raw_stream, "closed", True)
+    ):
+        raise ValidationError(
+            f"Refusing unbound or non-descriptor stream in {loader_label} claiming {cand_path!r}."
+        )
+    try:
+        pos = raw_stream.tell()
+        target_fd = raw_stream.fileno()
+    except (OSError, ValueError) as exc:
+        raise ValidationError(
+            f"Refusing invalid file descriptor stream in {loader_label} claiming {cand_path!r}: {exc}"
+        ) from exc
+    if pos != 0:
+        raise ValidationError(
+            f"Refusing non-zero stream offset ({pos}) in {loader_label} for {cand_path!r}."
+        )
+    if target is not raw_stream and callable(getattr(target, "fileno", None)):
+        try:
+            outer_fd = target.fileno()
+        except (OSError, ValueError) as exc:
+            raise ValidationError(
+                f"Refusing invalid wrapper stream descriptor in {loader_label} claiming {cand_path!r}: {exc}"
+            ) from exc
+        if outer_fd != target_fd:
+            raise ValidationError(
+                f"Refusing wrapper stream with mismatched fileno in {loader_label} claiming {cand_path!r}."
+            )
+
+    abs_p = os.path.abspath(cand_path)
+    want_sha = digest_map.get(abs_p)
+    if want_sha is None:
+        raise ValidationError(f"Refusing unverified {loader_label} path: {abs_p}")
+
+    with open_verified_hash_stream(
+        abs_p,
+        want_sha,
+        label=f"{loader_label} {os.path.basename(abs_p)}",
+    ) as vstream:
+        try:
+            t_st = os.fstat(target_fd)
+            v_st = os.fstat(vstream.fileno())
+        except OSError as exc:
+            raise ValidationError(
+                f"Cannot stat stream descriptor in {loader_label} for {abs_p}: {exc}"
+            ) from exc
+        if not stat.S_ISREG(t_st.st_mode) or (t_st.st_dev, t_st.st_ino) != (v_st.st_dev, v_st.st_ino):
+            raise ValidationError(
+                f"Refusing stream with mismatched file provenance in {loader_label}: "
+                f"descriptor does not match verified {abs_p}."
+            )
+        yield vstream, abs_p, os.path.realpath(abs_p)
 
 
 def torch_load_verified(

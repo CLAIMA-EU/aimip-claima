@@ -70,6 +70,7 @@ from .errors import ConfigError, ValidationError
 from .safe_pickle import (
     compute_sha256sum_tree_digest,
     normalize_sha256,
+    open_verified_bound_stream,
     open_verified_hash_stream,
     stage_verified_code_snapshot,
 )
@@ -766,30 +767,20 @@ def install_sdyff_verified_loaders(
     def _verified_sdyff_torch_load(f: Any, *args: Any, **kwargs: Any) -> Any:
         kwargs["weights_only"] = False
         kwargs["pickle_module"] = make_sdyff_restricted_pickle_module()
-        cand_path = _extract_sdyff_load_path(f)
-        if cand_path is not None:
-            abs_p = os.path.abspath(cand_path)
-            want_sha = digest_map.get(abs_p)
-            if want_sha is None:
-                raise ValidationError(
-                    f"Refusing unverified Spherical DYffusion torch.load path: {abs_p}"
-                )
-            with open_verified_hash_stream(
-                abs_p,
-                want_sha,
-                label=f"Spherical DYffusion {os.path.basename(abs_p)}",
-            ) as stream:
-                loaded_obj = orig_load(stream, *args, **kwargs)
-            real_p = os.path.realpath(abs_p)
-            if recorded_torch_realpaths is not None:
-                recorded_torch_realpaths.add(real_p)
-            if audit_log_path:
-                _append_sdyff_audit_record(
-                    audit_log_path,
-                    {"kind": "torch", "abspath": abs_p, "realpath": real_p},
-                )
-            return loaded_obj
-        return orig_load(f, *args, **kwargs)
+        with open_verified_bound_stream(
+            f,
+            digest_map,
+            loader_label="Spherical DYffusion torch.load",
+        ) as (stream, abs_p, real_p):
+            loaded_obj = orig_load(stream, *args, **kwargs)
+        if recorded_torch_realpaths is not None:
+            recorded_torch_realpaths.add(real_p)
+        if audit_log_path:
+            _append_sdyff_audit_record(
+                audit_log_path,
+                {"kind": "torch", "abspath": abs_p, "realpath": real_p},
+            )
+        return loaded_obj
 
     torch.load = _verified_sdyff_torch_load  # type: ignore[assignment]
     torch.serialization.load = _verified_sdyff_torch_load  # type: ignore[assignment]
@@ -804,32 +795,23 @@ def install_sdyff_verified_loaders(
         setattr(OmegaConf, "_aimip_orig_load", orig_oc_load)
 
         def _verified_omegaconf_load(file_: Any) -> Any:
-            cand_path = _extract_sdyff_load_path(file_)
-            if cand_path is not None:
-                abs_p = os.path.abspath(cand_path)
-                want_sha = digest_map.get(abs_p)
-                if want_sha is None:
-                    raise ValidationError(
-                        f"Refusing unverified Spherical DYffusion OmegaConf.load path: {abs_p}"
-                    )
-                with open_verified_hash_stream(
-                    abs_p,
-                    want_sha,
-                    label=f"Spherical DYffusion {os.path.basename(abs_p)}",
-                ) as stream:
-                    raw_text = stream.read().decode("utf-8")
-                loaded_cfg = orig_oc_load(io.StringIO(raw_text))
-                if audit_log_path:
-                    _append_sdyff_audit_record(
-                        audit_log_path,
-                        {
-                            "kind": "omegaconf",
-                            "abspath": abs_p,
-                            "realpath": os.path.realpath(abs_p),
-                        },
-                    )
-                return loaded_cfg
-            return orig_oc_load(file_)
+            with open_verified_bound_stream(
+                file_,
+                digest_map,
+                loader_label="Spherical DYffusion OmegaConf.load",
+            ) as (stream, abs_p, real_p):
+                raw_text = stream.read().decode("utf-8")
+            loaded_cfg = orig_oc_load(io.StringIO(raw_text))
+            if audit_log_path:
+                _append_sdyff_audit_record(
+                    audit_log_path,
+                    {
+                        "kind": "omegaconf",
+                        "abspath": abs_p,
+                        "realpath": real_p,
+                    },
+                )
+            return loaded_cfg
 
         OmegaConf.load = staticmethod(_verified_omegaconf_load)  # type: ignore[method-assign]
     except ImportError:

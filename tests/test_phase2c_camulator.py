@@ -786,6 +786,34 @@ for idx, ym in enumerate(("198101", "198102")):
         finally:
             ckpt_disk_p.write_bytes(ckpt_bytes)
 
+    # Stream provenance with two harmless distinct files: verified fd stream succeeds,
+    # while anonymous BytesIO and mismatched-provenance wrapper streams are refused!
+    harmless_a = tmp_path / "harmless_cam_a.pt"
+    harmless_b = tmp_path / "harmless_cam_b.pt"
+    torch.save({"tag": 1, "w": torch.ones(1)}, harmless_a)
+    torch.save({"tag": 2, "w": torch.full((1,), 2.0)}, harmless_b)
+    sha_cam_a = _sha256_bytes(harmless_a.read_bytes())
+
+    class _FakeFsspecOpener:
+        def __init__(self, claimed_path: str, raw_fh: Any) -> None:
+            self.path = claimed_path
+            self.f = raw_fh
+
+        def fileno(self) -> int:
+            return int(self.f.fileno())
+
+    with verified_camulator_torch_load({str(harmless_a): sha_cam_a}) as seen_cam:
+        with open(harmless_a, "rb") as fh_a:
+            loaded_stream_a = torch.load(fh_a, map_location="cpu")
+        assert loaded_stream_a["tag"] == 1
+        assert os.path.realpath(harmless_a) in seen_cam
+        with pytest.raises(ValidationError, match="unbound anonymous stream"):
+            torch.load(io.BytesIO(harmless_b.read_bytes()), map_location="cpu")
+        with open(harmless_b, "rb") as fh_b:
+            spoofed = _FakeFsspecOpener(str(harmless_a), fh_b)
+            with pytest.raises(ValidationError, match="mismatched file provenance"):
+                torch.load(spoofed, map_location="cpu")
+
     with pytest.raises(ValidationError, match="SHA-256 mismatch"):
         run_camulator(str(allow_tmp_run_root / "bad_ckpt_sha"), {**job_dict, "checkpoint_sha256": "0" * 64})
     with pytest.raises(ValidationError, match="SHA-256 mismatch"):

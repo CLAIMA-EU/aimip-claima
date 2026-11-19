@@ -18,6 +18,7 @@ from __future__ import annotations
 from collections import OrderedDict
 import io
 import json
+import os
 from pathlib import Path
 import types
 from typing import Any
@@ -384,6 +385,46 @@ def test_cbottle_zip_checkpoint_pre_pickle_sha_gate_and_symlink_refusal(
     with pytest.raises(ValidationError, match="bypassed verified ZipFile wrapper"):
         with verified_cbottle_pretrained_loader({str(ckpt_p): good_sha}):
             pass
+
+    # Two harmless distinct expert archives: unbound anonymous streams are refused, and loading expert A twice
+    # while leaving expert B's `net_state.pth` unused is refused naming expert B!
+    ckpt_p2 = tmp_path / "expert_b.checkpoint"
+    good_sha2 = _write_synthetic_cbottle_checkpoint_zip(ckpt_p2, seed_val=9.0)
+    anon_pth_buf = io.BytesIO()
+    torch.save({"w": torch.ones(2)}, anon_pth_buf)
+    anon_pth_buf.seek(0)
+
+    with verified_cbottle_pretrained_loader(
+        {str(ckpt_p): good_sha, str(ckpt_p2): good_sha2},
+        require_all_loaded=False,
+    ):
+        with pytest.raises(ValidationError, match="unbound stream"):
+            torch.load(anon_pth_buf, map_location="cpu")
+        with pytest.raises(ValidationError, match="unbound anonymous stream"):
+            zipfile.ZipFile(io.BytesIO(raw), "r")
+
+    with pytest.raises(
+        ValidationError,
+        match=r"did not load verified net_state\.pth.*expert_b\.checkpoint",
+    ):
+        with verified_cbottle_pretrained_loader({str(ckpt_p): good_sha, str(ckpt_p2): good_sha2}):
+            with zipfile.ZipFile(str(ckpt_p), "r") as zf_a, zipfile.ZipFile(str(ckpt_p2), "r") as _zf_b:
+                with zf_a.open("net_state.pth") as fh_a1:
+                    torch.load(fh_a1, map_location="cpu")
+                with zf_a.open("net_state.pth") as fh_a2:
+                    torch.load(fh_a2, map_location="cpu")
+
+    with verified_cbottle_pretrained_loader(
+        {str(ckpt_p): good_sha, str(ckpt_p2): good_sha2}
+    ) as loaded_experts:
+        with zipfile.ZipFile(str(ckpt_p), "r") as zf_a, zipfile.ZipFile(str(ckpt_p2), "r") as zf_b:
+            with zf_a.open("net_state.pth") as fh_a:
+                sd_a = torch.load(fh_a, map_location="cpu")
+            with zf_b.open("net_state.pth") as fh_b:
+                sd_b = torch.load(fh_b, map_location="cpu")
+    assert loaded_experts == {os.path.realpath(ckpt_p), os.path.realpath(ckpt_p2)}
+    assert torch.equal(sd_a["model.pos_embed"], torch.full((1, 4, 8), 2.5, dtype=torch.float32))
+    assert torch.equal(sd_b["model.pos_embed"], torch.full((1, 4, 8), 9.0, dtype=torch.float32))
 
 
 def test_cbottle_end_to_end_run_reproducibility_summary_and_exit_5(
