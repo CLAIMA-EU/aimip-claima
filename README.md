@@ -69,6 +69,21 @@ aimip summary my-first-year                                                  # g
 | [testing.md](docs/testing.md) | how the installations were tested |
 | [development.md](docs/development.md) | code layout, tests, the lock file, adding a model |
 
+## Known limits
+
+- **GPUs tested:** NVIDIA A100 (x86-64) and GH200 (ARM). Other NVIDIA GPUs with a driver for CUDA 13 should work for
+  most models but are not in the test record; start with the first test run of `ace2-era5` and compare its number with
+  the one in the [user guide](docs/user-guide.md#your-first-run-step-by-step).
+- **Newest GPUs (Blackwell: B100/B200, RTX 50 series) and ARM GPU nodes:** `camulator` and `spherical-dyffusion` run in
+  their own environment pinned to PyTorch 2.4.1 for CUDA 12.1, which has no build for these GPUs or for ARM. Run these
+  two models on an A100 or H100 node; all other models use the main environment (PyTorch for CUDA 13).
+- **GPU memory:** the models were run on 80 GB GPUs. On cards with 16–24 GB the ACE and ArchesWeather models are
+  expected to fit; the larger models (for example `cbottle-3d`, DLESyM at 0.25° output) may not.
+- **No internet on the machine:** the DLESyM models and `samudra-om4` download starting data whenever a run is
+  prepared, so they cannot run where no node reaches the internet (see `aimip bundle` in the
+  [installation guide](docs/installation.md)).
+- **macOS and Windows:** not supported (see Requirements above); on Windows, WSL2 with an NVIDIA GPU is untested.
+
 ## Licence
 
 The code is released under the MIT License ([LICENSE](LICENSE)). The models, weights and data are not part of this
