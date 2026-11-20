@@ -4,6 +4,12 @@ aimip-claima runs AI climate emulators as climate experiments, on a GPU workstat
 `aimip`. You choose a model, a start date and a length; aimip-claima downloads the model from its authors, checks
 every file, prepares the run, starts it on Slurm or on your machine, and keeps a record of exactly what was run.
 
+> **Requirements: Linux with an NVIDIA GPU.** aimip-claima needs a Linux system (x86-64 or ARM, for example an HPC
+> cluster or a GPU workstation) with an NVIDIA GPU and a driver for CUDA 13 or newer. **macOS and Windows are not
+> supported**: many of the models need CUDA, which Macs do not have. From a Mac, install aimip-claima on a Linux GPU
+> server and work there over SSH; the web console opens on your Mac through an SSH tunnel
+> ([docs/console.md](docs/console.md)).
+
 ```bash
 aimip run ace2-era5 --start 1979-01-01 --length 1y --name my-first-year     # prepare one model year
 aimip submit my-first-year                                                   # start it
