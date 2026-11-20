@@ -63,8 +63,6 @@ Every error message of aimip-claima says what was wrong, and most end with a `ne
 | exit code 5, and `unstable_from` in `aimip-manifest.json` | the model became unstable (values out of range); aimip-claima stopped it and kept the months before. This is a property of the model ([models.md](models.md)), not an installation problem |
 | `cuFFT error: CUFFT_INTERNAL_ERROR` at the first step (GH200, aarch64) | the image is read from a mounted file: install again with the current version, which unpacks it, or `export APPTAINER_UNSQUASH=1` ([aarch64](installation.md#special-situations)) |
 | `CUDA out of memory` | too many members for one GPU: fewer `--members` per run, or a GPU with more memory |
-| `cdo`: `Time must be the first dimension`, `Unsupported array structure`, or dates missing | the monthly files keep the model's own layout: `aimip export-cf <name>` writes CF copies next to them ([user guide](user-guide.md#cf-copies-for-cdo-and-other-tools-aimip-export-cf)) |
-| `aimip export-cmor`: `nothing written`, `partial month` or `model time step unknown` | only full months are written: a short test run has none; give `--model <name>` when the run has no record of its model ([user guide](user-guide.md#cmip6-style-files-aimip-export-cmor)) |
 
 ## Still stuck
 
