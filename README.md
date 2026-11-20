@@ -25,31 +25,6 @@ aimip summary my-first-year                                                  # g
    with the output you should see.
 3. **[Recipes](docs/user-guide.md#recipes):** longer runs, ensembles, AIMIP runs, scenarios, coupled models.
 
-### On a Windows PC with an NVIDIA GPU (WSL2)
-
-aimip-claima runs inside WSL2, the Linux that comes with Windows 10 and 11. A gaming or laptop GPU is enough for the
-ACE models; start with the first test below.
-
-1. Install the latest NVIDIA driver for Windows (the normal Game Ready or Studio driver). Do not install a driver
-   inside Linux: WSL2 passes the GPU through.
-2. In PowerShell: `wsl --install -d Ubuntu-24.04`, restart, open "Ubuntu" from the Start menu and create your Linux
-   user.
-3. In Ubuntu, check the GPU with `nvidia-smi` (it should show `CUDA Version: 13.0` or higher), then:
-
-   ```bash
-   sudo apt install -y git build-essential python3.12-venv
-   git clone https://github.com/CliDyn/aimip-claima.git && cd aimip-claima
-   install/install-native.sh --site local --prefix ~/aimip --run-root ~/aimip-runs
-   ~/aimip/bin/aimip run ace2-era5 --start 1979-01-01 --steps 8 --name first
-   ~/aimip/bin/aimip submit first
-   ~/aimip/bin/aimip watch first       # wait until it says completed (about a minute)
-   ~/aimip/bin/aimip summary first     # 1979-01 TMP2m: 285.1578 K
-   ```
-
-Keep everything in your Linux home (`~`), not under `/mnt/c`: the Windows disk is slow from Linux. WSL2 uses half of
-the PC's memory by default; if a model runs out of memory, raise it in `%UserProfile%\.wslconfig` (`[wsl2]`,
-`memory=16GB`) and run `wsl --shutdown`. On GPUs with 8–16 GB start with the ACE models; the larger models may not fit.
-
 ## Models
 
 `aimip models` lists them; `aimip show <model>` describes one. Details and known limits: [docs/models.md](docs/models.md).
@@ -110,6 +85,35 @@ the PC's memory by default; if a model runs out of memory, raise it in `%UserPro
   [installation guide](docs/installation.md)).
 - **macOS:** not supported (see Requirements above). **Windows:** through WSL2 only; tested with the first run of
   `ace2-era5` on a laptop RTX 4060 (8 GB), which gave the reference number.
+
+<a id="on-a-windows-pc-with-an-nvidia-gpu-wsl2"></a>
+<details>
+<summary><b>Windows PC with an NVIDIA GPU (WSL2)</b></summary>
+
+aimip-claima runs inside WSL2, the Linux that comes with Windows 10 and 11. A gaming or laptop GPU is enough for the
+ACE models; start with the first test below.
+
+1. Install the latest NVIDIA driver for Windows (the normal Game Ready or Studio driver). Do not install a driver
+   inside Linux: WSL2 passes the GPU through.
+2. In PowerShell: `wsl --install -d Ubuntu-24.04`, restart, open "Ubuntu" from the Start menu and create your Linux
+   user.
+3. In Ubuntu, check the GPU with `nvidia-smi` (it should show `CUDA Version: 13.0` or higher), then:
+
+   ```bash
+   sudo apt install -y git build-essential python3.12-venv
+   git clone https://github.com/CliDyn/aimip-claima.git && cd aimip-claima
+   install/install-native.sh --site local --prefix ~/aimip --run-root ~/aimip-runs
+   ~/aimip/bin/aimip run ace2-era5 --start 1979-01-01 --steps 8 --name first
+   ~/aimip/bin/aimip submit first
+   ~/aimip/bin/aimip watch first       # wait until it says completed (about a minute)
+   ~/aimip/bin/aimip summary first     # 1979-01 TMP2m: 285.1578 K
+   ```
+
+Keep everything in your Linux home (`~`), not under `/mnt/c`: the Windows disk is slow from Linux. WSL2 uses half of
+the PC's memory by default; if a model runs out of memory, raise it in `%UserProfile%\.wslconfig` (`[wsl2]`,
+`memory=16GB`) and run `wsl --shutdown`. On GPUs with 8–16 GB start with the ACE models; the larger models may not fit.
+
+</details>
 
 ## Licence
 
