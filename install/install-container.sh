@@ -142,7 +142,7 @@ case "$RT" in
     elif [ ! -e "$SIF" ]; then
       python3 "$REPO/container/gen_apptainer_def.py" "$REPO/container/Dockerfile" "$PREFIX/build/apptainer.def" "$BASE_ARG" || die "def generation failed"
       rm -rf "$PREFIX/build/ctx" && mkdir -p "$PREFIX/build/ctx" || die "cannot stage build context"
-      cp -R "$REPO/pyproject.toml" "$REPO/LICENSE" "$REPO/THIRD_PARTY.md" "$REPO/THIRD_PARTY-PACKAGES.md" "$REPO/README.md" "$REPO/src" "$REPO/tests" "$REPO/container" "$REPO/install" "$PREFIX/build/ctx/" || die "cannot copy build context"
+      cp -R "$REPO/pyproject.toml" "$REPO/LICENSE" "$REPO/THIRD_PARTY.md" "$REPO/THIRD_PARTY-PACKAGES.md" "$REPO/README.md" "$REPO/src" "$REPO/tests" "$REPO/docs" "$REPO/container" "$REPO/install" "$PREFIX/build/ctx/" || die "cannot copy build context"
       find "$PREFIX/build/ctx" \( -name "__pycache__" -o -name "*.pyc" -o -name ".pytest_cache" \) -exec rm -rf {} + 2>/dev/null || true
       cd "$PREFIX/build/ctx" || exit 2
       export APPTAINER_TMPDIR=$(mktemp -d "${TMPDIR:-/tmp}/aimip-build.XXXXXX")
