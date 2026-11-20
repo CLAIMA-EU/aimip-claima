@@ -15,6 +15,7 @@ every file, prepares the run, starts it on Slurm or on your machine, and keeps a
 aimip run ace2-era5 --start 1979-01-01 --length 1y --name my-first-year     # prepare one model year
 aimip submit my-first-year                                                   # start it
 aimip summary my-first-year                                                  # global-mean temperature per month
+aimip export-cf my-first-year                                                # CF copies for cdo, AQUA, xarray
 ```
 
 ## Where to start
@@ -49,6 +50,9 @@ aimip summary my-first-year                                                  # g
 - **Runs it** on Slurm or on the current machine, and summarises the results.
 - **Writes what you ask for:** monthly means by default; for the ACE, DLESyM and ArchesWeather models also daily or
   6-hourly files of chosen variables and periods (`--output`).
+- **Exports standard copies:** `aimip export-cf` writes CF copies of the monthly means (time first, real dates, CMIP
+  names where they match exactly) for `cdo`, AQUA and xarray; `aimip export-cmor` writes CMIP6-style `Amon` files. The
+  run itself is never changed ([user guide](docs/user-guide.md#cf-copies-for-cdo-and-other-tools-aimip-export-cf)).
 - Ensembles, continued runs, scenarios, LoRA checkpoints, an optional assistant (`aimip chat`) and a web interface
   (`aimip ui`).
 
