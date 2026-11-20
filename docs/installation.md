@@ -252,9 +252,9 @@ aimip container-shell                                                          #
 ```
 
 `container-cmd` prints the exact command the script would run for that `aimip` command (image, `-B` mounts, `--env`
-settings, `--nv`) and runs nothing: copy it into your own job scripts or change it. `container-shell` opens a shell in
+settings; `--nv` or `--gpus all` is always included) and starts no container: copy it into your own job scripts or change it. `container-shell` opens a shell in
 the image with the same mounts and settings; `aimip …` and `python -m aimip …` work inside. `submit`, `cancel`,
-`watch`, `status`, `logs`, `chat` and `ui` are not available through `container-cmd`, since they act on the host (Slurm)
+`watch`, `status`, `logs`, `ls`, `chat` and `ui` are not available through `container-cmd`, since they act on the host (Slurm)
 or pass credentials; run them with `aimip` as usual. When you change the printed command, the safety checks of the
 script (paths inside your run root, no symlinks) are yours to keep.
 

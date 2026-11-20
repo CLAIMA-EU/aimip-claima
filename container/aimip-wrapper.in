@@ -298,7 +298,7 @@ case "${1:-}" in
     DIRECT=print; shift
     case "${1:-}" in
       ""|-h|--help) echo "usage: aimip container-cmd <aimip command ...>   (prints the container command; runs nothing)"; exit 0;;
-      submit|cancel|watch|status|logs|chat|ui)
+      submit|cancel|watch|status|logs|ls|chat|ui)
         die "container-cmd: not for '$1' (it acts on the host: Slurm or credentials); run 'aimip $1' directly";;
     esac;;
   container-shell)
@@ -868,7 +868,7 @@ run_main_container() {
       T=(-i); [ -t 0 ] && [ -t 1 ] && T=(-it)
       ID=(--user "$(id -u):$(id -g)"); [ "$RUNTIME" = podman ] && [ "$(id -u)" != 0 ] && ID=(--userns=keep-id --user "$(id -u):$(id -g)")
       if [ "$DIRECT" = print ]; then
-        printf '%q ' "$RUNTIME_BIN" run --rm -it "${ID[@]}" --network host -w /tmp --gpus all ${B[@]+"${B[@]}"} ${E[@]+"${E[@]}"} "$IMAGE" "$@"; echo; exit 0
+        printf '%q ' "$RUNTIME_BIN" run --rm -i "${ID[@]}" --network host -w /tmp --gpus all ${B[@]+"${B[@]}"} ${E[@]+"${E[@]}"} "$IMAGE" "$@"; echo; exit 0
       fi
       if [ "$DIRECT" = shell ]; then
         exec "$RUNTIME_BIN" run --rm -it "${ID[@]}" --network host -w /tmp ${G[@]+"${G[@]}"} ${B[@]+"${B[@]}"} ${E[@]+"${E[@]}"} --entrypoint bash "$IMAGE"
