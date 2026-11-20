@@ -477,91 +477,6 @@ dates = ds["valid_time"].isel(sample=0)     # the date of each month
 
 A monthly file of `ace2-era5` takes about 16 MB per member and month.
 
-### CF copies for `cdo` and other tools (`aimip export-cf`)
-
-Tools such as `cdo` expect `time` as the first dimension and a decoded calendar time axis. `aimip export-cf` writes
-CF-1.8 copies of a completed run's monthly files while leaving the run's own files untouched:
-
-```bash
-aimip export-cf first                                        # writes <run>/cf/first_<model>_<component>_m000.nc ...
-aimip export-cf first --members 0,1 --names native           # keep model variable names
-aimip export-cf /path/to/shared/run --to /big/disk/aimip-runs/ext-cf    # read-only source outside your run root
-cdo infon /big/disk/aimip-runs/first/cf/first_ace2-era5_monthly_m000.nc
-```
-
-- **Where files go and how they are named:** `<run>/cf/` by default, or `--to <dir>` (which must lie under your run
-  root). Files are named `<run>_<model>_<component>_m<k>.nc` (or `<run>_<component>_m<k>.nc` when no model record is
-  present), with `0`-based member indices (`m000`, `m001`, …). Components cover `monthly_mean_predictions.nc`
-  (`monthly`, `atmosphere`, `ocean`) as well as `monthly_levels.nc` (`levels`, `atmosphere_levels`),
-  `atmosphere/monthly_precip.nc` (`atmosphere_precip`), and `ocean/monthly_thetao.nc` (`ocean_thetao`) when present.
-  Running `aimip export-cf` again replaces earlier CF copies atomically.
-- **Time axis and attributes:** `time` is placed first and taken from `valid_time` with its source calendar and descriptive
-  attributes (for example Spherical DYffusion's nominal year-1 cycle note). Note that ACE, SamudrACE, CAMulator and
-  MD-1.5 stamp monthly dates on the 15th of each month, whereas DLESyM, ArchesWeather/Gen, ArchesClimate-SSP,
-  Samudra-OM4, cBottle-3d and Spherical DYffusion stamp the 1st. `cdo` does not support the julian calendar of ACE2S and
-  HiRO-ACEv2; the copy keeps the model's calendar (`cdo` warns `Calendar julian unsupported`). Each file records
-  `Conventions = "CF-1.8"`, `aimip_member`, `aimip_names` (`cmip` or `native`), `aimip_source_file`, and
-  `aimip_postprocessing`.
-- **Mapped CMIP short names (`--names cmip`, default):** a variable is renamed only when the physical quantity matches
-  and its `units` attribute in the file is a recognised spelling (renamed variables keep `original_name` and
-  `original_units`):
-  - *ACE (`ace2-era5`, `ace2-shield`, `ace2s-shield-plus`, `hiro-ace`, `ace2-som`, `ace2s`, `hiro-acev2`) and
-    `samudrace-cm4` atmosphere:* `TMP2m`→`tas`, `Q2m`→`huss`, `UGRD10m`→`uas`, `VGRD10m`→`vas`, `PRESsfc`→`ps`,
-    `surface_temperature`→`ts`, `PRATEsfc`→`pr`, `LHTFLsfc`→`hfls`, `SHTFLsfc`→`hfss`, `DLWRFsfc`→`rlds`,
-    `ULWRFsfc`→`rlus`, `DSWRFsfc`→`rsds`, `USWRFsfc`→`rsus`, `ULWRFtoa`→`rlut`, `USWRFtoa`→`rsut`, `DSWRFtoa`→`rsdt`,
-    `TMP850`→`ta850`, `h500`→`zg500` (same values; `h500` is already in `m`).
-  - *cBottle-3d and MD-1.5:* `t2m`/`TMP2m`→`tas`, `surface_temperature`→`ts`, `tcwv`→`prw`, and `z500`→`zg500`
-    (**geopotential divided by `g = 9.80665 m s-2`**, recorded in `aimip_conversion`); for cBottle-3d also `u10m`→`uas`,
-    `v10m`→`vas`, `msl`→`psl`, `tpf`→`pr`, `t850`→`ta850` (same values); other channels (MD-1.5 `u10`, `sp`, `mtpr`, …)
-    keep their model names.
-  - *Spherical DYffusion:* `PRESsfc`→`ps` (`surface_temperature_prescribed_ocean` keeps its distinct name).
-  - *ArchesWeather, ArchesWeatherGen, ArchesClimate-SSP:* already written with CMIP short names (`tas`, `uas`, `vas`,
-    `psl`, `zg`, `ta`, `hus`, …).
-  - *DLESyM:* monthly files carry no `units` attributes, so variables (`t2m`, `tcwv`, `z500`, `z1000`, …) keep their
-    model names and values without guessing.
-  - *ACE2-EAMv3, SamudrACE-E3SMv3, CAMulator, Samudra-OM4, SamudrACE ocean:* keep their model names.
-- **Terminal warnings:** every value conversion (`CONVERTED …`), every candidate variable kept under its model name
-  (unknown or missing `units`, or name collision), missing calendar dates, or an incomplete run status is printed as
-  `WARNING: …` on `stderr` (also with `--json`, keeping JSON on `stdout` clean) and recorded in `aimip_postprocessing`.
-  If a killed job started without recording completion, run `aimip status <run>` first or pass `--allow-unfinished`
-  (accepted by both `export-cf` and `export-cmor`).
-
-### CMIP6-style files: `aimip export-cmor`
-
-`aimip export-cmor` writes the atmosphere variables that have an exact CMIP6 `Amon` equivalent as CMIP6-style files:
-one variable per file, CMIP6 directory layout and file names, `Amon` attributes. It reads the run (also a run outside
-your run root, for example a shared copy) and never changes it.
-
-```bash
-aimip export-cmor my-run --source-id ACE2-ERA5 --experiment-id aimip --grid-label gn --institution-id MY-INST
-# -> <run>/cmor/MY-INST/ACE2-ERA5/aimip/r1i1p1f1/Amon/tas/gn/v<date>/tas_Amon_ACE2-ERA5_aimip_r1i1p1f1_gn_200102-200512.nc
-```
-
-- **What is written:** the 2-D `Amon` variables (`tas`, `huss`, `uas`, `vas`, `ts`, `ps`, `psl`, `pr`, `prw`, `hfls`,
-  `hfss`, `rlds`, `rlus`, `rsds`, `rsus`, `rlut`, `rsut`, `rsdt`) and `ta`/`zg` on the pressure levels the model writes
-  (for example `zg` at 1000 and 500 hPa: 2 of the 19 `plev19` levels; nothing is interpolated). Names and units follow
-  the table above; the only value change is geopotential → geopotential height (÷ 9.80665), printed as a `WARNING`.
-  Everything else (model-layer fields, variables without units, the ocean) is not written, each with its reason.
-- **Full months only:** a month is written when it holds every model state of that calendar month at the model's time
-  step (the registry entry recorded in the run when it was made; for runs without one, the current registry entry of
-  the model given with `--model`; MD-1.5 also states its monthly step in the file). A `--model` that contradicts the run
-  record is refused. Counts that are not whole numbers write nothing. The first month of a run that starts on the 1st
-  normally lacks the initial state (for example 123 of 124 six-hourly states) and is left out unless you add
-  `--keep-first-month`; the file then records "123 of 124; which state is missing is not verified". When the step is
-  unknown nothing is written.
-- **Time:** the middle of each calendar month, with `time_bnds` the month; the model's calendar is kept.
-- **Safety:** files are written through a private temporary file and renamed into place; a symlink anywhere below
-  `--to` is refused; latitude and longitude must be in degrees north and east (missing or direction-less units are
-  written as degrees and said so; radians or degrees west are refused); a run that has both a top-level and an
-  `atmosphere/` monthly file is refused, since both would write the same files. Values are written as float32, as CMIP6
-  asks; a float64 source is cast and the largest change is printed and stated in the file.
-- **Required options:** `--source-id`, `--experiment-id` (no default: an AIMIP, SSP or coupled run is not `amip`),
-  `--grid-label` (`gn` the model's own grid; `gr` regridded, for example a HEALPix model written on latitude-longitude),
-  `--institution-id`.
-- **Not a CMOR submission:** the files are not checked by the CMOR library or PrePARE, stay on the model's grid, and
-  lack some required CMIP6 attributes (listed in each file as `aimip_missing`). Use them for `cdo`, comparisons and as a
-  starting point; an AIMIP submission on the 1° grid still needs conservative regridding and the full attribute set.
-
 ## Command overview
 
 | command | what it does |
@@ -572,8 +487,6 @@ aimip export-cmor my-run --source-id ACE2-ERA5 --experiment-id aimip --grid-labe
 | `aimip submit <name>` | start a prepared run |
 | `aimip watch <name>`, `aimip status <name>`, `aimip logs <name>`, `aimip ls` | follow runs |
 | `aimip summary <name>` | global-mean monthly values of a run |
-| `aimip export-cf <name>` | CF-1.8 copies of monthly files (time first, real dates, per member, CMIP names) for `cdo` |
-| `aimip export-cmor <name> …` | CMIP6-style `Amon` files (one variable per file, CMIP6 names and layout) of the exactly mapped variables |
 | `aimip cancel <name>` | stop a queued or running job |
 | `aimip ic list -m <model>`, `aimip ic spin …`, `aimip collect …` | initial states: list them, spin new ones up, collect them into one file |
 | `aimip fetch -m <model>`, `aimip setup --models all` | download models in advance |

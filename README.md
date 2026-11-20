@@ -62,7 +62,7 @@ aimip summary my-first-year                                                  # g
 | page | |
 |---|---|
 | [installation.md](docs/installation.md) | installing, checking the installation, model data, special situations |
-| [user-guide.md](docs/user-guide.md) | the first run step by step, recipes, reading the results, CF and CMIP6-style copies (`aimip export-cf`, `aimip export-cmor`) |
+| [user-guide.md](docs/user-guide.md) | the first run step by step, recipes, reading the results |
 | [models.md](docs/models.md) | every model: forcing, initial states, time steps, known limits, comparison with the authors' results |
 | [troubleshooting.md](docs/troubleshooting.md) | error messages and what to do |
 | [slurm-and-paths.md](docs/slurm-and-paths.md) | job scripts, wall time, run directories, path rules |

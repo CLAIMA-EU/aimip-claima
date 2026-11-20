@@ -214,7 +214,7 @@ extract_target_arg() {  # extract_target_arg <args...>: prints first positional 
     case "$1" in
       -h|--help) return 1;;
       -f|--follow|--json) shift;;
-      --sacct-json|--site-config|--interval|--max-polls|--timeout|--max-bytes|--out|--ocean-out|-m|--model|--to|--registry|--playground|--data|--members|--names|--source-id|--experiment-id|--institution-id|--grid-label)
+      --sacct-json|--site-config|--interval|--max-polls|--timeout|--max-bytes|--out|--ocean-out|-m|--model|--to|--registry|--playground|--data)
         [ $# -ge 2 ] && shift 2 || return 1;;
       --*=*) shift;;
       -*) shift;;
@@ -638,7 +638,7 @@ cleanup_refresh_bg() {
 
 TARGET_ARG=""
 case "${1:-}" in
-  status|watch|logs|cancel|summary|export-cf|export-cmor|collect|ls)
+  status|watch|logs|cancel|summary|collect|ls)
     TARGET_ARG=$(extract_target_arg "${@:2}" || true);;
 esac
 
@@ -705,24 +705,15 @@ resolve_host_file() {
   [ -L "$raw" ] && die "refusing symlinked file: $raw"
   printf '%s\n' "$raw"
 }
-HAS_TO_ARG=0
 for ((i=0; i<n; i++)); do
   case "${CONTAINER_ARGS[$i]}" in
     --out|--ocean-out) [ $((i+1)) -lt $n ] && RW+=("${CONTAINER_ARGS[$((i+1))]}");;
-    --to)
-      if [ $((i+1)) -lt $n ] && { [ "${1:-}" = "export-cf" ] || [ "${1:-}" = "export-cmor" ]; }; then
-        HAS_TO_ARG=1; RW+=("${CONTAINER_ARGS[$((i+1))]}")
-      fi;;
     --source)            # aimip bundle: the source tree it copies, read-only
       if [ $((i+1)) -lt $n ] && [ "${1:-}" = "bundle" ]; then
         safe_path "${CONTAINER_ARGS[$((i+1))]}"; [ -d "${CONTAINER_ARGS[$((i+1))]}" ] && RO_FILES+=("${CONTAINER_ARGS[$((i+1))]}")
       fi;;
     --out=*) RW+=("${CONTAINER_ARGS[$i]#--out=}");;
     --ocean-out=*) RW+=("${CONTAINER_ARGS[$i]#--ocean-out=}");;
-    --to=*)
-      if [ "${1:-}" = "export-cf" ] || [ "${1:-}" = "export-cmor" ]; then
-        HAS_TO_ARG=1; RW+=("${CONTAINER_ARGS[$i]#--to=}")
-      fi;;
     --config)
       if [ $((i+1)) -lt $n ] && { [ "${1:-}" = "plan" ] || [ "${1:-}" = "run" ]; }; then
         cfg_abs=$(resolve_host_file "${CONTAINER_ARGS[$((i+1))]}") || exit 2
@@ -744,26 +735,7 @@ if [ "${1:-}" = "exec-fme" ]; then
   RW+=("$2")
 else
   verify_container_image
-  case "${1:-}" in
-    status|watch|logs|cancel|summary|collect|ls)
-      case "$TARGET_ARG" in /*) RW+=("$TARGET_ARG");; esac;;
-    export-cf|export-cmor)
-      case "$TARGET_ARG" in
-        /*)
-          safe_path "$TARGET_ARG"
-          if [ "$HAS_TO_ARG" = 1 ]; then
-            skip_ro=0
-            for rw_d in ${RW[@]+"${RW[@]}"}; do
-              [ "${TARGET_ARG%/}" = "${rw_d%/}" ] && skip_ro=1
-            done
-            [ "$skip_ro" = 0 ] && [ -d "$TARGET_ARG" ] && RO_FILES+=("$TARGET_ARG")
-          elif [ -d "$TARGET_ARG" ] && [ -w "$TARGET_ARG" ]; then
-            RW+=("$TARGET_ARG")
-          elif [ -d "$TARGET_ARG" ]; then
-            RO_FILES+=("$TARGET_ARG")
-          fi;;
-      esac;;
-  esac
+  case "${1:-}" in status|watch|logs|cancel|summary|collect|ls) case "$TARGET_ARG" in /*) RW+=("$TARGET_ARG");; esac;; esac
 fi
 mkdir -p "$RUN_ROOT" 2>/dev/null || true
 

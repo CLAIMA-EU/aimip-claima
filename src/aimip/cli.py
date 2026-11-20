@@ -1080,130 +1080,6 @@ def _cmd_summary(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_export_cmor(args: argparse.Namespace) -> int:
-    from .cmor_export import export_cmor
-    from .services.core import resolve_run_target
-
-    members = None
-    if args.members is not None:
-        try:
-            members = [int(x) for x in str(args.members).split(",") if x.strip() != ""]
-        except ValueError:
-            raise ValidationError(f"--members must be comma-separated integers, not {args.members!r}.", field="members") from None
-    raw_target = str(args.out or "").strip()
-    if "/" not in raw_target:
-        run_dir, _ = resolve_run_target(raw_target, site_config_path=args.site_config)
-    else:
-        run_dir = raw_target
-    res = export_cmor(run_dir, source_id=args.source_id, experiment_id=args.experiment_id,
-                      grid_label=args.grid_label, institution_id=args.institution_id,
-                      out_dir=args.to_dir or os.path.join(run_dir, "cmor"),
-                      members=members, keep_first_month=args.keep_first_month, model=args.model,
-                      allow_unfinished=args.allow_unfinished)
-    # Owner rule: every conversion and every variable left out is shown in the terminal (stderr), also with --json.
-    shown: set[str] = set()
-    for f in res["files"]:
-        for note in f["notes"]:
-            if note.startswith("CONVERTED") and note not in shown:
-                shown.add(note)
-                print(f"WARNING: {f['variable']}: {note}", file=sys.stderr)
-    for note in res["notes"]:
-        plain = note.startswith(("full month = ", "monthly-step model"))
-        print(f"{'note' if plain else 'WARNING'}: {note}", file=sys.stderr)
-    seen_file_notes: set[str] = set()
-    for f in res["files"]:  # caveats beyond the routine lines (levels, time: point, renamed coordinates)
-        for note in f["notes"]:
-            if note.startswith(("time from valid_time", "grid as written", "CONVERTED", "full month = ",
-                                "monthly-step model", "LEFT OUT", "KEPT")) or " from model variable " in note:
-                continue
-            if note not in seen_file_notes:
-                seen_file_notes.add(note)
-                tag = "note" if note.startswith("source time ") else "WARNING"
-                print(f"{tag}: {f['variable']}: {note}", file=sys.stderr)
-    unmapped = sorted(n for n, why in res["skipped"].items() if why.startswith("no CMIP6 Amon equivalent"))
-    if unmapped:
-        shown_names = ", ".join(unmapped[:12]) + (f" (+{len(unmapped) - 12} more)" if len(unmapped) > 12 else "")
-        print(f"WARNING: not written, no exact CMIP6 Amon equivalent: {shown_names}", file=sys.stderr)
-    for name, why in sorted(res["skipped"].items()):
-        if name not in unmapped:
-            print(f"WARNING: {name} not written ({why})", file=sys.stderr)
-    print(f"WARNING: grid as written by the run (grid_label {args.grid_label}), not regridded; files not validated by "
-          "the CMOR library or PrePARE", file=sys.stderr)
-    if not res["files"]:
-        print("WARNING: no file written", file=sys.stderr)
-    if args.json:
-        _emit_json_ok(res)
-        return 0 if res["files"] else 1
-    print(f"CMIP6-style files of {res['run_dir']} in {res['out_dir']}:")
-    for f in res["files"]:
-        print(f"  {os.path.relpath(f['file'], res['out_dir'])}  from {f['from']}")
-    print("  Variables without an exact CMIP6 Amon equivalent are not written; see `aimip export-cf` for all variables.")
-    return 0 if res["files"] else 1
-
-
-def _is_cf_warning_note(note: str) -> bool:
-    return (
-        note.startswith("CONVERTED")
-        or "kept its model name" in note
-        or "no dates" in note
-        or "no time" in note
-        or "left as written" in note
-        or "kept as written" in note
-    )
-
-
-def _cmd_export_cf(args: argparse.Namespace) -> int:
-    from .cf_export import export_cf
-    from .services.core import resolve_run_target
-
-    members = None
-    if args.members:
-        try:
-            members = [int(x) for x in str(args.members).split(",") if x.strip() != ""]
-        except ValueError:
-            raise ValidationError(f"--members must be comma-separated integers, not {args.members!r}.", field="members") from None
-    raw_target = str(args.out or "").strip()
-    if "/" not in raw_target:
-        run_dir, _ = resolve_run_target(raw_target, site_config_path=args.site_config)
-    else:
-        run_dir = raw_target
-    res = export_cf(run_dir, out_dir=args.to_dir, members=members, names=args.names,
-                    allow_unfinished=args.allow_unfinished)
-    # Owner rule: every conversion, kept-name reason, missing-dates note, and incomplete-run notice
-    # is printed as WARNING on stderr for every component, in both text and --json mode.
-    for w in res.get("warnings", ()):
-        print(f"WARNING: {w}", file=sys.stderr)
-    warned_components: set[str] = set()
-    for f in res["files"]:
-        comp = f["component"]
-        if comp in warned_components:
-            continue
-        warned_components.add(comp)
-        for note in f["notes"]:
-            if _is_cf_warning_note(note):
-                print(f"WARNING: {comp}: {note}", file=sys.stderr)
-    if args.json:
-        return _emit_json_ok(res)
-    print(f"CF copies of {res['run_dir']} in {res['out_dir']} (names: {res['names']}):")
-    shown: set[str] = set()
-    for f in res["files"]:
-        if f.get("first_date") and f.get("last_date"):
-            span = f"{f['months']} months ({f['first_date']}..{f['last_date']})"
-        elif f.get("months"):
-            span = f"{f['months']} months (no dates)"
-        else:
-            span = "0 months"
-        print(f"  {os.path.basename(f['file'])}  member {f['member']}  {span}  time from {f['time_from']}")
-        if f["component"] in shown:
-            continue
-        shown.add(f["component"])
-        # plain non-warning notes stay on stdout; all notes are also stored in aimip_postprocessing
-        for note in f["notes"]:
-            if not _is_cf_warning_note(note):
-                print(f"    note: {note}")
-    return 0
-
-
 def _cmd_doctor(args: argparse.Namespace) -> int:
     from .services import doctor as svc_doctor, render_doctor_report
 
@@ -1813,51 +1689,6 @@ def build_parser() -> argparse.ArgumentParser:
     p_summary.add_argument("--site-config", dest="site_config", default=None, help="Explicit site.json path.")
     p_summary.add_argument("--json", action="store_true", help="Emit JSON output.")
 
-    # 8a. `aimip export-cf <out>`
-    p_export_cf = subparsers.add_parser(
-        "export-cf",
-        help="Write CF copies of the monthly means (time first, real dates, one file per member, CMIP names) for cdo etc.",
-    )
-    p_export_cf.add_argument("out", help="Run name or run directory (may be outside your run root when --to is given).")
-    p_export_cf.add_argument("--to", dest="to_dir", default=None, help="Output directory under your run root (default: <run>/cf).")
-    p_export_cf.add_argument("--members", default=None, help="Comma-separated member indices (default: all).")
-    p_export_cf.add_argument(
-        "--names", choices=("cmip", "native"), default="cmip",
-        help="cmip: CMIP short names where the quantity matches and the units are known (default); native: model names.",
-    )
-    p_export_cf.add_argument(
-        "--allow-unfinished", dest="allow_unfinished", action="store_true",
-        help="Export even when a started run has no completion record (e.g. a killed job); emits a WARNING.",
-    )
-    p_export_cf.add_argument("--site-config", dest="site_config", default=None, help="Explicit site.json path.")
-    p_export_cf.add_argument("--json", action="store_true", help="Emit JSON output.")
-
-    # 8a2. `aimip export-cmor <out>`
-    p_export_cmor = subparsers.add_parser(
-        "export-cmor",
-        help="Write CMIP6-style Amon files (one variable per file, DRS names) for the exactly mapped variables.",
-    )
-    p_export_cmor.add_argument("out", help="Run name or output directory.")
-    p_export_cmor.add_argument("--source-id", dest="source_id", required=True,
-                               help="Model name for the files and DRS path, e.g. ACE2-ERA5.")
-    p_export_cmor.add_argument("--experiment-id", dest="experiment_id", required=True,
-                               help="The experiment the run is, e.g. amip (no default: SSP, coupled and nominal-cycle runs differ).")
-    p_export_cmor.add_argument("--grid-label", dest="grid_label", required=True, choices=("gn", "gr", "gr1", "gr2"),
-                               help="gn: the model's own grid; gr: regridded (e.g. a HEALPix model written on lat/lon).")
-    p_export_cmor.add_argument("--institution-id", dest="institution_id", required=True,
-                               help="Who made the files, e.g. your institute (no default).")
-    p_export_cmor.add_argument("-m", "--model", dest="model", default=None,
-                               help="Model name, when the run has no record of it (gives the time step).")
-    p_export_cmor.add_argument("--to", dest="to_dir", default=None, help="Output directory (default: <run>/cmor).")
-    p_export_cmor.add_argument("--members", default=None, help="Comma-separated member indices (default: all).")
-    p_export_cmor.add_argument("--keep-first-month", dest="keep_first_month", action="store_true",
-                               help="Keep a first month that lacks only the initial state (e.g. 123 of 124 six-hourly "
-                                    "states); stated in the file. Default: left out.")
-    p_export_cmor.add_argument("--allow-unfinished", dest="allow_unfinished", action="store_true",
-                               help="Export even when a started run has no completion record (e.g. a killed job); emits a WARNING.")
-    p_export_cmor.add_argument("--site-config", dest="site_config", default=None, help="Explicit site.json path.")
-    p_export_cmor.add_argument("--json", action="store_true", help="Emit JSON output.")
-
     # 8b. `aimip doctor`
     p_doctor = subparsers.add_parser(
         "doctor",
@@ -2158,10 +1989,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _cmd_cancel(args)
         if args.command == "summary":
             return _cmd_summary(args)
-        if args.command == "export-cf":
-            return _cmd_export_cf(args)
-        if args.command == "export-cmor":
-            return _cmd_export_cmor(args)
         if args.command == "doctor":
             return _cmd_doctor(args)
         if args.command == "approve":

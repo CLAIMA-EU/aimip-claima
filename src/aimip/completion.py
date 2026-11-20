@@ -18,8 +18,6 @@ TOP_LEVEL_COMMANDS: tuple[str, ...] = (
     "ls",
     "cancel",
     "summary",
-    "export-cf",
-    "export-cmor",
     "doctor",
     "approve",
     "ic",
@@ -175,14 +173,6 @@ _aimip_completions() {{
             COMPREPLY=( $(compgen -W "--site-config --json" -- "${{cur}}") )
             return 0
             ;;
-        export-cf)
-            COMPREPLY=( $(compgen -W "--to --members --names --allow-unfinished --site-config --json" -- "${{cur}}") )
-            return 0
-            ;;
-        export-cmor)
-            COMPREPLY=( $(compgen -W "--source-id --experiment-id --grid-label --institution-id -m --model --to --members --keep-first-month --allow-unfinished --site-config --json" -- "${{cur}}") )
-            return 0
-            ;;
         doctor)
             COMPREPLY=( $(compgen -W "--site-config --json --registry --playground --data" -- "${{cur}}") )
             return 0
@@ -331,12 +321,6 @@ _aimip() {{
             ;;
         ls|cancel|summary)
             compadd -- --site-config --json
-            ;;
-        export-cf)
-            compadd -- --to --members --names --allow-unfinished --site-config --json
-            ;;
-        export-cmor)
-            compadd -- --source-id --experiment-id --grid-label --institution-id -m --model --to --members --keep-first-month --allow-unfinished --site-config --json
             ;;
         doctor)
             compadd -- --site-config --json --registry --playground --data
