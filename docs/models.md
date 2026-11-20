@@ -161,3 +161,7 @@ The other models use their authors' forcing packages unchanged (`allenai/ACE2-SO
 `allenai/HiRO-ACEv2`, `allenai/SamudrACE-CM4-piControl`, `allenai/SamudrACE-E3SMv3`, `gclyne/ArchesClimate-data`,
 Zenodo 22795233 for ArchesWeather).
 Derived forcing files are rebuilt by `aimip setup`/`aimip fetch` on your machine and checked against the lock file.
+
+## Models not yet here
+
+[models-to-add.md](models-to-add.md) lists AI climate models that are not in aimip-claima yet, with where their weights are.
