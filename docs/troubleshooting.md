@@ -29,13 +29,16 @@ Every error message of aimip-claima says what was wrong, and most end with a `ne
 | `Refusing run: end time ... exceeds forcing set ...` | the run would end after the forcing data do; the message gives the largest `--steps` or `--end` that fits |
 | `--output '...' needs a whole number of days` (or of other periods) | the run must be a whole number of output periods: use one of the `--steps` values the message gives |
 | `--output '...': START and END must fall on the boundaries ...` | the period of an output must begin and end on its period boundaries, counted from the start of the run ([choosing what is written](user-guide.md#choosing-what-is-written)) |
-| `--output is not available for <model> yet` | only the ACE models support `--output` so far; the other models write monthly means |
+| `--output is not available for <model> yet` | only the ACE, DLESyM and ArchesWeather models support `--output` so far; the other models write monthly means |
+| `--output '...': <model> has no variable X` | a typing error or another name: `aimip show <model> --variables` lists the model's variables |
 | `Model '<model>' is deterministic: --members K requires a multi-sample IC` | a deterministic model needs a different initial state per member: see [ensembles](user-guide.md#ensembles) |
 | `forcing sets 1xCO2, 3xCO2 all cover this window` | the model has several forcing sets for these dates: choose one with `--forcing-set` |
 | `model X is not installed here: ask the install owner to run 'aimip fetch -m X'` | someone else owns the installation; only the owner can download models |
 | `... --no-fetch was specified` | the model is not downloaded yet: run `aimip fetch -m <model>` (or leave out `--no-fetch`) |
 | `Could not fetch the ERA5 initial state` (DLESyM) | DLESyM downloads its start state when the run is prepared: run `aimip run` where there is internet |
 | a download hangs or fails with a network error | the machine cannot reach the internet: download the model elsewhere and copy it in ([clusters without internet](installation.md#clusters-without-internet-for-example-marenostrum-5)), and use `--no-fetch` |
+| `aimip bundle needs a container installation with Apptainer or Singularity` | make the bundle on a machine with a container installation; a native installation cannot be moved |
+| `Some files of these models are not here yet` (`aimip bundle`) | download them first with `aimip fetch -m <model>` |
 | `path must be absolute`, `refusing path` | use absolute paths with only letters, digits and `. _ / + -`; no spaces, no `~`, no `..` |
 | `run/output paths must live under <run root>` | `--out` points outside your run root: use `--name` instead, or a path under the run root |
 | `path will not be visible inside the container` | your `--ic` or `--lora` file is outside the run root and the installation: copy it into your run root |

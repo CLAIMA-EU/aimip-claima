@@ -361,12 +361,15 @@ def render_plan_card(plan: ResolvedPlan, *, is_tty: bool = False) -> str:
         outputs_line = "restart state only (restart.nc)"
     extra_outputs = list((plan.canonical_payload or {}).get("outputs") or [])
     if extra_outputs:
-        from ..outputs import describe_outputs
+        from ..outputs import describe_outputs, output_grid
         from .metadata import MODEL_CARDS
 
-        grid_m = re.match(r"\s*(\d+)\s*x\s*(\d+)", str((MODEL_CARDS.get(plan.model) or {}).get("grid") or ""))
-        grid_cells = int(grid_m.group(1)) * int(grid_m.group(2)) if grid_m else None
-        extra_lines = describe_outputs(extra_outputs, members=int(plan.members or 1), grid_cells=grid_cells)
+        grid_cells, level_names, n_levels = output_grid(plan.family)
+        if grid_cells is None:
+            grid_m = re.match(r"\s*(\d+)\s*x\s*(\d+)", str((MODEL_CARDS.get(plan.model) or {}).get("grid") or ""))
+            grid_cells = int(grid_m.group(1)) * int(grid_m.group(2)) if grid_m else None
+        extra_lines = describe_outputs(extra_outputs, members=int(plan.members or 1), grid_cells=grid_cells,
+                                       level_names=level_names, n_levels=n_levels)
         outputs_line = outputs_line + "".join(f"\n               + {line}" for line in extra_lines)
     digest_line = (
         f"  digest:      {plan.short_digest}  (approval prefix: {plan.approval_prefix}; "
@@ -402,8 +405,10 @@ def render_plan_card(plan: ResolvedPlan, *, is_tty: bool = False) -> str:
     return "\n".join(lines)
 
 
-def render_show_card(card: dict[str, Any], *, include_examples: bool = False) -> str:
+def render_show_card(card: dict[str, Any], *, include_examples: bool = False, all_variables: bool = False) -> str:
     """Format `services.show(model)` for terminal output."""
+    from ..model_variables import full_listing, summary
+
     fsets = ", ".join(
         f"{fs['name']} ({fs['window'][0][:10]}..{fs['window'][1][:10]})"
         for fs in card.get("forcing_sets", [])
@@ -427,6 +432,12 @@ def render_show_card(card: dict[str, Any], *, include_examples: bool = False) ->
             else []
         ),
         f"  outputs:     {', '.join(card.get('outputs', [])) or '(not recorded)'}",
+        *(
+            [f"  variables:   {line}" if i == 0 else f"               {line}"
+             for i, line in enumerate(full_listing(card["name"]))]
+            if all_variables
+            else [f"  variables:   {summary(card['name']) or '(not recorded)'}"]
+        ),
         f"  installed:   {'yes' if card.get('installed') else 'no'} ({card.get('cached_files', 0)}/{card.get('total_files', 0)} files, ~{format_bytes(card.get('total_bytes', 0))})",
         f"  cost:        {card['cost_note']}",
         f"  licence:     {card['licence']}",

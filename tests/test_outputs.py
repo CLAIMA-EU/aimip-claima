@@ -71,7 +71,7 @@ def test_resolve_files_blocks_periods_and_labels():
     (["daily@2001-06-01..2003-01-01"], {}, "inside the run"),
     (["daily", "daily"], {}, "given twice"),
     ([f"{h}h" for h in range(6, 60, 6)], {}, "At most 8"),
-    (["daily"], dict(family="geoarches", model_name="archesweather"), "not available for archesweather"),
+    (["daily"], dict(family="cbottle", model_name="cbottle-3d"), "not available for cbottle-3d"),
     (["daily"], dict(is_coupled=True, model_name="samudrace-cm4"), "coupled atmosphere-ocean"),
 ])
 def test_resolve_refuses(texts, kw, msg):
@@ -155,3 +155,89 @@ def test_check_output_files(tmp_path: pathlib.Path, capsys: pytest.CaptureFixtur
     assert "output_daily.nc without PRATEsfc" in err and "output_5d.nc missing" in err
     ok = check_output_files(str(tmp_path), _resolve(["daily:TMP2m"]))
     assert ok["ok"] is True
+
+
+AW = dict(model_name="archesweather", family="geoarches", is_coupled=False, timestep_hours=24,
+          start_iso="1978-09-30T00:00:00", calendar="proleptic_gregorian")
+
+
+def test_archesweather_days_and_names():
+    """ArchesWeather's step k is the daily-mean state of day start + k: periods start on the first output day."""
+    out = resolve_outputs(["step:tas,zg@1978-10-01..1978-10-08", "5d:tas@1978-10-06..1978-10-21", "monthly:ta"],
+                          end_iso="1978-11-29T00:00:00", steps=60, **AW)
+    assert out[0]["index_slice"] == [0, 7] and out[0]["values_per_member"] == 7      # 1..7 October
+    assert out[0]["file"] == "output_daily.nc" and out[1]["index_slice"] == [1, 4]
+    with pytest.raises(ConfigError, match=r"no variable t2m; .aimip show archesweather --variables"):
+        resolve_outputs(["daily:t2m"], end_iso="1978-11-29T00:00:00", steps=60, **AW)
+    with pytest.raises(ConfigError, match=r"inside the run \(1978-10-01T00:00:00 \.\. 1978-11-30T00:00:00\)"):
+        resolve_outputs(["step:tas@1978-09-30..1978-10-02"], end_iso="1978-11-29T00:00:00", steps=60, **AW)
+    dl = resolve_outputs(["step:t2m", "daily:z500"], model_name="dlesym-aimip", family="e2s-dlesym",
+                         is_coupled=False, timestep_hours=6, start_iso="1978-10-03T00:00:00",
+                         end_iso="1978-10-07T00:00:00", steps=16, calendar="proleptic_gregorian")
+    assert [o["block_steps"] for o in dl] == [1, 4]
+    with pytest.raises(ConfigError, match="no variable sst"):    # DLESyM: atmosphere variables only
+        resolve_outputs(["daily:sst"], model_name="dlesym-aimip", family="e2s-dlesym", is_coupled=False,
+                        timestep_hours=6, start_iso="1978-10-03T00:00:00", end_iso="1978-10-07T00:00:00", steps=16,
+                        calendar="proleptic_gregorian")
+
+
+def test_extra_outputs_writer(tmp_path: pathlib.Path) -> None:
+    """The emulator jobs' writer: states, block means over a window, monthly means, two members."""
+    from aimip.emu_job import ExtraOutputs
+
+    resolved = resolve_outputs(["step:a", "daily:a,b@2001-01-01..2001-01-02", "monthly:b"], **dict(
+        ACE, model_name="a-test-model", family="e2s-dlesym", end_iso="2001-01-03T00:00:00", steps=8))
+    lat, lon = np.array([-45.0, 45.0]), np.array([0.0, 120.0, 240.0])
+    w = ExtraOutputs(str(tmp_path), resolved, lat=lat, lon=lon, n_members=2, units={"a": "K"},
+                     post=lambda n, arr: arr * 10 if n == "b" else arr)
+    t0 = np.datetime64("2001-01-01T00:00:00")
+    for member in range(2):
+        for k in range(1, 9):
+            x = np.stack([np.full((2, 3), 100 * member + k, "f4"), np.full((2, 3), -k, "f4")])
+            w.add(member, k, t0 + np.timedelta64(6 * k, "h"), [(["a", "b"], x)])
+        w.end_member(member)
+    w.close()
+    with netCDF4.Dataset(tmp_path / "output_6h.nc") as ds:
+        assert ds["a"].shape == (2, 8, 2, 3) and ds["a"].units == "K" and "b" not in ds.variables
+        assert ds["a"][1, :, 0, 0].tolist() == [101, 102, 103, 104, 105, 106, 107, 108]
+        hours = (np.asarray(ds["valid_time"][0]) - 11323.0) * 24          # days since 1970 -> hours of 2001-01-01
+        assert np.allclose(hours, [6, 12, 18, 24, 30, 36, 42, 48])
+    with netCDF4.Dataset(tmp_path / "output_daily.nc") as ds:
+        assert ds["a"].shape == (2, 1, 2, 3) and ds["counts"][:].tolist() == [[4], [4]]
+        assert ds["a"][0, 0, 0, 0] == pytest.approx(2.5) and ds["b"][0, 0, 0, 0] == pytest.approx(-25.0)
+        assert (float(ds["valid_time"][0, 0]) - 11323.0) * 24 == pytest.approx(15.0)   # mean of 06..24 h
+    with netCDF4.Dataset(tmp_path / "output_monthly.nc") as ds:
+        assert ds["b"].shape == (2, 1, 2, 3) and ds["counts"][:].tolist() == [[8], [8]]
+        assert ds["b"][1, 0, 0, 0] == pytest.approx(-45.0)                 # mean of -1..-8, times 10
+    assert check_output_files(str(tmp_path), resolved)["ok"] is True
+
+
+def test_emulator_job_binds_the_outputs(tmp_path: pathlib.Path) -> None:
+    from aimip.emu import _check_job_matches_manifest
+    from aimip.errors import ValidationError
+
+    resolved = resolve_outputs(["daily:tas"], end_iso="1978-10-30T00:00:00", steps=30, **AW)
+    job = {"model": "archesweather", "start": "1978-09-30T00:00:00", "end": "1978-10-30T00:00:00", "steps": 30,
+           "members": 1, "seed": 0, "family": "geoarches", "checkpoint": "/x/ckpt", "outputs": resolved}
+    manifest = {"registry_entry": {"name": "archesweather"}, "start_time": job["start"], "end_time": job["end"],
+                "steps": 30, "members": 1, "seed": 0, "family": "geoarches", "checkpoint_path": "/x/ckpt",
+                "outputs": [dict(resolved[0], names=["tas", "psl"])], "package_files_sha256": {"/x/ckpt": "0" * 64}}
+    with pytest.raises(ValidationError, match="config.yaml outputs does not match"):
+        _check_job_matches_manifest(job, manifest)
+
+
+def test_extra_outputs_levels_only_where_needed(tmp_path: pathlib.Path) -> None:
+    from aimip.emu_job import ExtraOutputs
+
+    resolved = resolve_outputs(["step:tas", "step:ta"], end_iso="1978-10-02T00:00:00", steps=2, **AW)
+    w = ExtraOutputs(str(tmp_path), resolved, lat=np.array([0.0, 10.0]), lon=np.array([0.0, 1.0, 2.0]), n_members=1,
+                     levels=[1000.0, 500.0], level_names=["ta"])
+    for k in (1, 2):
+        w.add(0, k, np.datetime64("1978-09-30") + np.timedelta64(k, "D"),
+              [(["tas"], np.full((1, 2, 3), 280.0 + k)), (["ta"], np.full((1, 2, 2, 3), 250.0 + k))])
+    w.end_member(0)
+    w.close()
+    with netCDF4.Dataset(tmp_path / "output_daily.nc") as ds:
+        assert "level" not in ds.dimensions and ds["tas"][0, :, 0, 0].tolist() == [281.0, 282.0]
+    with netCDF4.Dataset(tmp_path / "output_daily_2.nc") as ds:
+        assert ds["ta"].dimensions == ("sample", "time", "level", "lat", "lon") and ds["level"][:].tolist() == [1000, 500]

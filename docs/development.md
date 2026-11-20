@@ -55,7 +55,10 @@ defense-in-depth layer.
 2. Add catalogue entries (`setup_data.build_artifact_catalog`) and lock entries.
 3. Add the registry entry (`registry.build_default_registry_payload`) and regenerate `registry.default.json`.
 4. If it does not run on `fme`, add a family runner (see `emu.py` / `emu_job.py`).
-5. Add tests, and run the model once from a fresh install before release.
+5. Record its output variables: run `python tools/model_variables/collect.py` in the main environment of an
+   installation with internet (it reads the fme checkpoints' variable names without downloading the weights) and
+   commit the new `src/aimip/model_variables.json`. A test fails until every model has an entry.
+6. Add tests, and run the model once from a fresh install before release.
 
 ## Releases
 

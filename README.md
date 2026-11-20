@@ -4,6 +4,12 @@ aimip-claima runs AI climate emulators as climate experiments, on a GPU workstat
 `aimip`. You choose a model, a start date and a length; aimip-claima downloads the model from its authors, checks
 every file, prepares the run, starts it on Slurm or on your machine, and keeps a record of exactly what was run.
 
+> **Requirements: Linux with an NVIDIA GPU.** aimip-claima needs a Linux system (x86-64 or ARM, for example an HPC
+> cluster or a GPU workstation) with an NVIDIA GPU and a driver for CUDA 13 or newer. **macOS and Windows are not
+> supported**: many of the models need CUDA, which Macs do not have. From a Mac, install aimip-claima on a Linux GPU
+> server and work there over SSH; the web console opens on your Mac through an SSH tunnel
+> ([docs/console.md](docs/console.md)).
+
 ```bash
 aimip run ace2-era5 --start 1979-01-01 --length 1y --name my-first-year     # prepare one model year
 aimip submit my-first-year                                                   # start it
@@ -40,8 +46,8 @@ aimip summary my-first-year                                                  # g
 - **Prepares a run directory** with the model configuration, the job script and a record of the command, the
   checksums of the files used, the seed and the software versions.
 - **Runs it** on Slurm or on the current machine, and summarises the results.
-- **Writes what you ask for:** monthly means by default; for the ACE models also daily or 6-hourly files of chosen
-  variables and periods (`--output`).
+- **Writes what you ask for:** monthly means by default; for the ACE, DLESyM and ArchesWeather models also daily or
+  6-hourly files of chosen variables and periods (`--output`).
 - Ensembles, continued runs, scenarios, LoRA checkpoints, an optional assistant (`aimip chat`) and a web interface
   (`aimip ui`).
 
@@ -62,6 +68,21 @@ aimip summary my-first-year                                                  # g
 | [console.md](docs/console.md), [agent.md](docs/agent.md) | approvals, the assistant, the MCP server, the web interface |
 | [testing.md](docs/testing.md) | how the installations were tested |
 | [development.md](docs/development.md) | code layout, tests, the lock file, adding a model |
+
+## Known limits
+
+- **GPUs tested:** NVIDIA A100 (x86-64) and GH200 (ARM). Other NVIDIA GPUs with a driver for CUDA 13 should work for
+  most models but are not in the test record; start with the first test run of `ace2-era5` and compare its number with
+  the one in the [user guide](docs/user-guide.md#your-first-run-step-by-step).
+- **Newest GPUs (Blackwell: B100/B200, RTX 50 series) and ARM GPU nodes:** `camulator` and `spherical-dyffusion` run in
+  their own environment pinned to PyTorch 2.4.1 for CUDA 12.1, which has no build for these GPUs or for ARM. Run these
+  two models on an A100 or H100 node; all other models use the main environment (PyTorch for CUDA 13).
+- **GPU memory:** the models were run on 80 GB GPUs. On cards with 16–24 GB the ACE and ArchesWeather models are
+  expected to fit; the larger models (for example `cbottle-3d`, DLESyM at 0.25° output) may not.
+- **No internet on the machine:** the DLESyM models and `samudra-om4` download starting data whenever a run is
+  prepared, so they cannot run where no node reaches the internet (see `aimip bundle` in the
+  [installation guide](docs/installation.md)).
+- **macOS and Windows:** not supported (see Requirements above); on Windows, WSL2 with an NVIDIA GPU is untested.
 
 ## Licence
 

@@ -49,11 +49,12 @@ from aimip.camulator import (
     verify_camulator_code_dir,
 )
 from aimip.emu_catalog import artifacts, on_demand_artifacts, required_files
-from aimip.errors import ConfigError, ValidationError
+from aimip.errors import ApprovalError, ConfigError, ValidationError
+from aimip.families import get_family_adapter
 from aimip.plan_types import RunSpec
 from aimip.runner import exec_fme
 from aimip.safe_pickle import compute_sha256sum_tree_digest
-from aimip.services import Authorization, MemoryApprovalBroker, cite, current_user, plan, prepare, show
+from aimip.services import Authorization, MemoryApprovalBroker, cite, current_user, plan, prepare, show, submit
 from aimip.setup_data import ensure_camulator_selected_assets, load_lock_file
 from aimip.status import summarize_run
 
@@ -785,6 +786,34 @@ for idx, ym in enumerate(("198101", "198102")):
         finally:
             ckpt_disk_p.write_bytes(ckpt_bytes)
 
+    # Stream provenance with two harmless distinct files: verified fd stream succeeds,
+    # while anonymous BytesIO and mismatched-provenance wrapper streams are refused!
+    harmless_a = tmp_path / "harmless_cam_a.pt"
+    harmless_b = tmp_path / "harmless_cam_b.pt"
+    torch.save({"tag": 1, "w": torch.ones(1)}, harmless_a)
+    torch.save({"tag": 2, "w": torch.full((1,), 2.0)}, harmless_b)
+    sha_cam_a = _sha256_bytes(harmless_a.read_bytes())
+
+    class _FakeFsspecOpener:
+        def __init__(self, claimed_path: str, raw_fh: Any) -> None:
+            self.path = claimed_path
+            self.f = raw_fh
+
+        def fileno(self) -> int:
+            return int(self.f.fileno())
+
+    with verified_camulator_torch_load({str(harmless_a): sha_cam_a}) as seen_cam:
+        with open(harmless_a, "rb") as fh_a:
+            loaded_stream_a = torch.load(fh_a, map_location="cpu")
+        assert loaded_stream_a["tag"] == 1
+        assert os.path.realpath(harmless_a) in seen_cam
+        with pytest.raises(ValidationError, match="unbound anonymous stream"):
+            torch.load(io.BytesIO(harmless_b.read_bytes()), map_location="cpu")
+        with open(harmless_b, "rb") as fh_b:
+            spoofed = _FakeFsspecOpener(str(harmless_a), fh_b)
+            with pytest.raises(ValidationError, match="mismatched file provenance"):
+                torch.load(spoofed, map_location="cpu")
+
     with pytest.raises(ValidationError, match="SHA-256 mismatch"):
         run_camulator(str(allow_tmp_run_root / "bad_ckpt_sha"), {**job_dict, "checkpoint_sha256": "0" * 64})
     with pytest.raises(ValidationError, match="SHA-256 mismatch"):
@@ -997,6 +1026,64 @@ printf '{"months_written": {"atmosphere": 2}}\\n' > "$out/emu-result.json"
     assert fin_manifest["rc"] == 0
     assert fin_manifest["result"]["months_written"] == {"atmosphere": 2}
     assert tree_files_ok == 1 and len(tree_sha_ok) == 64
+
+    # Source checkout edited (or switched) between `adapter.build_config` and `final_plan` in `prepare()`
+    # MUST be refused BEFORE sealing `$AIMIP_STATE/prepared/` or writing `plan.json`!
+    cam_adapter = get_family_adapter("camulator")
+    orig_build_config = cam_adapter.build_config
+    state_prep_dir = tmp_path / "state" / "prepared"
+    seals_before = set(state_prep_dir.glob("*.json")) if state_prep_dir.is_dir() else set()
+
+    def _build_then_mutate_sha(*b_args: Any, **b_kwargs: Any) -> dict[str, Any]:
+        built = orig_build_config(*b_args, **b_kwargs)
+        qc_script.write_bytes(orig_qc_bytes + b"\n# mid-prepare source edit\n")
+        return built
+
+    monkeypatch.setattr(cam_adapter, "build_config", _build_then_mutate_sha)
+    try:
+        with pytest.raises(ApprovalError, match="source_tree path or SHA-256 changed during preparation"):
+            prepare(
+                RunSpec(
+                    model="camulator",
+                    start="1981-01-01T00:00:00",
+                    steps=236,
+                    name="cam-race-sha",
+                )
+            )
+        seals_after_sha = set(state_prep_dir.glob("*.json")) if state_prep_dir.is_dir() else set()
+        assert seals_after_sha == seals_before
+        assert not (runs_dir / "cam-race-sha" / "plan.json").exists()
+        with pytest.raises(ApprovalError):
+            submit(str(runs_dir / "cam-race-sha"))
+    finally:
+        qc_script.write_bytes(orig_qc_bytes)
+        monkeypatch.setattr(cam_adapter, "build_config", orig_build_config)
+
+    (other_cam_code / "climate").mkdir(parents=True, exist_ok=True)
+    (other_cam_code / "climate" / "Quick_Climate.py").write_bytes(orig_qc_bytes)
+
+    def _build_then_switch_path(*b_args: Any, **b_kwargs: Any) -> dict[str, Any]:
+        built = orig_build_config(*b_args, **b_kwargs)
+        monkeypatch.setenv("AIMIP_CAMULATOR_CODE", str(other_cam_code))
+        return built
+
+    monkeypatch.setattr(cam_adapter, "build_config", _build_then_switch_path)
+    try:
+        with pytest.raises(ApprovalError, match="source_tree path or SHA-256 changed during preparation"):
+            prepare(
+                RunSpec(
+                    model="camulator",
+                    start="1981-01-01T00:00:00",
+                    steps=236,
+                    name="cam-race-path",
+                )
+            )
+        seals_after_path = set(state_prep_dir.glob("*.json")) if state_prep_dir.is_dir() else set()
+        assert seals_after_path == seals_before
+        assert not (runs_dir / "cam-race-path" / "plan.json").exists()
+    finally:
+        monkeypatch.setenv("AIMIP_CAMULATOR_CODE", str(code_dir))
+        monkeypatch.setattr(cam_adapter, "build_config", orig_build_config)
 
     # 3. Out-of-band `TREFHT` (`500 K`) in `consolidate_camulator_monthly_outputs` exits with `EXIT_UNSTABLE == 5`!
     raw_bad = tmp_path / "raw_unstable"

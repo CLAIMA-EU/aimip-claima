@@ -70,7 +70,7 @@ from .cbottle import (
     CBOTTLE_SECONDS_PER_YEAR,
     CBOTTLE_SEED_SCHEME,
     CBOTTLE_SST_REL_PATH,
-    cbottle_batch_seed,
+    build_cbottle_seed_schedule,
     cbottle_sample_timestamps,
 )
 from .errors import EXIT_UNSTABLE, ConfigError, MissingAssetsError, ValidationError
@@ -859,6 +859,7 @@ def prepare_emu_run(
     data_dir: str | None,
     auto_fetch: bool,
     argv: Sequence[str] | None,
+    outputs: Sequence[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     from .runner import (   # local import: runner imports this module
         SlurmOptions,
@@ -1195,10 +1196,11 @@ def prepare_emu_run(
         if sst_p not in pkg_sha:
             raise ConfigError(f"{model.name}: conditioning SST file {sst_p} missing from required_files.")
         n_cb_batches = (int(req["steps"]) + CBOTTLE_BATCH_SIZE - 1) // CBOTTLE_BATCH_SIZE
-        cb_batch_seeds = [
-            [cbottle_batch_seed(resolved_seed, m_i, b_i) for b_i in range(n_cb_batches)]
-            for m_i in range(int(req["members"]))
-        ]
+        cb_batch_seeds = build_cbottle_seed_schedule(
+            resolved_seed,
+            int(req["members"]),
+            n_cb_batches,
+        )
         job = {
             "family": model.family,
             "model": model.name,
@@ -1210,6 +1212,7 @@ def prepare_emu_run(
             "cadence": CBOTTLE_DEFAULT_CADENCE,
             "date_order": CBOTTLE_DATE_ORDER,
             "seed_scheme": CBOTTLE_SEED_SCHEME,
+            "batch_seeds": cb_batch_seeds,
         }
         window_meta = {
             "batch_size": CBOTTLE_BATCH_SIZE,
@@ -1319,7 +1322,8 @@ def prepare_emu_run(
         ic_provenance = (f"IPSL-CM6A-LR r1i1p1f1 {scen} state of 2015-02 (previous state 2015-01) from "
                          "gclyne/ArchesClimate-data; first output month 2015-03")
     job.update({"out_dir": validated_out, "start": req["start"], "end": req["end"], "steps": req["steps"],
-                "members": req["members"], "seed": resolved_seed, "checkpoint": model.checkpoint})
+                "members": req["members"], "seed": resolved_seed, "checkpoint": model.checkpoint,
+                "outputs": list(outputs or [])})
 
     config_path = validate_run_path(f"{validated_out}/config.yaml", label="config.yaml")
     with open(config_path, "w", encoding="utf-8") as fh:    # JSON is valid YAML; the job reads it with json
@@ -1377,6 +1381,7 @@ def prepare_emu_run(
         "sbatch_path": sbatch_path,
         "registry_entry": model.to_dict(),
         "family": model.family,
+        "outputs": list(outputs or []),
         "checkpoint_path": model.checkpoint,
         "checkpoint_sha256": pkg_sha[model.checkpoint],
         "package_files_sha256": pkg_sha,
@@ -1437,7 +1442,7 @@ def prepare_emu_run(
         "seed": resolved_seed,
         "seed_explicit": seed_explicit,
         "member_seeds": (
-            [cbottle_batch_seed(resolved_seed, k, 0) for k in range(req["members"])]
+            [row[0] for row in cb_batch_seeds]
             if model.family == "cbottle"
             else [resolved_seed + k for k in range(req["members"])]
         ),
@@ -1480,6 +1485,8 @@ def _check_job_matches_manifest(job: dict[str, Any], manifest: dict[str, Any]) -
         want = reg.get("name") if mkey is None else manifest.get(mkey)
         if str(job.get(key)) != str(want):
             fail(key)
+    if list(job.get("outputs") or []) != list(manifest.get("outputs") or []):
+        fail("outputs")
     pinned = set((manifest.get("package_files_sha256") or {}).keys())
     if job["checkpoint"] not in pinned:
         fail("checkpoint")
@@ -1656,6 +1663,16 @@ def _check_job_matches_manifest(job: dict[str, Any], manifest: dict[str, Any]) -
             or job.get("seed_scheme") != CBOTTLE_SEED_SCHEME
         ):
             fail("seed_scheme")
+        exp_cb_batches = (int(manifest["steps"]) + CBOTTLE_BATCH_SIZE - 1) // CBOTTLE_BATCH_SIZE
+        exp_cb_seeds = build_cbottle_seed_schedule(
+            int(manifest["seed"]),
+            int(manifest["members"]),
+            exp_cb_batches,
+        )
+        if manifest.get("batch_seeds") != exp_cb_seeds:
+            fail("batch_seeds")
+        if job.get("batch_seeds") is not None and job.get("batch_seeds") != exp_cb_seeds:
+            fail("batch_seeds")
     elif job["family"] == "sdyff":
         pkg_map = manifest.get("package_files_sha256") or {}
         if (
@@ -1857,6 +1874,10 @@ def exec_emu(validated_out: str, manifest: dict[str, Any], manifest_path: str) -
         manifest["wall_seconds"] = round(time.monotonic() - t0, 3)
         if err:
             manifest["error"] = err
+        if rc == 0 and manifest.get("outputs"):
+            from .outputs import check_output_files
+
+            manifest["outputs_check"] = check_output_files(validated_out, manifest["outputs"])
         result_file = os.path.join(validated_out, "emu-result.json")
         if os.path.isfile(result_file) and not os.path.islink(result_file):
             try:

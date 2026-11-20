@@ -690,6 +690,10 @@ resolve_host_file() {
 for ((i=0; i<n; i++)); do
   case "${CONTAINER_ARGS[$i]}" in
     --out|--ocean-out) [ $((i+1)) -lt $n ] && RW+=("${CONTAINER_ARGS[$((i+1))]}");;
+    --source)            # aimip bundle: the source tree it copies, read-only
+      if [ $((i+1)) -lt $n ] && [ "${1:-}" = "bundle" ]; then
+        safe_path "${CONTAINER_ARGS[$((i+1))]}"; [ -d "${CONTAINER_ARGS[$((i+1))]}" ] && RO_FILES+=("${CONTAINER_ARGS[$((i+1))]}")
+      fi;;
     --out=*) RW+=("${CONTAINER_ARGS[$i]#--out=}");;
     --ocean-out=*) RW+=("${CONTAINER_ARGS[$i]#--ocean-out=}");;
     --config)

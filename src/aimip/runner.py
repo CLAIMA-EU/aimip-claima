@@ -1578,6 +1578,7 @@ def prepare_run(
             ocean_ic_path=ocean_ic_path, members=members, seed=seed, lora_path=lora_path,
             forcing_set_name=forcing_set_name, mode=mode, slurm_opts=slurm_opts, site_config=site_config,
             playground_dir=playground_dir, data_dir=data_dir, auto_fetch=auto_fetch, argv=argv,
+            outputs=outputs,
         )
 
     norm_start = validate_iso_timestamp(start_iso, label="--start")

@@ -423,6 +423,38 @@ def test_sdyff_safe_globals_pre_pickle_sha_gate(
         finally:
             cfg_y.write_text("model: sfno\nembed_dim: 256\n", encoding="utf-8")
 
+    # Stream provenance with two harmless distinct checkpoints and two harmless distinct YAML configs:
+    # fd-backed streams bound to the verified file succeed; anonymous and mismatched-descriptor streams fail closed!
+    ckpt_b = tmp_path / "second_harmless.ckpt"
+    torch.save({"epoch": 99, "state_dict": OrderedDict({"w": torch.full((1,), 3.0)})}, str(ckpt_b))
+    cfg_b = tmp_path / "second_harmless.yaml"
+    cfg_b.write_text("model: sfno\nembed_dim: 512\n", encoding="utf-8")
+
+    class _FakeLocalOpener:
+        def __init__(self, claimed_path: str, raw_fh: Any) -> None:
+            self.path = claimed_path
+            self.f = raw_fh
+
+        def fileno(self) -> int:
+            return int(self.f.fileno())
+
+    with verified_sdyff_loaders({str(ckpt_p): good_sha, str(cfg_y): cfg_y_sha}) as seen_sd:
+        with open(ckpt_p, "rb") as fh_ck_ok:
+            assert torch.load(fh_ck_ok, map_location="cpu")["epoch"] == 31
+        assert os.path.realpath(ckpt_p) in seen_sd
+        with open(cfg_y, "r", encoding="utf-8") as fh_y_ok:
+            assert OmegaConf.load(fh_y_ok)["embed_dim"] == 256
+        with pytest.raises(ValidationError, match="unbound anonymous stream"):
+            torch.load(io.BytesIO(ckpt_b.read_bytes()), map_location="cpu")
+        with pytest.raises(ValidationError, match="unbound anonymous stream"):
+            OmegaConf.load(io.StringIO(cfg_b.read_text(encoding="utf-8")))
+        with open(ckpt_b, "rb") as fh_ck_b:
+            with pytest.raises(ValidationError, match="mismatched file provenance"):
+                torch.load(_FakeLocalOpener(str(ckpt_p), fh_ck_b), map_location="cpu")
+        with open(cfg_b, "r", encoding="utf-8") as fh_y_b:
+            with pytest.raises(ValidationError, match="mismatched file provenance"):
+                OmegaConf.load(_FakeLocalOpener(str(cfg_y), fh_y_b))
+
 
 def test_sdyff_schedule_240_steps_two_months_and_runtime_yaml(tmp_path: Path) -> None:
     """Verify `--steps 240` (`60` days) -> `2` complete cycle months (`0001-01`, `0001-02`), `coarsen_factor=4`, no W&B."""
