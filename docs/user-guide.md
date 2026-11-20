@@ -558,6 +558,10 @@ aimip export-cmor my-run --source-id ACE2-ERA5 --experiment-id aimip --grid-labe
 - **Required options:** `--source-id`, `--experiment-id` (no default: an AIMIP, SSP or coupled run is not `amip`),
   `--grid-label` (`gn` the model's own grid; `gr` regridded, for example a HEALPix model written on latitude-longitude),
   `--institution-id`.
+- **DLESyM and cBottle-3d:** both compute on a HEALPix grid (12 faces × height × width). Their aimip-claima output is
+  already on a latitude-longitude grid: the authors' own wrappers convert it on output (DLESyM: Earth2Studio's
+  `DLESyMLatLon`, 0.25°; cBottle-3d: `CBottle3D(lat_lon=True)`). The model steps themselves are unchanged, but the written
+  values are regridded, so use `--grid-label gr` for these two models.
 - **Not a CMOR submission:** the files are not checked by the CMOR library or PrePARE, stay on the model's grid, and
   lack some required CMIP6 attributes (listed in each file as `aimip_missing`). Use them for `cdo`, comparisons and as a
   starting point; an AIMIP submission on the 1° grid still needs conservative regridding and the full attribute set.
