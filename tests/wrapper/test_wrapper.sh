@@ -219,6 +219,20 @@ else
   bad "local submit without setsid/python3 rc=$noses_rc err=$noses_err"
 fi
 [ ! -e "$W/runs/r_noses/local.pid" ] && ok "no local.pid written when session launcher is missing" || bad "local.pid written despite missing session launcher"
+# Direct access to the image: container-cmd prints the command and runs nothing; container-shell opens a shell
+rm -f "$FAKE_LOG.argv"
+cc_out=$("$P/bin/aimip" container-cmd models --json 2>&1); cc_rc=$?
+case "$cc_out" in *"fakert -s exec"*" --nv "*"img.sif python -B -m aimip models --json"*) cc_ok=1;; *) cc_ok=0;; esac
+[ $cc_rc = 0 ] && [ $cc_ok = 1 ] && ok "container-cmd prints the container command" || bad "container-cmd rc=$cc_rc out=$cc_out"
+case "$cc_out" in *"AIMIP_DATA="*) ok "container-cmd shows the environment";; *) bad "container-cmd without AIMIP_DATA";; esac
+[ ! -e "$FAKE_LOG.argv" ] && ok "container-cmd runs nothing" || bad "container-cmd ran the runtime"
+for hc in submit cancel chat ui; do
+  "$P/bin/aimip" container-cmd $hc x >/dev/null 2>&1 && bad "container-cmd $hc accepted" || ok "container-cmd refuses $hc"
+done
+GEMINI_API_KEY=SYNTHETIC_SECRET_123 "$P/bin/aimip" container-cmd models 2>&1 | grep -q SYNTHETIC_SECRET_123 && bad "container-cmd printed a key" || ok "container-cmd prints no key"
+rm -f "$FAKE_LOG.argv"; "$P/bin/aimip" container-shell </dev/null >/dev/null 2>&1
+[ "$(sed -n 2p "$FAKE_LOG.argv" 2>/dev/null)" = shell ] && grep -qx -- "$P/img.sif" "$FAKE_LOG.argv" && ok "container-shell opens a shell in the image" || bad "container-shell argv: $(tr '\n' ' ' < "$FAKE_LOG.argv" 2>/dev/null)"
+"$P/bin/aimip" container-shell extra >/dev/null 2>&1 && bad "container-shell accepted arguments" || ok "container-shell takes no arguments"
 echo "WRAPPER_TESTS pass=$pass fail=$fail bash=$BASH_VERSION"
 case "$W" in */aimip-wtest.*) rm -rf "$W";; esac
 [ $fail = 0 ]

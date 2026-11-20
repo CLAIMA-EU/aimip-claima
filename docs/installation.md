@@ -242,6 +242,22 @@ or to the owner of the installation, and must not be writable by group or others
 
 ## Special situations
 
+**Using the container image directly.** In container mode `aimip` is a small host script that runs each command
+inside the image (`<prefix>/images/aimip.sif`, or the Docker/Podman image) with the right mounts and environment, and
+keeps runs inside your run root. To work with the image yourself:
+
+```bash
+aimip container-cmd run ace2-era5 --start 1979-01-01 --steps 8 --name first   # prints the apptainer/docker command
+aimip container-shell                                                          # a shell inside the image
+```
+
+`container-cmd` prints the exact command the script would run for that `aimip` command (image, `-B` mounts, `--env`
+settings, `--nv`) and runs nothing: copy it into your own job scripts or change it. `container-shell` opens a shell in
+the image with the same mounts and settings; `aimip …` and `python -m aimip …` work inside. `submit`, `cancel`,
+`watch`, `status`, `logs`, `chat` and `ui` are not available through `container-cmd`, since they act on the host (Slurm)
+or pass credentials; run them with `aimip` as usual. When you change the printed command, the safety checks of the
+script (paths inside your run root, no symlinks) are yours to keep.
+
 **Compute nodes without internet.** Nothing to do: `aimip run` downloads what a run needs when it prepares the run,
 on the machine where you type it. DLESyM (`dlesym-*`) also downloads its ERA5 start state then, and Samudra-OM4 its
 ocean data.

@@ -288,6 +288,24 @@ verify_submit_in_container() {  # verify_submit_in_container <run_dir> <priv_dir
   esac
 }
 
+# ---------------- direct access to the image (wrapper-only commands) ----------------
+# `aimip container-cmd <aimip command ...>` prints the exact container command the wrapper would run for that command
+# (mounts, environment, image) and runs nothing, so it can be repeated or adapted by hand; `aimip container-shell`
+# opens a shell inside the image with the same mounts and environment.
+DIRECT=""
+case "${1:-}" in
+  container-cmd)
+    DIRECT=print; shift
+    case "${1:-}" in
+      ""|-h|--help) echo "usage: aimip container-cmd <aimip command ...>   (prints the container command; runs nothing)"; exit 0;;
+      submit|cancel|watch|status|logs|chat|ui)
+        die "container-cmd: not for '$1' (it acts on the host: Slurm or credentials); run 'aimip $1' directly";;
+    esac;;
+  container-shell)
+    DIRECT=shell; shift
+    [ $# -eq 0 ] || die "container-shell takes no arguments";;
+esac
+
 # ---------------- host-side commands ----------------
 if [ "${1:-}" = "submit" ] && ! has_help_flag "${@:2}"; then
   scrub_host_secrets
@@ -831,6 +849,12 @@ run_main_container() {
       B=(); for m in ${MOUNTS[@]+"${MOUNTS[@]}"}; do B+=(-B "$m"); done
       E=(); for v in ${ENVS[@]+"${ENVS[@]}"}; do E+=(--env "${v//,/;}" ); done
       NV=(); [ $GPU = 1 ] && NV=(--nv)
+      if [ "$DIRECT" = print ]; then  # --nv always: the printed command is usually run on a GPU node
+        printf '%q ' "$RUNTIME_BIN" -s exec ${US[@]+"${US[@]}"} --nv --containall --cleanenv --no-home --pwd /tmp ${B[@]+"${B[@]}"} ${E[@]+"${E[@]}"} "$IMAGE" python -B -m aimip "$@"; echo; exit 0
+      fi
+      if [ "$DIRECT" = shell ]; then
+        exec "$RUNTIME_BIN" -s shell ${US[@]+"${US[@]}"} ${NV[@]+"${NV[@]}"} --containall --cleanenv --no-home --pwd /tmp ${B[@]+"${B[@]}"} ${E[@]+"${E[@]}"} "$IMAGE"
+      fi
       if [ -n "$REFRESH_BG_PID" ]; then
         "$RUNTIME_BIN" -s exec ${US[@]+"${US[@]}"} ${NV[@]+"${NV[@]}"} --containall --cleanenv --no-home --pwd /tmp ${B[@]+"${B[@]}"} ${E[@]+"${E[@]}"} "$IMAGE" python -B -m aimip "$@"
         exit $?
@@ -843,6 +867,12 @@ run_main_container() {
       G=(); [ $GPU = 1 ] && G=(--gpus all)
       T=(-i); [ -t 0 ] && [ -t 1 ] && T=(-it)
       ID=(--user "$(id -u):$(id -g)"); [ "$RUNTIME" = podman ] && [ "$(id -u)" != 0 ] && ID=(--userns=keep-id --user "$(id -u):$(id -g)")
+      if [ "$DIRECT" = print ]; then
+        printf '%q ' "$RUNTIME_BIN" run --rm -it "${ID[@]}" --network host -w /tmp --gpus all ${B[@]+"${B[@]}"} ${E[@]+"${E[@]}"} "$IMAGE" "$@"; echo; exit 0
+      fi
+      if [ "$DIRECT" = shell ]; then
+        exec "$RUNTIME_BIN" run --rm -it "${ID[@]}" --network host -w /tmp ${G[@]+"${G[@]}"} ${B[@]+"${B[@]}"} ${E[@]+"${E[@]}"} --entrypoint bash "$IMAGE"
+      fi
       if [ -n "$REFRESH_BG_PID" ]; then
         "$RUNTIME_BIN" run --rm ${T[@]+"${T[@]}"} "${ID[@]}" --network host -w /tmp ${G[@]+"${G[@]}"} ${B[@]+"${B[@]}"} ${E[@]+"${E[@]}"} "$IMAGE" "$@"
         exit $?
