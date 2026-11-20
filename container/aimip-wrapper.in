@@ -776,6 +776,7 @@ case "${1:-}" in
   setup|fetch) mkdir -p "$DATA" 2>/dev/null; [ -w "$DATA" ] || die "$DATA is not writable by you: ask the install owner to run this"; DATA_MODE=rw;;
   run|ic|chat|mcp|ui|approve) mkdir -p "$DATA" 2>/dev/null || true; [ -w "$DATA" ] && DATA_MODE=rw;;
 esac
+[ "$DIRECT" = shell ] && { mkdir -p "$DATA" 2>/dev/null || true; [ -w "$DATA" ] && DATA_MODE=rw; }
 [ -d "$DATA" ] && [ $DATA_MODE = rw ] && MOUNTS+=("$DATA:$DATA:rw")
 [ -d "$RUN_ROOT" ] && MOUNTS+=("$RUN_ROOT:$RUN_ROOT:rw")
 for e in $EXTRA_RO; do [ -d "$e" ] && MOUNTS+=("$e:$e:ro"); done

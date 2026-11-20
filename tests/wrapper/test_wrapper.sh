@@ -226,12 +226,12 @@ case "$cc_out" in *"fakert -s exec"*" --nv "*"img.sif python -B -m aimip models 
 [ $cc_rc = 0 ] && [ $cc_ok = 1 ] && ok "container-cmd prints the container command" || bad "container-cmd rc=$cc_rc out=$cc_out"
 case "$cc_out" in *"AIMIP_DATA="*) ok "container-cmd shows the environment";; *) bad "container-cmd without AIMIP_DATA";; esac
 [ ! -e "$FAKE_LOG.argv" ] && ok "container-cmd runs nothing" || bad "container-cmd ran the runtime"
-for hc in submit cancel chat ui; do
+for hc in submit cancel watch status logs ls chat ui; do
   "$P/bin/aimip" container-cmd $hc x >/dev/null 2>&1 && bad "container-cmd $hc accepted" || ok "container-cmd refuses $hc"
 done
 GEMINI_API_KEY=SYNTHETIC_SECRET_123 "$P/bin/aimip" container-cmd models 2>&1 | grep -q SYNTHETIC_SECRET_123 && bad "container-cmd printed a key" || ok "container-cmd prints no key"
 rm -f "$FAKE_LOG.argv"; "$P/bin/aimip" container-shell </dev/null >/dev/null 2>&1
-[ "$(sed -n 2p "$FAKE_LOG.argv" 2>/dev/null)" = shell ] && grep -qx -- "$P/img.sif" "$FAKE_LOG.argv" && ok "container-shell opens a shell in the image" || bad "container-shell argv: $(tr '\n' ' ' < "$FAKE_LOG.argv" 2>/dev/null)"
+[ "$(sed -n 2p "$FAKE_LOG.argv" 2>/dev/null)" = shell ] && grep -qx -- "$P/img.sif" "$FAKE_LOG.argv" && grep -qx -- "$P/data:$P/data:rw" "$FAKE_LOG.argv" && ok "container-shell opens a shell in the image with writable data mount" || bad "container-shell argv: $(tr '\n' ' ' < "$FAKE_LOG.argv" 2>/dev/null)"
 "$P/bin/aimip" container-shell extra >/dev/null 2>&1 && bad "container-shell accepted arguments" || ok "container-shell takes no arguments"
 echo "WRAPPER_TESTS pass=$pass fail=$fail bash=$BASH_VERSION"
 case "$W" in */aimip-wtest.*) rm -rf "$W";; esac
