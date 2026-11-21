@@ -57,6 +57,28 @@ if [ "$WITH_EMU" = 1 ] || [ "$WITH_CAMULATOR" = 1 ] || [ "$WITH_SDYFF" = 1 ]; th
   fi
 fi
 
+# ---- C/C++ compiler for packages pip builds from source (e.g. cartopy on aarch64)
+# setuptools compiles C/C++ extensions with $CC/$CXX if set, but always with the CFLAGS recorded when the Python
+# interpreter itself was compiled (sysconfig; for a gcc-built Python e.g. -fno-strict-overflow). A compiler that
+# rejects them -- e.g. nvc/nvc++ of the NVIDIA HPC SDK, set by its environment modules -- fails those builds, so
+# fall back to gcc/g++ for this install.
+PY_CFLAGS=$("$PY_BIN" -c 'import sysconfig; print(sysconfig.get_config_var("CFLAGS") or "")') \
+  || die "cannot read CFLAGS from $PY_BIN sysconfig"
+cc_accepts_py_cflags() {  # cc_accepts_py_cflags <compiler> <c|c++>
+  # shellcheck disable=SC2086  # PY_CFLAGS is a list of flags
+  echo 'int main(void){return 0;}' | "$1" $PY_CFLAGS -x "$2" -c - -o /dev/null >/dev/null 2>&1
+}
+for pair in "CC:c:gcc" "CXX:c++:g++"; do
+  var=${pair%%:*}; rest=${pair#*:}; lang=${rest%%:*}; fallback=${rest#*:}
+  cur=${!var:-}
+  [ -n "$cur" ] || continue
+  cc_accepts_py_cflags "$cur" "$lang" && continue
+  command -v "$fallback" >/dev/null 2>&1 \
+    || die "$var=$cur rejects Python's CFLAGS ($PY_CFLAGS), and $fallback is not on PATH; set $var to a GCC- or Clang-compatible compiler"
+  echo "install-native: $var=$cur rejects Python's CFLAGS ($PY_CFLAGS); using $var=$fallback for this install"
+  export "$var=$fallback"
+done
+
 TORCH_INDEX=${AIMIP_TORCH_INDEX:-https://download.pytorch.org/whl/cu130}
 CAMULATOR_TORCH_INDEX=${AIMIP_CAMULATOR_TORCH_INDEX:-https://download.pytorch.org/whl/cu121}
 SDYFF_TORCH_INDEX=${AIMIP_SDYFF_TORCH_INDEX:-https://download.pytorch.org/whl/cu121}
